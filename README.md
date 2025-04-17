@@ -14,6 +14,14 @@ Based on this love for MUDs, I've tried in the past to [make an engine in Python
 
 This is a hobby project for me and purely for fun to learn Rust and create something that others might enjoy, but priority one for me is to enjoy it. Development may never even remotely get off the ground or may one day halt. Feel free to fork this project and make something that goes in the direction you'd like.
 
+## Initial Design / Thoughts
+
+- Primarily library/composition-based, use modules where possible to try to allow systems to be layered
+- Expectation would be that someone wanting a MUD would clone a template which uses all the library crates.. compiles.. runs.. and away they go
+- If any database/querying is used, try to use something local to avoid dependencies on external spinups of DB's, etc.
+    - Lean towards something like SQLite, if needed, but lean more towards a storage driver that's slightly agnostic to "where"
+- Looking into Bevy's Entity-Component-System (ECS) implementation, might make a good base to use and save a lot of headache reinventing the wheel
+
 ## Getting Started
 
 TODO
