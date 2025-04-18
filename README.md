@@ -12,15 +12,22 @@ Based on this love for MUDs, I've tried in the past to [make an engine in Python
 
 ## Warning and Expectation-Setting
 
+EXPECT BREAKING CHANGES. THIS IS ALPHA SOFTWARE.
+
 This is a hobby project for me and purely for fun to learn Rust and create something that others might enjoy, but priority one for me is to enjoy it. Development may never even remotely get off the ground or may one day halt. Feel free to fork this project and make something that goes in the direction you'd like.
+
+I will try to properly semver things based on changes _eventually_. But especially in 0.1.x days, expect nothing to be stable until I feel comfortable with a 0.2.x release of modules to denote their even remote API stability.
+
+I will also try to write alright documentation (primarily in comments) and unit tests to ensure that things work as expected and can be modified by others.
 
 ## Initial Design / Thoughts
 
 - Primarily library/composition-based, use modules where possible to try to allow systems to be layered
-- Expectation would be that someone wanting a MUD would clone a template which uses all the library crates.. compiles.. runs.. and away they go
+- Expectation would be that someone wanting a MUD would clone a template for the actual runtime, which mports all the library crates it needs, or author some custom ones.. compiles.. runs..
 - If any database/querying is used, try to use something local to avoid dependencies on external spinups of DB's, etc.
     - Lean towards something like SQLite, if needed, but lean more towards a storage driver that's slightly agnostic to "where"
-- Looking into Bevy's Entity-Component-System (ECS) implementation, might make a good base to use and save a lot of headache reinventing the wheel
+- Looking into Bevy's Entity-Component-System (ECS) implementation, might make a good base to use and save a lot of headache reinventing the wheel with regards to managing all the entities flying in the ether and updating them/etc.
+    - I also like the idea of components/systems being fairly generic and layerable to allow modularity and sharing in the community, potentially
 
 ## Getting Started
 
