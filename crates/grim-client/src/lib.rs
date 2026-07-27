@@ -599,7 +599,7 @@ fn handle_client_input(
                     // Blank line — write a newline to trigger prompt on flush
                     outputs.write(ClientOutput {
                         connection: conn,
-                        text: "\r\n".into(),
+                        text: " ".into(),
                         echo: None,
                     });
                 } else {
