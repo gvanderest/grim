@@ -1,0 +1,12 @@
+[package]
+name = "grim"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = { workspace = true, default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+sha2 = { workspace = true }

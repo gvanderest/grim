@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = ["crates/grim", "crates/grim-protocol-telnet", "crates/grim-client"]
+
+[package]
+name = "mud-example"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+grim = { path = "crates/grim" }
+grim-protocol-telnet = { path = "crates/grim-protocol-telnet" }
+grim-client = { path = "crates/grim-client" }
+uuid = { workspace = true }
+bevy = { workspace = true }
+
+[workspace.dependencies]
+bevy = { version = "0.19", default-features = false, features = ["bevy_log"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"

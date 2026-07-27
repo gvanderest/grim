@@ -1,0 +1,170 @@
+use std::collections::{HashMap, VecDeque};
+use std::net::SocketAddr;
+use std::time::Duration;
+
+use bevy::prelude::*;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::cardinal::Cardinal;
+use crate::events::Command;
+
+// ─── Network / Session ──────────────────────────────────────────────
+
+/// A raw network connection. Spawned by the protocol layer.
+/// The `id` maps to the tokio-side connection identifier.
+#[derive(Component, Debug)]
+pub struct Connection {
+    pub id: usize,
+    pub addr: SocketAddr,
+}
+
+/// The client session state machine — one per connection, on a separate
+/// entity from `Connection` so the engine never touches socket types.
+#[derive(Component, Debug)]
+pub struct Client {
+    /// The `Connection` entity this client is bound to.
+    pub connection: Entity,
+    pub state: ClientState,
+    pub account: Option<Entity>,
+    pub character: Option<Entity>,
+    /// Parsed commands waiting to be dispatched (cooldown-gated).
+    pub input_queue: VecDeque<Command>,
+    pub command_cooldown: Timer,
+}
+
+impl Client {
+    pub fn new(connection: Entity) -> Self {
+        Self {
+            connection,
+            state: ClientState::LoginPrompt,
+            account: None,
+            character: None,
+            input_queue: VecDeque::new(),
+            command_cooldown: Timer::new(Duration::from_millis(100), TimerMode::Repeating),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClientState {
+    /// Waiting for the user to type a username or email.
+    LoginPrompt,
+    /// Waiting for a password. `is_new` distinguishes "create new" vs "login existing".
+    PasswordPrompt {
+        identifier: String,
+        is_new: bool,
+    },
+    /// "No account found. Create one? (y/n)"
+    ConfirmCreate {
+        identifier: String,
+    },
+    /// Showing the character selection menu.
+    CharacterSelect,
+    /// Waiting for the user to type a new character name.
+    CreateCharacter,
+    /// MOTD prompt after character select — hit Enter to enter the world.
+    MotdPrompt,
+    /// In-game — input is parsed and queued as commands.
+    InGame,
+}
+
+// ─── Account / Character ────────────────────────────────────────────
+
+/// An account — persists across sessions. Saved to `data/accounts/<uuid>.json`.
+#[derive(Component, Serialize, Deserialize, Clone, Debug)]
+pub struct Account {
+    pub id: Uuid,
+    /// The user-facing identifier (username or email, normalized lowercase).
+    pub identifier: String,
+    pub password_hash: String,
+    /// UUIDs of characters owned by this account.
+    pub characters: Vec<Uuid>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A character — belongs to an account, can be in-world.
+/// Saved to `data/characters/<uuid>.json`.
+#[derive(Component, Serialize, Deserialize, Clone, Debug)]
+pub struct Character {
+    pub id: Uuid,
+    pub name: String,
+    pub account_id: Uuid,
+    pub created_at: DateTime<Utc>,
+    /// Last known room, persisted as (area_friendly_id, room_friendly_id).
+    #[serde(default)]
+    pub last_room: Option<RoomLocation>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct RoomLocation {
+    pub area: String,
+    pub room: String,
+}
+
+// ─── World ──────────────────────────────────────────────────────────
+
+/// An area — a collection of rooms. Friendly ID is filesystem-unique.
+#[derive(Component, Debug)]
+pub struct Area {
+    pub id: Uuid,
+    pub friendly_id: String,
+    pub name: String,
+}
+
+/// A room — belongs to an area, has exits.
+#[derive(Component, Debug)]
+pub struct Room {
+    pub id: Uuid,
+    pub friendly_id: String,
+    pub name: String,
+    pub description: String,
+    pub area: Entity,
+}
+
+/// Exits on a room entity: direction → destination room entity.
+#[derive(Component, Debug, Default)]
+pub struct Exits {
+    pub exits: HashMap<Cardinal, Entity>,
+}
+
+/// Which room an entity is currently in.
+#[derive(Component, Debug, Clone)]
+pub struct InRoom {
+    pub room: Entity,
+}
+
+// ─── Descriptive (shared by characters, NPCs, items) ─────────────────
+
+/// Display name for any visible entity.
+#[derive(Component, Debug, Clone)]
+pub struct Name(pub String);
+
+/// Long description shown by `look <target>`.
+#[derive(Component, Debug, Clone)]
+pub struct Description(pub String);
+
+// ─── Markers ────────────────────────────────────────────────────────
+
+/// Marks a character as player-controlled and links to their connection for output.
+#[derive(Component, Debug)]
+pub struct Player {
+    /// The `Connection` entity to send output to.
+    pub connection: Entity,
+}
+
+/// Marks an entity as an NPC.
+#[derive(Component, Debug)]
+pub struct Npc;
+
+/// Character is still in-world but the player disconnected (linkdead).
+#[derive(Component, Debug)]
+pub struct Linkdead;
+
+// ─── Resources ──────────────────────────────────────────────────────
+
+/// The default room for new characters to enter.
+/// Inserted by the seed world system, read by the client during character creation.
+#[derive(Resource, Debug)]
+pub struct StartingRoom(pub Entity);
