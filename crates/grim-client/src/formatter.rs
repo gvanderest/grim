@@ -107,4 +107,3 @@ pub fn format_linkdead(name: &str, reconnecting: bool) -> String {
     }
 }
 
-/// Format the `> ` prompt.
