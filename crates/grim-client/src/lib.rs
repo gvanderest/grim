@@ -2,7 +2,6 @@ use std::collections::VecDeque;
 use std::time::Duration;
 
 use bevy::log::info;
-use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::prelude::{
     App, Commands, Entity, MessageReader, MessageWriter, Plugin, Query, Res, Time, Timer, TimerMode,
     Update,
@@ -25,7 +24,6 @@ mod formatter;
 mod parser;
 
 pub struct ClientPlugin;
-
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<ClientOutput>()
@@ -41,16 +39,16 @@ impl Plugin for ClientPlugin {
             .add_message::<LoginAnnounce>()
             .add_message::<LogoutAnnounce>()
             .add_message::<LinkdeadAnnounce>()
-            .add_systems(Update, handle_connection_established.in_set(grim::plugins::ClientSet))
-            .add_systems(Update, handle_client_input.in_set(grim::plugins::ClientSet))
-            .add_systems(Update, process_command_queue.in_set(grim::plugins::ClientSet))
-            .add_systems(Update, format_output.in_set(grim::plugins::ClientSet));
+            .add_systems(Update, handle_connection_established)
+            .add_systems(Update, handle_client_input)
+            .add_systems(Update, process_command_queue)
+            .add_systems(Update, format_output);
     }
 }
 
 // ─── Connection lifecycle ───────────────────────────────────────────
 
-pub fn handle_connection_established(
+fn handle_connection_established(
     mut established: MessageReader<ConnectionEstablished>,
     mut commands: Commands,
     mut outputs: MessageWriter<ClientOutput>,
@@ -66,7 +64,7 @@ pub fn handle_connection_established(
 }
 
 // ─── Client input dispatch ───────────────────────────────────────────
-pub fn handle_client_input(
+fn handle_client_input(
     mut inputs: MessageReader<ClientInput>,
     mut clients: Query<(Entity, &mut Client)>,
     mut accounts: Query<(Entity, &mut Account)>,
@@ -103,6 +101,35 @@ pub fn handle_client_input(
                     });
                     continue;
                 }
+                // First, try as character name
+                let trimmed = text.trim();
+                let char_match = characters
+                    .iter()
+                    .find(|(_, _, n)| n.0.eq_ignore_ascii_case(trimmed));
+                if let Some((char_entity, character, _)) = char_match {
+                    let account_found = accounts
+                        .iter()
+                        .find(|(_, a)| a.id == character.account_id);
+                    if let Some((_account_entity, _)) = account_found {
+                        client.state = ClientState::PasswordPrompt {
+                            identifier: characters.get(char_entity)
+                                .map(|(_, c, _)| accounts.iter()
+                                    .find(|(_, a)| a.id == c.account_id)
+                                    .map(|(_, a)| a.identifier.clone())
+                                    .unwrap_or_default())
+                                .unwrap_or_default(),
+                            is_new: false,
+                            character: Some(char_entity),
+                        };
+                        outputs.write(ClientOutput {
+                            connection: conn,
+                            text: "Password: ".into(),
+                            echo: Some(false),
+                        });
+                        continue;
+                    }
+                }
+                // Fall back to email validation
                 match validate_identifier(text) {
                     Ok(identifier) => {
                         let exists = accounts.iter().any(|(_, a)| a.identifier == identifier);
@@ -110,6 +137,7 @@ pub fn handle_client_input(
                             client.state = ClientState::PasswordPrompt {
                                 identifier,
                                 is_new: false,
+                                character: None,
                             };
                             outputs.write(ClientOutput {
                                 connection: conn,
@@ -129,7 +157,7 @@ pub fn handle_client_input(
                         outputs.write(ClientOutput {
                             connection: conn,
                             text: format!(
-                                "Invalid identifier: {}\r\nEnter your email address: ",
+                                "Invalid identifier: {}\r\nEnter your email address or character name: ",
                                 e
                             ),
                             echo: None,
@@ -146,6 +174,7 @@ pub fn handle_client_input(
                     client.state = ClientState::PasswordPrompt {
                         identifier: id,
                         is_new: true,
+                        character: None,
                     };
                     outputs.write(ClientOutput {
                         connection: conn,
@@ -161,11 +190,13 @@ pub fn handle_client_input(
                     });
                 }
             }
-
             ClientState::PasswordPrompt {
                 identifier,
                 is_new,
+                character,
             } => {
+                // Copy before mutating client to avoid borrow conflict
+                let auto_select = *character;
                 if text.trim().is_empty() {
                     client.state = ClientState::LoginPrompt;
                     outputs.write(ClientOutput {
@@ -178,17 +209,27 @@ pub fn handle_client_input(
                 if *is_new {
                     match validate_password(text.trim()) {
                         Ok(()) => {
-                            let account_entity = commands
-                                .spawn(Account {
-                                    id: Uuid::new_v4(),
-                                    identifier: identifier.clone(),
-                                    password_hash: hash_password(text.trim()),
-                                    characters: vec![],
-                                    created_at: Utc::now(),
-                                })
-                                .id();
+                            let account = Account {
+                                id: Uuid::new_v4(),
+                                identifier: identifier.clone(),
+                                password_hash: hash_password(text.trim()),
+                                characters: vec![],
+                                created_at: Utc::now(),
+                            };
+                            // Save to disk immediately
+                            let path = format!("data/accounts/{}.json", account.id);
+                            if let Ok(json) = serde_json::to_string_pretty(&account) {
+                                let _ = std::fs::write(path, json);
+                            }
+                            let account_entity = commands.spawn(account).id();
                             client.account = Some(account_entity);
                             client.state = ClientState::CharacterSelect;
+                            // Restore echo before showing menu
+                            outputs.write(ClientOutput {
+                                connection: conn,
+                                text: "".into(),
+                                echo: Some(true),
+                            });
                             show_character_menu(
                                 client_entity,
                                 &client,
@@ -196,7 +237,7 @@ pub fn handle_client_input(
                                 &accounts,
                                 &mut outputs,
                                 &linkdead,
-                                Some(true),
+                                None,
                             );
                         }
                         Err(e) => {
@@ -214,22 +255,63 @@ pub fn handle_client_input(
                         Some((account_entity, account)) => {
                             if verify_password(text.trim(), &account.password_hash) {
                                 client.account = Some(account_entity);
-                                client.state = ClientState::CharacterSelect;
-                                show_character_menu(
-                                    client_entity,
-                                    &client,
-                                    &characters,
-                                    &accounts,
-                                    &mut outputs,
-                                    &linkdead,
-                                    Some(true),
-                                );
+                                if let Some(char_entity) = auto_select {
+                                    // Auto-select character: skip character select
+                                    if linkdead.get(char_entity).is_ok() {
+                                        // Linkdead reconnect
+                                        commands.entity(char_entity).remove::<Linkdead>();
+                                        commands.entity(char_entity).insert(Player {
+                                            connection: conn,
+                                        });
+                                        client.character = Some(char_entity);
+                                        client.state = ClientState::InGame;
+                                        client.input_queue = VecDeque::new();
+                                        client.command_cooldown =
+                                            Timer::new(Duration::from_millis(100), TimerMode::Repeating);
+                                        if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
+                                            look_room.write(LookRoom {
+                                                target: char_entity,
+                                                room: ir.room,
+                                            });
+                                        }
+                                        announce_linkdead.write(LinkdeadAnnounce {
+                                            name: characters.get(char_entity)
+                                                .map(|(_, _, n)| n.0.clone())
+                                                .unwrap_or_default(),
+                                            reconnecting: true,
+                                        });
+                                        info!("Character reconnected via name login");
+                                    } else {
+                                        commands.entity(char_entity).insert((
+                                            Player { connection: conn },
+                                            InRoom { room: starting.0 },
+                                        ));
+                                        client.character = Some(char_entity);
+                                        client.state = ClientState::MotdPrompt;
+                                        outputs.write(ClientOutput {
+                                            connection: conn,
+                                            text: formatter::format_motd(),
+                                            echo: Some(true),
+                                        });
+                                    }
+                                } else {
+                                    client.state = ClientState::CharacterSelect;
+                                    show_character_menu(
+                                        client_entity,
+                                        &client,
+                                        &characters,
+                                        &accounts,
+                                        &mut outputs,
+                                        &linkdead,
+                                        Some(true),
+                                    );
+                                }
                             } else {
-                            outputs.write(ClientOutput {
-                                connection: conn,
-                                text: "Invalid password.\r\nPassword: ".into(),
-                                echo: None,
-                            });
+                                outputs.write(ClientOutput {
+                                    connection: conn,
+                                    text: "Invalid password.\r\nPassword: ".into(),
+                                    echo: None,
+                                });
                             }
                         }
                         None => {
@@ -244,7 +326,6 @@ pub fn handle_client_input(
                     }
                 }
             }
-
             ClientState::CharacterSelect => {
                 let text = text.trim();
                 let lower = text.to_lowercase();
@@ -351,15 +432,22 @@ pub fn handle_client_input(
                         else {
                             continue;
                         };
+                        let char_id = Uuid::new_v4();
+                        let character = Character {
+                            id: char_id,
+                            name: name.clone(),
+                            account_id: account.id,
+                            created_at: Utc::now(),
+                            last_room: None,
+                        };
+                        // Save character to disk immediately
+                        let path = format!("data/characters/{}.json", char_id);
+                        if let Ok(json) = serde_json::to_string_pretty(&character) {
+                            let _ = std::fs::write(path, json);
+                        }
                         let char_entity = commands
                             .spawn((
-                                Character {
-                                    id: Uuid::new_v4(),
-                                    name: name.clone(),
-                                    account_id: account.id,
-                                    created_at: Utc::now(),
-                                    last_room: None,
-                                },
+                                character,
                                 GrimName(name.clone()),
                                 Description("A new adventurer.".into()),
                                 Player {
@@ -370,12 +458,12 @@ pub fn handle_client_input(
                                 },
                             ))
                             .id();
-                        account.characters.push(
-                            characters
-                                .get(char_entity)
-                                .map(|c| c.1.id)
-                                .unwrap_or(Uuid::new_v4()),
-                        );
+                        account.characters.push(char_id);
+                        // Update account JSON with new character reference
+                        let acct_path = format!("data/accounts/{}.json", account.id);
+                        if let Ok(json) = serde_json::to_string_pretty(&*account) {
+                            let _ = std::fs::write(acct_path, json);
+                        }
                         client.character = Some(char_entity);
                         client.state = ClientState::MotdPrompt;
                         outputs.write(ClientOutput {
@@ -383,7 +471,6 @@ pub fn handle_client_input(
                             text: formatter::format_motd(),
                             echo: None,
                         });
-                        info!("Character '{}' created", name);
                     }
                     Err(e) => {
                         outputs.write(ClientOutput {
@@ -435,7 +522,7 @@ pub fn handle_client_input(
                         Command::Who => {
                             let mut names: Vec<String> = player_chars
                                 .iter()
-                                .filter(|(e, _, _, _)| *e != char_entity)
+                                .filter(|(_, _, _, c)| c.is_some())
                                 .map(|(_, n, _, _)| n.0.clone())
                                 .collect();
                             names.sort();
@@ -511,23 +598,27 @@ fn show_character_menu(
     else {
         return;
     };
-    let Ok((_, account)) = accounts.get(account_entity)
-    else {
-        return;
+    // Account entity may not exist yet if just created via commands.spawn
+    // (deferred execution). Handle gracefully by showing empty menu.
+    let welcome = match accounts.get(account_entity) {
+        Ok((_, account)) => format!("Welcome back, {}!\r\n", account.identifier),
+        Err(_) => "Welcome!\r\n".into(),
     };
-
-    let mut menu = format!("Welcome back, {}!\r\n\r\n[ Characters ]\r\n", account.identifier);
+    let mut menu = format!("{}\r\n[ Characters ]\r\n", welcome);
     let mut idx = 1;
     for (char_entity, ch, name) in characters.iter() {
-        if account.characters.contains(&ch.id) {
-            let ld_suffix = if linkdead.get(char_entity).is_ok() {
-                " (linkdead)"
-            } else {
-                ""
-            };
-            menu.push_str(&format!("{}. {} - 1 Human Adventurer{}\r\n", idx, name.0, ld_suffix));
-            idx += 1;
+        if let Ok((_, account)) = accounts.get(account_entity) {
+            if !account.characters.contains(&ch.id) {
+                continue;
+            }
         }
+        let ld_suffix = if linkdead.get(char_entity).is_ok() {
+            " (linkdead)"
+        } else {
+            ""
+        };
+        menu.push_str(&format!("{}. {} - 1 Human Adventurer{}\r\n", idx, name.0, ld_suffix));
+        idx += 1;
     }
     if idx == 1 {
         menu.push_str("You have no characters created yet.\r\n");
@@ -542,7 +633,7 @@ fn show_character_menu(
 
 // ─── Command queue dispatch ─────────────────────────────────────────
 
-pub fn process_command_queue(
+fn process_command_queue(
     time: Res<Time>,
     mut clients: Query<(Entity, &mut Client)>,
     mut engine_commands: MessageWriter<EngineCommand>,
@@ -586,7 +677,7 @@ pub fn process_command_queue(
                 continue;
             }
             engine_commands.write(EngineCommand {
-                client: entity,
+                client: client.character.unwrap_or(entity),
                 command: cmd,
             });
         }
@@ -596,7 +687,7 @@ pub fn process_command_queue(
 // ─── Engine → client output formatting ──────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
-pub fn format_output(
+fn format_output(
     mut look_room_events: MessageReader<LookRoom>,
     mut look_entity_events: MessageReader<LookEntity>,
     mut say_events: MessageReader<SayEvent>,
@@ -741,7 +832,18 @@ pub fn format_output(
             continue;
         };
         let formatted = formatter::format_ooc(&actor_name.0, &ev.text);
-        broadcast_global(&formatted, &room_occupants, &mut outputs);
+        for (entity, _, player, _) in room_occupants.iter() {
+            if entity == ev.actor {
+                continue;
+            }
+            if let Some(p) = player {
+                outputs.write(ClientOutput {
+                    connection: p.connection,
+                    text: formatted.clone(),
+                    echo: None,
+                });
+            }
+        }
     }
 
     // ── Move ──

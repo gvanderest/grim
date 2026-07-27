@@ -32,10 +32,10 @@ pub fn seed_world(mut commands: Commands) {
                     .to_string(),
                 area: haven,
             },
+            GrimName("The Rusted Anvil".to_string()),
             Exits::default(),
         ))
         .id();
-
     let square = commands
         .spawn((
             Room {
@@ -48,10 +48,10 @@ pub fn seed_world(mut commands: Commands) {
                     .to_string(),
                 area: haven,
             },
+            GrimName("Town Square".to_string()),
             Exits::default(),
         ))
         .id();
-
     let forge = commands
         .spawn((
             Room {
@@ -63,6 +63,7 @@ pub fn seed_world(mut commands: Commands) {
                     .to_string(),
                 area: haven,
             },
+            GrimName("Grimmok's Forge".to_string()),
             Exits::default(),
         ))
         .id();

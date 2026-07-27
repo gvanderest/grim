@@ -52,9 +52,11 @@ pub enum ClientState {
     /// Waiting for the user to type a username or email.
     LoginPrompt,
     /// Waiting for a password. `is_new` distinguishes "create new" vs "login existing".
+    /// `character` is set when the user logged in by character name — auto-select after auth.
     PasswordPrompt {
         identifier: String,
         is_new: bool,
+        character: Option<Entity>,
     },
     /// "No account found. Create one? (y/n)"
     ConfirmCreate {
