@@ -198,7 +198,11 @@ fn drain_network_events(
             NetworkEvent::Connected { conn_id, addr } => {
                 info!("Connection from {} (id={})", addr, conn_id);
                 let entity = commands
-                    .spawn(Connection { id: conn_id, addr, echo_hidden: false })
+                    .spawn(Connection {
+                        id: conn_id,
+                        addr,
+                        echo_hidden: false,
+                    })
                     .id();
                 established.write(ConnectionEstablished {
                     connection: entity,
@@ -268,14 +272,9 @@ fn send_network_commands(
                     });
                 }
             }
-            let text = if ev.text.is_empty() {
-                ev.text.clone()
-            } else {
-                format!("{}\r\n> ", ev.text)
-            };
             let _ = bridge.to_network.try_send(NetworkCommand::Send {
                 conn_id: conn.id,
-                text,
+                text: ev.text.clone(),
             });
         }
     }

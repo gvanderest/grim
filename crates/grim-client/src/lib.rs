@@ -41,7 +41,8 @@ impl Plugin for ClientPlugin {
             .add_systems(Update, handle_client_input)
             .add_systems(Update, process_command_queue)
             .add_systems(Update, format_output)
-            .add_systems(Update, capture_output);
+            .add_systems(Update, capture_output)
+            .add_systems(Update, send_prompt);
     }
 }
 
@@ -414,10 +415,7 @@ fn handle_client_input(
                     client.state = ClientState::InGame;
                     client.input_queue = VecDeque::new();
                     client.command_cooldown = {
-                        let mut t = Timer::new(
-                            Duration::from_millis(10),
-                            TimerMode::Repeating,
-                        );
+                        let mut t = Timer::new(Duration::from_millis(10), TimerMode::Repeating);
                         t.set_elapsed(Duration::from_millis(10));
                         t
                     };
@@ -523,12 +521,11 @@ fn handle_client_input(
                 info!("Character '{}' entered the world", char_name);
                 client.state = ClientState::InGame;
                 client.input_queue = VecDeque::new();
-                client.command_cooldown =
-                    {
-        let mut t = Timer::new(Duration::from_millis(10), TimerMode::Repeating);
-        t.set_elapsed(Duration::from_millis(10));
-        t
-    };
+                client.command_cooldown = {
+                    let mut t = Timer::new(Duration::from_millis(10), TimerMode::Repeating);
+                    t.set_elapsed(Duration::from_millis(10));
+                    t
+                };
                 announce_login.write(LoginAnnounce { name: char_name });
                 let Some(char_entity) = client.character else {
                     continue;
@@ -918,6 +915,20 @@ fn capture_output(
         if let Ok(mut history) = histories.get_mut(ev.connection) {
             history.push(&ev.text);
         }
+    }
+}
+
+/// Send the `> ` prompt to every in-game client after all output is processed.
+fn send_prompt(clients: Query<&Client>, mut outputs: MessageWriter<ClientOutput>) {
+    for client in clients.iter() {
+        if client.state != ClientState::InGame {
+            continue;
+        }
+        outputs.write(ClientOutput {
+            connection: client.connection,
+            text: "> ".into(),
+            echo: None,
+        });
     }
 }
 
