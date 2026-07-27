@@ -6,11 +6,7 @@ mod seed;
 fn main() {
     let mut app = App::new();
 
-    app.add_plugins(TaskPoolPlugin::default());
-    app.add_plugins(TypeRegistrationPlugin::default());
-    app.add_plugins(FrameCountPlugin::default());
-    app.add_plugins(TimePlugin::default());
-    app.add_plugins(ScheduleRunnerPlugin::run_loop(RunMode::Loop { wait: None }));
+    app.add_plugins(MinimalPlugins);
     app.add_plugins(LogPlugin {
         filter: "info".into(),
         ..Default::default()

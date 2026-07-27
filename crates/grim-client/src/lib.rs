@@ -276,10 +276,19 @@ fn handle_client_input(
                                         client.character = Some(char_entity);
                                         client.state = ClientState::InGame;
                                         client.input_queue = VecDeque::new();
-                                        client.command_cooldown = Timer::new(
-                                            Duration::from_millis(10),
-                                            TimerMode::Repeating,
-                                        );
+                                        client.command_cooldown = {
+                                            let mut t = Timer::new(
+                                                Duration::from_millis(10),
+                                                TimerMode::Repeating,
+                                            );
+                                            t.set_elapsed(Duration::from_millis(10));
+                                            t
+                                        };
+                                        outputs.write(ClientOutput {
+                                            connection: conn,
+                                            text: "Reconnecting...\r\n".into(),
+                                            echo: None,
+                                        });
                                         if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
                                             look_room.write(LookRoom {
                                                 target: char_entity,
@@ -404,8 +413,19 @@ fn handle_client_input(
                     client.character = Some(char_entity);
                     client.state = ClientState::InGame;
                     client.input_queue = VecDeque::new();
-                    client.command_cooldown =
-                        Timer::new(Duration::from_millis(10), TimerMode::Repeating);
+                    client.command_cooldown = {
+                        let mut t = Timer::new(
+                            Duration::from_millis(10),
+                            TimerMode::Repeating,
+                        );
+                        t.set_elapsed(Duration::from_millis(10));
+                        t
+                    };
+                    outputs.write(ClientOutput {
+                        connection: conn,
+                        text: "Reconnecting...\r\n".into(),
+                        echo: None,
+                    });
                     if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
                         look_room.write(LookRoom {
                             target: char_entity,
@@ -504,7 +524,11 @@ fn handle_client_input(
                 client.state = ClientState::InGame;
                 client.input_queue = VecDeque::new();
                 client.command_cooldown =
-                    Timer::new(Duration::from_millis(10), TimerMode::Repeating);
+                    {
+        let mut t = Timer::new(Duration::from_millis(10), TimerMode::Repeating);
+        t.set_elapsed(Duration::from_millis(10));
+        t
+    };
                 announce_login.write(LoginAnnounce { name: char_name });
                 let Some(char_entity) = client.character else {
                     continue;
