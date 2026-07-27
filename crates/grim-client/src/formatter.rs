@@ -7,62 +7,62 @@ pub fn format_room(name: &str, desc: &str, exits: &[String], occupants: &[String
     if !occupants.is_empty() {
         out.push_str(&format!("\r\nAlso here: {}", occupants.join(", ")));
     }
-    out.push_str("\r\n> ");
+    out.push_str("\r\n");
     out
 }
 
 /// Format a look at a specific entity.
 pub fn format_entity(name: &str, desc: &str) -> String {
-    format!("{}\r\n{}\r\n> ", name, desc)
+    format!("{}\r\n{}\r\n", name, desc)
 }
 
 /// Format a say message broadcast to a room.
 pub fn format_say(speaker: &str, text: &str) -> String {
-    format!("{} says, '{}'\r\n> ", speaker, text)
+    format!("{} says, '{}'\r\n", speaker, text)
 }
 
 /// Format a yell message broadcast to an area.
 pub fn format_yell(speaker: &str, text: &str) -> String {
-    format!("{} yells, '{}'\r\n> ", speaker, text)
+    format!("{} yells, '{}'\r\n", speaker, text)
 }
 
 /// Format an OOC message broadcast globally.
 pub fn format_ooc(speaker: &str, text: &str) -> String {
-    format!("[OOC] {}: {}\r\n> ", speaker, text)
+    format!("[OOC] {}: {}\r\n", speaker, text)
 }
 
 /// Format a movement broadcast.
 pub fn format_move(actor: &str, direction: &str, leaving: bool) -> String {
     if leaving {
-        format!("{} leaves {}.\r\n> ", actor, direction)
+        format!("{} leaves {}.\r\n", actor, direction)
     } else {
-        format!("{} arrives.\r\n> ", actor)
+        format!("{} arrives.\r\n", actor)
     }
 }
 
 /// Format the who list.
 pub fn format_who_list(players: &[String]) -> String {
     if players.is_empty() {
-        "No other players online.\r\n> ".into()
+        "No other players online.\r\n".into()
     } else {
         let mut out = format!("Players online ({}):\r\n", players.len());
         for name in players {
             out.push_str(&format!("  {}\r\n", name));
         }
-        out + "\r\n> "
+        out
     }
 }
 
 /// Format the where list (same-area players with room names).
 pub fn format_where_list(entries: &[(String, String)]) -> String {
     if entries.is_empty() {
-        "No other players in this area.\r\n> ".into()
+        "No other players in this area.\r\n".into()
     } else {
         let mut out = "Players in your area:\r\n".to_string();
         for (name, room) in entries {
             out.push_str(&format!("  {} in [{}]\r\n", name, room));
         }
-        out + "\r\n> "
+        out
     }
 }
 
@@ -90,7 +90,7 @@ pub fn format_commands() -> String {
     for cmd in &cmds {
         out.push_str(&format!("  {}\r\n", cmd));
     }
-    out + "\r\n> "
+    out
 }
 
 /// Format the MOTD.
@@ -106,4 +106,3 @@ pub fn format_linkdead(name: &str, reconnecting: bool) -> String {
         format!("{} has gone linkdead.\r\n", name)
     }
 }
-

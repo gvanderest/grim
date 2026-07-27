@@ -249,6 +249,7 @@ fn send_network_commands(
     mut output: MessageReader<ClientOutput>,
     mut disconnect: MessageReader<DisconnectRequest>,
     mut connections: Query<&mut Connection>,
+    clients: Query<&Client>,
 ) {
     for ev in output.read() {
         if let Ok(mut conn) = connections.get_mut(ev.connection) {
@@ -262,9 +263,7 @@ fn send_network_commands(
                     conn_id: conn.id,
                     data,
                 });
-                // Track echo state — hidden input only lasts for user's next line.
                 conn.echo_hidden = !echo_state;
-                // When restoring echo, send a newline so output starts on a fresh line.
                 if echo_state {
                     let _ = bridge.to_network.try_send(NetworkCommand::Send {
                         conn_id: conn.id,
@@ -272,9 +271,18 @@ fn send_network_commands(
                     });
                 }
             }
+            // Only append the prompt for in-game clients (post-MOTD).
+            let is_ingame = clients
+                .iter()
+                .any(|c| c.state == ClientState::InGame && c.connection == ev.connection);
+            let send_text = if is_ingame && !ev.text.is_empty() {
+                format!("{}\r\n> ", ev.text)
+            } else {
+                ev.text.clone()
+            };
             let _ = bridge.to_network.try_send(NetworkCommand::Send {
                 conn_id: conn.id,
-                text: ev.text.clone(),
+                text: send_text,
             });
         }
     }

@@ -595,6 +595,13 @@ fn handle_client_input(
                             client.input_queue.push_back(cmd);
                         }
                     }
+                } else if text.trim().is_empty() {
+                    // Blank line — just force a prompt on next flush
+                    outputs.write(ClientOutput {
+                        connection: conn,
+                        text: "".into(),
+                        echo: None,
+                    });
                 } else {
                     outputs.write(ClientOutput {
                         connection: conn,
