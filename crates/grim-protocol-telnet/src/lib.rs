@@ -268,9 +268,14 @@ fn send_network_commands(
                     });
                 }
             }
+            let text = if ev.text.is_empty() {
+                ev.text.clone()
+            } else {
+                format!("{}\r\n> ", ev.text)
+            };
             let _ = bridge.to_network.try_send(NetworkCommand::Send {
                 conn_id: conn.id,
-                text: ev.text.clone(),
+                text,
             });
         }
     }

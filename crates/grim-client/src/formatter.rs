@@ -7,7 +7,7 @@ pub fn format_room(name: &str, desc: &str, exits: &[String], occupants: &[String
     if !occupants.is_empty() {
         out.push_str(&format!("\r\nAlso here: {}", occupants.join(", ")));
     }
-    out.push_str("\r\n> ");
+    out.push_str("\r\n");
     out
 }
 
