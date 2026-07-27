@@ -18,6 +18,9 @@ use crate::events::Command;
 pub struct Connection {
     pub id: usize,
     pub addr: SocketAddr,
+    /// Whether the server has sent IAC WILL ECHO (hidden input) for this connection.
+    /// Reset to false when the user sends their next input.
+    pub echo_hidden: bool,
 }
 
 /// The client session state machine — one per connection, on a separate

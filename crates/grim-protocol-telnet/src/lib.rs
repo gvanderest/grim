@@ -190,21 +190,37 @@ fn drain_network_events(
     mut established: MessageWriter<ConnectionEstablished>,
     mut input: MessageWriter<ClientInput>,
     mut closed: MessageWriter<ConnectionClosed>,
-    connections: Query<(Entity, &Connection)>,
+    mut connections: Query<(Entity, &mut Connection)>,
 ) {
     let rx = bridge.from_network.lock().unwrap();
     while let Ok(ev) = rx.try_recv() {
         match ev {
             NetworkEvent::Connected { conn_id, addr } => {
                 info!("Connection from {} (id={})", addr, conn_id);
-                let entity = commands.spawn(Connection { id: conn_id, addr }).id();
+                let entity = commands
+                    .spawn(Connection { id: conn_id, addr, echo_hidden: false })
+                    .id();
                 established.write(ConnectionEstablished {
                     connection: entity,
                     addr,
                 });
             }
             NetworkEvent::Input { conn_id, text } => {
-                if let Some((entity, _)) = connections.iter().find(|(_, c)| c.id == conn_id) {
+                if let Some((entity, mut conn)) =
+                    connections.iter_mut().find(|(_, c)| c.id == conn_id)
+                {
+                    // If echo was hidden (password mode), auto-restore on user input.
+                    if conn.echo_hidden {
+                        let _ = bridge.to_network.try_send(NetworkCommand::SendRaw {
+                            conn_id,
+                            data: vec![255, 252, 1], // IAC WONT ECHO → visible
+                        });
+                        let _ = bridge.to_network.try_send(NetworkCommand::Send {
+                            conn_id,
+                            text: "\r\n".into(),
+                        });
+                        conn.echo_hidden = false;
+                    }
                     input.write(ClientInput {
                         connection: entity,
                         text,
@@ -228,10 +244,10 @@ fn send_network_commands(
     bridge: Res<NetworkBridge>,
     mut output: MessageReader<ClientOutput>,
     mut disconnect: MessageReader<DisconnectRequest>,
-    connections: Query<&Connection>,
+    mut connections: Query<&mut Connection>,
 ) {
     for ev in output.read() {
-        if let Ok(conn) = connections.get(ev.connection) {
+        if let Ok(mut conn) = connections.get_mut(ev.connection) {
             if let Some(echo_state) = ev.echo {
                 let data = if echo_state {
                     vec![255, 252, 1] // IAC WONT ECHO → visible input (normal)
@@ -242,8 +258,9 @@ fn send_network_commands(
                     conn_id: conn.id,
                     data,
                 });
-                // When restoring echo after a hidden-input prompt, send a
-                // newline so subsequent output starts on a fresh line.
+                // Track echo state — hidden input only lasts for user's next line.
+                conn.echo_hidden = !echo_state;
+                // When restoring echo, send a newline so output starts on a fresh line.
                 if echo_state {
                     let _ = bridge.to_network.try_send(NetworkCommand::Send {
                         conn_id: conn.id,
