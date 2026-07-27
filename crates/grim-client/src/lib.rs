@@ -3,21 +3,19 @@ use std::time::Duration;
 
 use bevy::log::info;
 use bevy::prelude::{
-    App, Commands, Entity, MessageReader, MessageWriter, Plugin, Query, Res, Time, Timer, TimerMode,
-    Update,
+    App, Commands, Entity, MessageReader, MessageWriter, Plugin, Query, Res, Time, Timer,
+    TimerMode, Update,
 };
 use chrono::Utc;
 use uuid::Uuid;
 
-
 use grim::components::{
     Account, Area, Character, Client, ClientState, Description, Exits, InRoom, Linkdead,
-    Name as GrimName, Player, Room, StartingRoom,
+    Name as GrimName, OutputHistory, Player, Room, StartingRoom,
 };
 use grim::events::*;
 use grim::validation::{
-    hash_password, validate_character_name, validate_identifier, validate_password,
-    verify_password,
+    hash_password, validate_character_name, validate_identifier, validate_password, verify_password,
 };
 
 mod formatter;
@@ -42,7 +40,8 @@ impl Plugin for ClientPlugin {
             .add_systems(Update, handle_connection_established)
             .add_systems(Update, handle_client_input)
             .add_systems(Update, process_command_queue)
-            .add_systems(Update, format_output);
+            .add_systems(Update, format_output)
+            .add_systems(Update, capture_output);
     }
 }
 
@@ -55,15 +54,17 @@ fn handle_connection_established(
 ) {
     for ev in established.read() {
         commands.spawn(Client::new(ev.connection));
+        commands.entity(ev.connection).insert(OutputHistory::with_max(100));
         outputs.write(ClientOutput {
             connection: ev.connection,
-            text: "GRIMTIDE\r\n\r\nEnter your email address: ".into(),
+            text: format!("{}\r\n\r\nEnter your email address: ", include_str!("../../../assets/login-banner.txt")),
             echo: None,
         });
     }
 }
 
 // ─── Client input dispatch ───────────────────────────────────────────
+#[allow(clippy::too_many_arguments)]
 fn handle_client_input(
     mut inputs: MessageReader<ClientInput>,
     mut clients: Query<(Entity, &mut Client)>,
@@ -80,6 +81,7 @@ fn handle_client_input(
     mut announce_login: MessageWriter<LoginAnnounce>,
     mut announce_linkdead: MessageWriter<LinkdeadAnnounce>,
     linkdead: Query<&Linkdead>,
+    _histories: Query<&mut OutputHistory>,
 ) {
     for ev in inputs.read() {
         let Some((client_entity, mut client)) = clients
@@ -107,16 +109,18 @@ fn handle_client_input(
                     .iter()
                     .find(|(_, _, n)| n.0.eq_ignore_ascii_case(trimmed));
                 if let Some((char_entity, character, _)) = char_match {
-                    let account_found = accounts
-                        .iter()
-                        .find(|(_, a)| a.id == character.account_id);
+                    let account_found = accounts.iter().find(|(_, a)| a.id == character.account_id);
                     if let Some((_account_entity, _)) = account_found {
                         client.state = ClientState::PasswordPrompt {
-                            identifier: characters.get(char_entity)
-                                .map(|(_, c, _)| accounts.iter()
-                                    .find(|(_, a)| a.id == c.account_id)
-                                    .map(|(_, a)| a.identifier.clone())
-                                    .unwrap_or_default())
+                            identifier: characters
+                                .get(char_entity)
+                                .map(|(_, c, _)| {
+                                    accounts
+                                        .iter()
+                                        .find(|(_, a)| a.id == c.account_id)
+                                        .map(|(_, a)| a.identifier.clone())
+                                        .unwrap_or_default()
+                                })
                                 .unwrap_or_default(),
                             is_new: false,
                             character: Some(char_entity),
@@ -145,7 +149,9 @@ fn handle_client_input(
                                 echo: Some(false),
                             });
                         } else {
-                            client.state = ClientState::ConfirmCreate { identifier: identifier.clone() };
+                            client.state = ClientState::ConfirmCreate {
+                                identifier: identifier.clone(),
+                            };
                             outputs.write(ClientOutput {
                                 connection: conn,
                                 text: "Did not find that email address, do you want to create an account? [Y/n] ".into(),
@@ -249,8 +255,7 @@ fn handle_client_input(
                         }
                     }
                 } else {
-                    let account_found =
-                        accounts.iter().find(|(_, a)| a.identifier == *identifier);
+                    let account_found = accounts.iter().find(|(_, a)| a.identifier == *identifier);
                     match account_found {
                         Some((account_entity, account)) => {
                             if verify_password(text.trim(), &account.password_hash) {
@@ -260,14 +265,16 @@ fn handle_client_input(
                                     if linkdead.get(char_entity).is_ok() {
                                         // Linkdead reconnect
                                         commands.entity(char_entity).remove::<Linkdead>();
-                                        commands.entity(char_entity).insert(Player {
-                                            connection: conn,
-                                        });
+                                        commands
+                                            .entity(char_entity)
+                                            .insert(Player { connection: conn });
                                         client.character = Some(char_entity);
                                         client.state = ClientState::InGame;
                                         client.input_queue = VecDeque::new();
-                                        client.command_cooldown =
-                                            Timer::new(Duration::from_millis(100), TimerMode::Repeating);
+                                        client.command_cooldown = Timer::new(
+                                            Duration::from_millis(100),
+                                            TimerMode::Repeating,
+                                        );
                                         if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
                                             look_room.write(LookRoom {
                                                 target: char_entity,
@@ -275,7 +282,8 @@ fn handle_client_input(
                                             });
                                         }
                                         announce_linkdead.write(LinkdeadAnnounce {
-                                            name: characters.get(char_entity)
+                                            name: characters
+                                                .get(char_entity)
                                                 .map(|(_, _, n)| n.0.clone())
                                                 .unwrap_or_default(),
                                             reconnecting: true,
@@ -318,8 +326,7 @@ fn handle_client_input(
                             client.state = ClientState::LoginPrompt;
                             outputs.write(ClientOutput {
                                 connection: conn,
-                                text: "Account not found.\r\nEnter your email address: "
-                                    .into(),
+                                text: "Account not found.\r\nEnter your email address: ".into(),
                                 echo: Some(true),
                             });
                         }
@@ -339,12 +346,10 @@ fn handle_client_input(
                     continue;
                 }
 
-                let Some(account_entity) = client.account
-                else {
+                let Some(account_entity) = client.account else {
                     continue;
                 };
-                let Ok((_, account)) = accounts.get(account_entity)
-                else {
+                let Ok((_, account)) = accounts.get(account_entity) else {
                     continue;
                 };
                 let char_list: Vec<(Entity, Uuid, String)> = characters
@@ -362,11 +367,13 @@ fn handle_client_input(
                     }
                 // Try name selection (case-insensitive)
                 } else {
-                    char_list.iter().find(|(_, _, n)| n.to_lowercase() == lower).map(|&(e, _, _)| e)
+                    char_list
+                        .iter()
+                        .find(|(_, _, n)| n.to_lowercase() == lower)
+                        .map(|&(e, _, _)| e)
                 };
 
-                let Some(char_entity) = selected
-                else {
+                let Some(char_entity) = selected else {
                     show_character_menu(
                         client_entity,
                         &client,
@@ -379,13 +386,16 @@ fn handle_client_input(
                     continue;
                 };
 
-                let char_name = characters.get(char_entity).map(|(_, _, n)| n.0.clone()).ok();
+                let char_name = characters
+                    .get(char_entity)
+                    .map(|(_, _, n)| n.0.clone())
+                    .ok();
                 if linkdead.get(char_entity).is_ok() {
                     // Reconnecting linkdead
                     commands.entity(char_entity).remove::<Linkdead>();
-                    commands.entity(char_entity).insert(Player {
-                        connection: conn,
-                    });
+                    commands
+                        .entity(char_entity)
+                        .insert(Player { connection: conn });
                     client.character = Some(char_entity);
                     client.state = ClientState::InGame;
                     client.input_queue = VecDeque::new();
@@ -401,16 +411,14 @@ fn handle_client_input(
                         name: char_name.clone().unwrap_or_default(),
                         reconnecting: true,
                     });
-                    info!("Character '{}' reconnected", char_name.as_deref().unwrap_or("?"));
+                    info!(
+                        "Character '{}' reconnected",
+                        char_name.as_deref().unwrap_or("?")
+                    );
                 } else {
-                    commands.entity(char_entity).insert((
-                        Player {
-                            connection: conn,
-                        },
-                        InRoom {
-                            room: starting.0,
-                        },
-                    ));
+                    commands
+                        .entity(char_entity)
+                        .insert((Player { connection: conn }, InRoom { room: starting.0 }));
                     client.character = Some(char_entity);
                     client.state = ClientState::MotdPrompt;
                     outputs.write(ClientOutput {
@@ -424,12 +432,10 @@ fn handle_client_input(
             ClientState::CreateCharacter => {
                 match validate_character_name(text.trim()) {
                     Ok(name) => {
-                        let Some(account_entity) = client.account
-                        else {
+                        let Some(account_entity) = client.account else {
                             continue;
                         };
-                        let Ok((_, mut account)) = accounts.get_mut(account_entity)
-                        else {
+                        let Ok((_, mut account)) = accounts.get_mut(account_entity) else {
                             continue;
                         };
                         let char_id = Uuid::new_v4();
@@ -450,12 +456,8 @@ fn handle_client_input(
                                 character,
                                 GrimName(name.clone()),
                                 Description("A new adventurer.".into()),
-                                Player {
-                                    connection: conn,
-                                },
-                                InRoom {
-                                    room: starting.0,
-                                },
+                                Player { connection: conn },
+                                InRoom { room: starting.0 },
                             ))
                             .id();
                         account.characters.push(char_id);
@@ -486,8 +488,7 @@ fn handle_client_input(
             }
 
             ClientState::MotdPrompt => {
-                let Some(char_entity) = client.character
-                else {
+                let Some(char_entity) = client.character else {
                     continue;
                 };
                 let char_name = characters
@@ -500,8 +501,7 @@ fn handle_client_input(
                 client.command_cooldown =
                     Timer::new(Duration::from_millis(100), TimerMode::Repeating);
                 announce_login.write(LoginAnnounce { name: char_name });
-                let Some(char_entity) = client.character
-                else {
+                let Some(char_entity) = client.character else {
                     continue;
                 };
                 if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
@@ -513,8 +513,7 @@ fn handle_client_input(
             }
 
             ClientState::InGame => {
-                let Some(char_entity) = client.character
-                else {
+                let Some(char_entity) = client.character else {
                     continue;
                 };
                 if let Some(cmd) = parser::parse_command(text) {
@@ -594,8 +593,7 @@ fn show_character_menu(
     echo: Option<bool>,
 ) {
     let conn = client.connection;
-    let Some(account_entity) = client.account
-    else {
+    let Some(account_entity) = client.account else {
         return;
     };
     // Account entity may not exist yet if just created via commands.spawn
@@ -617,7 +615,10 @@ fn show_character_menu(
         } else {
             ""
         };
-        menu.push_str(&format!("{}. {} - 1 Human Adventurer{}\r\n", idx, name.0, ld_suffix));
+        menu.push_str(&format!(
+            "{}. {} - 1 Human Adventurer{}\r\n",
+            idx, name.0, ld_suffix
+        ));
         idx += 1;
     }
     if idx == 1 {
@@ -632,6 +633,7 @@ fn show_character_menu(
 }
 
 // ─── Command queue dispatch ─────────────────────────────────────────
+#[allow(clippy::too_many_arguments)]
 
 fn process_command_queue(
     time: Res<Time>,
@@ -669,11 +671,11 @@ fn process_command_queue(
                     }
                     commands.entity(char_entity).despawn();
                 }
-                announce_logout.write(LogoutAnnounce { name: char_name.clone() });
-                info!("Character '{}' quit", char_name);
-                disconnect.write(DisconnectRequest {
-                    connection: conn,
+                announce_logout.write(LogoutAnnounce {
+                    name: char_name.clone(),
                 });
+                info!("Character '{}' quit", char_name);
+                disconnect.write(DisconnectRequest { connection: conn });
                 continue;
             }
             engine_commands.write(EngineCommand {
@@ -707,7 +709,9 @@ fn format_output(
 ) {
     // Helper to find connection from room_occupants
     let find_conn = |target: Entity| -> Entity {
-        room_occupants.get(target).ok()
+        room_occupants
+            .get(target)
+            .ok()
             .and_then(|(_, _, p, _)| p.as_ref().map(|p| p.connection))
             .unwrap_or(target)
     };
@@ -735,8 +739,7 @@ fn format_output(
 
     // ── Look room ──
     for ev in look_room_events.read() {
-        let Ok((_, room, name)) = rooms.get(ev.room)
-        else {
+        let Ok((_, room, name)) = rooms.get(ev.room) else {
             continue;
         };
         let exits = room_exits
@@ -764,8 +767,7 @@ fn format_output(
 
     // ── Look entity ──
     for ev in look_entity_events.read() {
-        let Ok(subj_name) = names.get(ev.subject)
-        else {
+        let Ok(subj_name) = names.get(ev.subject) else {
             continue;
         };
         let desc = descriptions
@@ -782,8 +784,7 @@ fn format_output(
 
     // ── Say ──
     for ev in say_events.read() {
-        let Ok(actor_name) = names.get(ev.actor)
-        else {
+        let Ok(actor_name) = names.get(ev.actor) else {
             continue;
         };
         let formatted = formatter::format_say(&actor_name.0, &ev.text);
@@ -798,8 +799,7 @@ fn format_output(
 
     // ── Yell ──
     for ev in yell_events.read() {
-        let Ok(actor_name) = names.get(ev.actor)
-        else {
+        let Ok(actor_name) = names.get(ev.actor) else {
             continue;
         };
         let formatted = formatter::format_yell(&actor_name.0, &ev.text);
@@ -827,8 +827,7 @@ fn format_output(
 
     // ── Ooc ──
     for ev in ooc_events.read() {
-        let Ok(actor_name) = names.get(ev.actor)
-        else {
+        let Ok(actor_name) = names.get(ev.actor) else {
             continue;
         };
         let formatted = formatter::format_ooc(&actor_name.0, &ev.text);
@@ -848,8 +847,7 @@ fn format_output(
 
     // ── Move ──
     for ev in move_events.read() {
-        let Ok(actor_name) = names.get(ev.actor)
-        else {
+        let Ok(actor_name) = names.get(ev.actor) else {
             continue;
         };
         let dir_str = ev.direction.to_string();
@@ -879,6 +877,19 @@ fn format_output(
             text: ev.text.clone(),
             echo: None,
         });
+    }
+}
+
+/// Capture every `ClientOutput` into the connection's `OutputHistory` for
+/// linkdead replay on reconnect.
+fn capture_output(
+    mut output: MessageReader<ClientOutput>,
+    mut histories: Query<&mut OutputHistory>,
+) {
+    for ev in output.read() {
+        if let Ok(mut history) = histories.get_mut(ev.connection) {
+            history.push(&ev.text);
+        }
     }
 }
 

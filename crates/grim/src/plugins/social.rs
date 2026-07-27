@@ -1,6 +1,6 @@
-use bevy::prelude::*;
 use crate::components::{InRoom, Name, Room};
 use crate::events::{Command, EngineCommand, InfoMessage, OocEvent, SayEvent, YellEvent};
+use bevy::prelude::*;
 
 /// Handles `say` commands, emitting a `SayEvent` for room broadcast and an
 /// `InfoMessage` echo back to the speaker.
@@ -52,12 +52,25 @@ fn handle_yell(
     mut info: MessageWriter<InfoMessage>,
 ) {
     for cmd in engine.read() {
-        let Command::Yell { text } = &cmd.command else { continue };
+        let Command::Yell { text } = &cmd.command else {
+            continue;
+        };
         let actor = cmd.client;
-        let Ok((ir, _name)) = inroom.get(actor) else { continue };
-        let Ok(room) = rooms.get(ir.room) else { continue };
-        yell.write(YellEvent { area: room.area, actor, text: text.clone() });
-        info.write(InfoMessage { target: actor, text: format!("You yell, '{}'\r\n", text) });
+        let Ok((ir, _name)) = inroom.get(actor) else {
+            continue;
+        };
+        let Ok(room) = rooms.get(ir.room) else {
+            continue;
+        };
+        yell.write(YellEvent {
+            area: room.area,
+            actor,
+            text: text.clone(),
+        });
+        info.write(InfoMessage {
+            target: actor,
+            text: format!("You yell, '{}'\r\n", text),
+        });
     }
 }
 
@@ -67,9 +80,17 @@ fn handle_ooc(
     mut info: MessageWriter<InfoMessage>,
 ) {
     for cmd in engine.read() {
-        let Command::Ooc { text } = &cmd.command else { continue };
-        ooc.write(OocEvent { actor: cmd.client, text: text.clone() });
-        info.write(InfoMessage { target: cmd.client, text: format!("[OOC] You: {}\r\n", text) });
+        let Command::Ooc { text } = &cmd.command else {
+            continue;
+        };
+        ooc.write(OocEvent {
+            actor: cmd.client,
+            text: text.clone(),
+        });
+        info.write(InfoMessage {
+            target: cmd.client,
+            text: format!("[OOC] You: {}\r\n", text),
+        });
     }
 }
 
@@ -95,9 +116,7 @@ mod tests {
             .id();
         app.world_mut().write_message(EngineCommand {
             client: actor,
-            command: Command::Say {
-                text: "hi".into(),
-            },
+            command: Command::Say { text: "hi".into() },
         });
         app.update();
         {

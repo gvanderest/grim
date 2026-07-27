@@ -1,3 +1,5 @@
 .planning/
 /target/
 /data/
+/coverage/
+bacon.toml

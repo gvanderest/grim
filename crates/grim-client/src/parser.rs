@@ -28,7 +28,9 @@ pub fn parse_command(input: &str) -> Option<Command> {
         "w" | "west" => Some(Command::Move {
             direction: Cardinal::West,
         }),
-        "u" | "up" => Some(Command::Move { direction: Cardinal::Up }),
+        "u" | "up" => Some(Command::Move {
+            direction: Cardinal::Up,
+        }),
         "d" | "down" => Some(Command::Move {
             direction: Cardinal::Down,
         }),

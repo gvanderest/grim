@@ -37,7 +37,6 @@ pub fn validate_identifier(input: &str) -> Result<String, ValidationError> {
     validate_email(&lower)
 }
 
-
 fn validate_email(s: &str) -> Result<String, ValidationError> {
     let parts: Vec<&str> = s.split('@').collect();
     if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {

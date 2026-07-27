@@ -1,8 +1,11 @@
-use std::fs;
-use bevy::prelude::*;
-use bevy::log::info;
-use crate::components::{Account, Area, Character, Client, Connection, Description, InRoom, Linkdead, Name, Room, RoomLocation};
+use crate::components::{
+    Account, Area, Character, Client, Connection, Description, InRoom, Linkdead, Name, Room,
+    RoomLocation,
+};
 use crate::events::ConnectionClosed;
+use bevy::log::info;
+use bevy::prelude::*;
+use std::fs;
 
 /// Loads accounts/characters on startup, saves on disconnect.
 pub struct PersistencePlugin;
@@ -46,7 +49,7 @@ fn load_persisted_data(mut commands: Commands) {
                     let name = character.name.clone();
                     commands.spawn((
                         character,
-                        Name(name.into()),
+                        Name(name),
                         Description("A new adventurer.".into()),
                     ));
                 }
@@ -58,6 +61,7 @@ fn load_persisted_data(mut commands: Commands) {
 /// On connection close: persist the bound account/character (refreshing the
 /// character's `last_room` from its current `InRoom`), then mark the character
 /// as Linkdead and despawn the client/connection entities.
+#[allow(clippy::too_many_arguments)]
 fn save_on_disconnect(
     mut commands: Commands,
     mut closed: MessageReader<ConnectionClosed>,

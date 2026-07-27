@@ -59,9 +59,7 @@ pub enum ClientState {
         character: Option<Entity>,
     },
     /// "No account found. Create one? (y/n)"
-    ConfirmCreate {
-        identifier: String,
-    },
+    ConfirmCreate { identifier: String },
     /// Showing the character selection menu.
     CharacterSelect,
     /// Waiting for the user to type a new character name.
@@ -154,6 +152,31 @@ pub struct Description(pub String);
 pub struct Player {
     /// The `Connection` entity to send output to.
     pub connection: Entity,
+}
+
+/// Buffer of recent output sent to a connection. Replayed on linkdead reconnect.
+#[derive(Component, Debug, Default)]
+pub struct OutputHistory {
+    pub lines: std::collections::VecDeque<String>,
+    pub max: usize,
+}
+
+impl OutputHistory {
+    pub fn with_max(max: usize) -> Self {
+        Self {
+            lines: VecDeque::with_capacity(max),
+            max,
+        }
+    }
+    pub fn push(&mut self, line: &str) {
+        if self.lines.len() >= self.max {
+            self.lines.pop_front();
+        }
+        self.lines.push_back(line.to_string());
+    }
+    pub fn drain(&mut self) -> Vec<String> {
+        self.lines.drain(..).collect()
+    }
 }
 
 /// Marks an entity as an NPC.

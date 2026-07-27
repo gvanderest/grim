@@ -41,7 +41,6 @@ pub struct DisconnectRequest {
     pub connection: Entity,
 }
 
-
 // ─── Client → Engine ─────────────────────────────────────────────────
 
 #[derive(Message, Debug)]

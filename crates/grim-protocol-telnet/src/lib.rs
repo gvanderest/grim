@@ -1,17 +1,21 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use std::sync::mpsc as std_mpsc;
+use std::sync::{Arc, Mutex};
 
-use parking_lot::Mutex;
-use bevy::prelude::*;
 use bevy::log::info;
+use bevy::prelude::*;
 use grim::prelude::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
 // ─── Internal bridge types ─────────────────────────────────────────
+
+struct Conn {
+    write_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    read_handle: tokio::task::JoinHandle<()>,
+}
 
 enum NetworkEvent {
     Connected { conn_id: usize, addr: SocketAddr },
@@ -21,7 +25,6 @@ enum NetworkEvent {
 
 enum NetworkCommand {
     Send { conn_id: usize, text: String },
-    /// Raw bytes (e.g. telnet IAC sequences that are not valid UTF-8).
     SendRaw { conn_id: usize, data: Vec<u8> },
     Disconnect { conn_id: usize },
 }
@@ -29,8 +32,9 @@ enum NetworkCommand {
 #[derive(Resource)]
 struct NetworkBridge {
     to_network: tokio::sync::mpsc::Sender<NetworkCommand>,
-    from_network: Mutex<std_mpsc::Receiver<NetworkEvent>>,
+    from_network: Arc<Mutex<std_mpsc::Receiver<NetworkEvent>>>,
 }
+
 #[derive(Resource)]
 struct TelnetPort(pub u16);
 
@@ -55,7 +59,10 @@ impl Plugin for TelnetPlugin {
             .add_message::<DisconnectRequest>()
             .insert_resource(TelnetPort(self.port))
             .add_systems(Startup, start_telnet_server)
-            .add_systems(Update, (drain_network_events, send_network_commands).chain());
+            .add_systems(
+                Update,
+                (drain_network_events, send_network_commands).chain(),
+            );
     }
 }
 
@@ -64,14 +71,12 @@ impl Plugin for TelnetPlugin {
 fn start_telnet_server(port: Res<TelnetPort>, mut commands: Commands) {
     let port = port.0;
 
-    // Bevy <- network: std mpsc (try_recv from update systems).
     let (to_bevy_tx, from_network) = std_mpsc::channel::<NetworkEvent>();
-    // Bevy -> network: tokio mpsc (the runtime drains it).
     let (to_network, to_tokio_rx) = tokio::sync::mpsc::channel::<NetworkCommand>(64);
 
     commands.insert_resource(NetworkBridge {
         to_network,
-        from_network: from_network.into(),
+        from_network: Arc::new(Mutex::new(from_network)),
     });
 
     std::thread::spawn(move || {
@@ -83,8 +88,7 @@ fn start_telnet_server(port: Res<TelnetPort>, mut commands: Commands) {
                     .expect("failed to bind telnet listener");
                 info!("Telnet server listening on port {}", port);
                 let next_id = AtomicUsize::new(1);
-                let conns: Arc<Mutex<HashMap<usize, tokio::sync::mpsc::Sender<Vec<u8>>>>> =
-                    Arc::new(Mutex::new(HashMap::new()));
+                let conns: Arc<Mutex<HashMap<usize, Conn>>> = Arc::new(Mutex::new(HashMap::new()));
                 let mut to_tokio_rx = to_tokio_rx;
 
                 loop {
@@ -99,22 +103,20 @@ fn start_telnet_server(port: Res<TelnetPort>, mut commands: Commands) {
 
                             let (write_tx, write_rx) =
                                 tokio::sync::mpsc::channel::<Vec<u8>>(32);
-                            conns.lock().insert(conn_id, write_tx);
 
-                            // Read task: read raw bytes, strip telnet IAC sequences,
-                            // then emit as line-based NetworkEvent::Input.
-                            {
+                            // Read task — handle stored to abort on clean disconnect.
+                            let read_handle = tokio::spawn({
                                 let to_bevy_tx = to_bevy_tx.clone();
                                 let conns = conns.clone();
-                                tokio::spawn(async move {
+                                async move {
                                     let mut reader = BufReader::new(read_half);
                                     let mut buf: Vec<u8> = Vec::new();
                                     loop {
                                         buf.clear();
                                         match reader.read_until(b'\n', &mut buf).await {
-                                            Ok(0) => break,   // EOF
+                                            Ok(0) => break,
                                             Ok(_) => {}
-                                            Err(_) => break,  // I/O error
+                                            Err(_) => break,
                                         }
 
                                         // Strip telnet IAC sequences (0xFF cmd1 cmd2).
@@ -122,30 +124,26 @@ fn start_telnet_server(port: Res<TelnetPort>, mut commands: Commands) {
                                         let mut i = 0;
                                         while i < buf.len() {
                                             if buf[i] == 0xFF && i + 2 < buf.len() {
-                                                i += 3;       // skip entire 3-byte IAC sequence
+                                                i += 3;
                                                 continue;
                                             }
                                             clean.push(buf[i]);
                                             i += 1;
                                         }
 
-                                        // Convert to string, trimming line endings.
                                         let text = String::from_utf8_lossy(&clean)
                                             .trim_end_matches(['\r', '\n'])
                                             .to_string();
-                                        // Always send, even empty lines (some prompts
-                                        // treat empty input as default-yes).
                                         let _ = to_bevy_tx.send(NetworkEvent::Input {
-                                            conn_id,
-                                            text,
+                                            conn_id, text,
                                         });
                                     }
-                                    let _ = to_bevy_tx.send(NetworkEvent::Disconnected {
-                                        conn_id,
-                                    });
-                                    conns.lock().remove(&conn_id);
-                                });
-                            }
+                                    let _ = to_bevy_tx.send(NetworkEvent::Disconnected { conn_id });
+                                    conns.lock().unwrap().remove(&conn_id);
+                                }
+                            });
+
+                            conns.lock().unwrap().insert(conn_id, Conn { write_tx, read_handle });
 
                             // Write task: drain per-connection channel -> socket.
                             tokio::spawn(async move {
@@ -160,21 +158,21 @@ fn start_telnet_server(port: Res<TelnetPort>, mut commands: Commands) {
                         Some(cmd) = to_tokio_rx.recv() => {
                             match cmd {
                                 NetworkCommand::Send { conn_id, text } => {
-                                    let guard = conns.lock();
+                                    let guard = conns.lock().unwrap();
                                     if let Some(tx) = guard.get(&conn_id) {
-                                        let _ = tx.try_send(text.into_bytes());
+                                        let _ = tx.write_tx.try_send(text.into_bytes());
                                     }
                                 }
                                 NetworkCommand::SendRaw { conn_id, data } => {
-                                    let guard = conns.lock();
+                                    let guard = conns.lock().unwrap();
                                     if let Some(tx) = guard.get(&conn_id) {
-                                        let _ = tx.try_send(data);
+                                        let _ = tx.write_tx.try_send(data);
                                     }
                                 }
                                 NetworkCommand::Disconnect { conn_id } => {
-                                    // Dropping the sender ends the write task and
-                                    // closes the socket once the read half drains.
-                                    conns.lock().remove(&conn_id);
+                                    if let Some(conn) = conns.lock().unwrap().remove(&conn_id) {
+                                        conn.read_handle.abort();
+                                    }
                                 }
                             }
                         }
@@ -194,7 +192,7 @@ fn drain_network_events(
     mut closed: MessageWriter<ConnectionClosed>,
     connections: Query<(Entity, &Connection)>,
 ) {
-    let rx = bridge.from_network.lock();
+    let rx = bridge.from_network.lock().unwrap();
     while let Ok(ev) = rx.try_recv() {
         match ev {
             NetworkEvent::Connected { conn_id, addr } => {
@@ -206,23 +204,18 @@ fn drain_network_events(
                 });
             }
             NetworkEvent::Input { conn_id, text } => {
-                for (entity, c) in connections.iter() {
-                    if c.id == conn_id {
-                        input.write(ClientInput {
-                            connection: entity,
-                            text,
-                        });
-                        break;
-                    }
+                if let Some((entity, _)) = connections.iter().find(|(_, c)| c.id == conn_id) {
+                    input.write(ClientInput {
+                        connection: entity,
+                        text,
+                    });
                 }
             }
             NetworkEvent::Disconnected { conn_id } => {
                 info!("Connection {} disconnected", conn_id);
-                for (entity, c) in connections.iter() {
-                    if c.id == conn_id {
-                        closed.write(ConnectionClosed { connection: entity });
-                        break;
-                    }
+                if let Some((entity, _)) = connections.iter().find(|(_, c)| c.id == conn_id) {
+                    closed.write(ConnectionClosed { connection: entity });
+                    commands.entity(entity).despawn();
                 }
             }
         }
@@ -239,14 +232,11 @@ fn send_network_commands(
 ) {
     for ev in output.read() {
         if let Ok(conn) = connections.get(ev.connection) {
-            // Send echo mode BEFORE text if requested
             if let Some(echo_state) = ev.echo {
-                // IAC WILL ECHO = server will echo → client stops local echo → input HIDDEN
-                // IAC WONT ECHO  = server won't echo → client does local echo → input VISIBLE
                 let data = if echo_state {
-                    vec![255, 252, 1]  // IAC WONT ECHO → visible input (normal)
+                    vec![255, 252, 1] // IAC WONT ECHO → visible input (normal)
                 } else {
-                    vec![255, 251, 1]  // IAC WILL ECHO → hidden input (password)
+                    vec![255, 251, 1] // IAC WILL ECHO → hidden input (password)
                 };
                 let _ = bridge.to_network.try_send(NetworkCommand::SendRaw {
                     conn_id: conn.id,
@@ -261,9 +251,9 @@ fn send_network_commands(
     }
     for ev in disconnect.read() {
         if let Ok(conn) = connections.get(ev.connection) {
-            let _ = bridge.to_network.try_send(NetworkCommand::Disconnect {
-                conn_id: conn.id,
-            });
+            let _ = bridge
+                .to_network
+                .try_send(NetworkCommand::Disconnect { conn_id: conn.id });
         }
     }
 }

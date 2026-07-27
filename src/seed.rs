@@ -85,9 +85,7 @@ pub fn seed_world(mut commands: Commands) {
     commands.entity(square).insert(Exits {
         exits: square_exits,
     });
-    commands.entity(forge).insert(Exits {
-        exits: forge_exits,
-    });
+    commands.entity(forge).insert(Exits { exits: forge_exits });
 
     // ── NPC: Grimmok Ironhand, in the tavern ────────────────────────
     commands.spawn((

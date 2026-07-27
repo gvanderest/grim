@@ -1,19 +1,11 @@
 /// Format a room's full description.
-pub fn format_room(
-    name: &str,
-    desc: &str,
-    exits: &[String],
-    occupants: &[String],
-) -> String {
+pub fn format_room(name: &str, desc: &str, exits: &[String], occupants: &[String]) -> String {
     let mut out = format!("{}\r\n{}", name, desc);
     if !exits.is_empty() {
         out.push_str(&format!("\r\nExits: {}", exits.join(", ")));
     }
     if !occupants.is_empty() {
-        out.push_str(&format!(
-            "\r\nAlso here: {}",
-            occupants.join(", ")
-        ));
+        out.push_str(&format!("\r\nAlso here: {}", occupants.join(", ")));
     }
     out.push_str("\r\n> ");
     out
@@ -103,8 +95,7 @@ pub fn format_commands() -> String {
 
 /// Format the MOTD.
 pub fn format_motd() -> String {
-    "Welcome to GRIMTIDE!\r\n\r\nAn evolving world of adventure awaits.\r\n\r\nPress ENTER to continue.\r\n"
-        .into()
+    include_str!("../../../assets/motd.txt").to_string()
 }
 
 /// Format a linkdead announce.

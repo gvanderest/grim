@@ -1,6 +1,8 @@
-use bevy::prelude::*;
 use crate::components::{Exits, InRoom, Name, Player};
-use crate::events::{Command, DisconnectRequest, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent};
+use crate::events::{
+    Command, DisconnectRequest, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent,
+};
+use bevy::prelude::*;
 
 /// Handles `look`, `move`, and `quit` commands; emits room/entity description
 /// events, movement broadcasts, and disconnect requests.
@@ -51,7 +53,10 @@ fn handle_look(
                     .map(|(e, _, _)| e);
                 match subject {
                     Some(subject) => {
-                        look_entity.write(LookEntity { target: actor, subject });
+                        look_entity.write(LookEntity {
+                            target: actor,
+                            subject,
+                        });
                     }
                     None => {
                         info.write(InfoMessage {
@@ -96,7 +101,10 @@ fn handle_move(
                         to,
                         direction,
                     });
-                    look_room.write(LookRoom { target: actor, room: to });
+                    look_room.write(LookRoom {
+                        target: actor,
+                        room: to,
+                    });
                 }
                 None => {
                     info.write(InfoMessage {
