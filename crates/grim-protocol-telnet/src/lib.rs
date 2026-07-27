@@ -242,6 +242,14 @@ fn send_network_commands(
                     conn_id: conn.id,
                     data,
                 });
+                // When restoring echo after a hidden-input prompt, send a
+                // newline so subsequent output starts on a fresh line.
+                if echo_state {
+                    let _ = bridge.to_network.try_send(NetworkCommand::Send {
+                        conn_id: conn.id,
+                        text: "\r\n".into(),
+                    });
+                }
             }
             let _ = bridge.to_network.try_send(NetworkCommand::Send {
                 conn_id: conn.id,
