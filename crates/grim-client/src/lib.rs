@@ -41,8 +41,7 @@ impl Plugin for ClientPlugin {
             .add_systems(Update, handle_client_input)
             .add_systems(Update, process_command_queue)
             .add_systems(Update, format_output)
-            .add_systems(Update, capture_output)
-            .add_systems(Update, send_prompt);
+            .add_systems(Update, capture_output);
     }
 }
 
@@ -915,29 +914,6 @@ fn capture_output(
         if let Ok(mut history) = histories.get_mut(ev.connection) {
             history.push(&ev.text);
         }
-    }
-}
-
-/// Send the `> ` prompt to every in-game client after all output is processed.
-/// Set by systems that produce output, cleared by `send_prompt` after sending.
-fn send_prompt(
-    clients: Query<&Client>,
-    mut outputs: MessageWriter<ClientOutput>,
-    mut output_reader: MessageReader<ClientOutput>,
-) {
-    // Only send prompt if there was actual output this frame.
-    if output_reader.read().next().is_none() {
-        return;
-    }
-    for client in clients.iter() {
-        if client.state != ClientState::InGame {
-            continue;
-        }
-        outputs.write(ClientOutput {
-            connection: client.connection,
-            text: "> ".into(),
-            echo: None,
-        });
     }
 }
 
