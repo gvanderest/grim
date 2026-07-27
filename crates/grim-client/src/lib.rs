@@ -233,7 +233,7 @@ fn handle_client_input(
                             // Restore echo before showing menu
                             outputs.write(ClientOutput {
                                 connection: conn,
-                                text: "".into(),
+                                text: "\r\n".into(),
                                 echo: Some(true),
                             });
                             show_character_menu(
