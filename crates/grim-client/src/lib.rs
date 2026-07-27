@@ -277,7 +277,7 @@ fn handle_client_input(
                                         client.state = ClientState::InGame;
                                         client.input_queue = VecDeque::new();
                                         client.command_cooldown = Timer::new(
-                                            Duration::from_millis(100),
+                                            Duration::from_millis(10),
                                             TimerMode::Repeating,
                                         );
                                         if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
@@ -405,7 +405,7 @@ fn handle_client_input(
                     client.state = ClientState::InGame;
                     client.input_queue = VecDeque::new();
                     client.command_cooldown =
-                        Timer::new(Duration::from_millis(100), TimerMode::Repeating);
+                        Timer::new(Duration::from_millis(10), TimerMode::Repeating);
                     if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
                         look_room.write(LookRoom {
                             target: char_entity,
@@ -504,7 +504,7 @@ fn handle_client_input(
                 client.state = ClientState::InGame;
                 client.input_queue = VecDeque::new();
                 client.command_cooldown =
-                    Timer::new(Duration::from_millis(100), TimerMode::Repeating);
+                    Timer::new(Duration::from_millis(10), TimerMode::Repeating);
                 announce_login.write(LoginAnnounce { name: char_name });
                 let Some(char_entity) = client.character else {
                     continue;
