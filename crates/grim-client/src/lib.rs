@@ -596,10 +596,10 @@ fn handle_client_input(
                         }
                     }
                 } else if text.trim().is_empty() {
-                    // Blank line — just force a prompt on next flush
+                    // Blank line — write a newline to trigger prompt on flush
                     outputs.write(ClientOutput {
                         connection: conn,
-                        text: "".into(),
+                        text: "\r\n".into(),
                         echo: None,
                     });
                 } else {
