@@ -17,10 +17,8 @@ fn main() {
     app.add_plugins(grim::plugins::SocialPlugin);
     app.add_plugins(grim::plugins::PersistencePlugin);
 
-    // Client
+    // Client + Protocol
     app.add_plugins(grim_client::ClientPlugin);
-
-    // Protocol
     app.add_plugins(grim_protocol_telnet::TelnetPlugin::new(4000));
 
     // Seed the world

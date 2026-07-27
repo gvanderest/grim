@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::time::Duration;
 
 use bevy::log::info;
+use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::prelude::{
     App, Commands, Entity, MessageReader, MessageWriter, Plugin, Query, Res, Time, Timer, TimerMode,
     Update,
@@ -40,16 +41,16 @@ impl Plugin for ClientPlugin {
             .add_message::<LoginAnnounce>()
             .add_message::<LogoutAnnounce>()
             .add_message::<LinkdeadAnnounce>()
-            .add_systems(Update, handle_connection_established)
-            .add_systems(Update, handle_client_input)
-            .add_systems(Update, process_command_queue)
-            .add_systems(Update, format_output);
+            .add_systems(Update, handle_connection_established.in_set(grim::plugins::ClientSet))
+            .add_systems(Update, handle_client_input.in_set(grim::plugins::ClientSet))
+            .add_systems(Update, process_command_queue.in_set(grim::plugins::ClientSet))
+            .add_systems(Update, format_output.in_set(grim::plugins::ClientSet));
     }
 }
 
 // ─── Connection lifecycle ───────────────────────────────────────────
 
-fn handle_connection_established(
+pub fn handle_connection_established(
     mut established: MessageReader<ConnectionEstablished>,
     mut commands: Commands,
     mut outputs: MessageWriter<ClientOutput>,
@@ -65,7 +66,7 @@ fn handle_connection_established(
 }
 
 // ─── Client input dispatch ───────────────────────────────────────────
-fn handle_client_input(
+pub fn handle_client_input(
     mut inputs: MessageReader<ClientInput>,
     mut clients: Query<(Entity, &mut Client)>,
     mut accounts: Query<(Entity, &mut Account)>,
@@ -541,7 +542,7 @@ fn show_character_menu(
 
 // ─── Command queue dispatch ─────────────────────────────────────────
 
-fn process_command_queue(
+pub fn process_command_queue(
     time: Res<Time>,
     mut clients: Query<(Entity, &mut Client)>,
     mut engine_commands: MessageWriter<EngineCommand>,
@@ -595,7 +596,7 @@ fn process_command_queue(
 // ─── Engine → client output formatting ──────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
-fn format_output(
+pub fn format_output(
     mut look_room_events: MessageReader<LookRoom>,
     mut look_entity_events: MessageReader<LookEntity>,
     mut say_events: MessageReader<SayEvent>,

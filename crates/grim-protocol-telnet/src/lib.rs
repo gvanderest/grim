@@ -55,7 +55,14 @@ impl Plugin for TelnetPlugin {
             .add_message::<DisconnectRequest>()
             .insert_resource(TelnetPort(self.port))
             .add_systems(Startup, start_telnet_server)
-            .add_systems(Update, (drain_network_events, send_network_commands).chain());
+            .add_systems(
+                Update,
+                drain_network_events.in_set(grim::plugins::ProtocolSet).before(grim::plugins::ClientSet),
+            )
+            .add_systems(
+                Update,
+                send_network_commands.in_set(grim::plugins::ProtocolSet).after(grim::plugins::ClientSet),
+            );
     }
 }
 
@@ -133,12 +140,12 @@ fn start_telnet_server(port: Res<TelnetPort>, mut commands: Commands) {
                                         let text = String::from_utf8_lossy(&clean)
                                             .trim_end_matches(['\r', '\n'])
                                             .to_string();
-                                        if !text.is_empty() {
-                                            let _ = to_bevy_tx.send(NetworkEvent::Input {
-                                                conn_id,
-                                                text,
-                                            });
-                                        }
+                                        // Always send, even empty lines (some prompts
+                                        // treat empty input as default-yes).
+                                        let _ = to_bevy_tx.send(NetworkEvent::Input {
+                                            conn_id,
+                                            text,
+                                        });
                                     }
                                     let _ = to_bevy_tx.send(NetworkEvent::Disconnected {
                                         conn_id,
@@ -186,7 +193,7 @@ fn start_telnet_server(port: Res<TelnetPort>, mut commands: Commands) {
 
 // ─── Update: drain network -> Bevy events ──────────────────────────
 
-fn drain_network_events(
+pub fn drain_network_events(
     bridge: Res<NetworkBridge>,
     mut commands: Commands,
     mut established: MessageWriter<ConnectionEstablished>,
@@ -231,7 +238,7 @@ fn drain_network_events(
 
 // ─── Update: route Bevy events -> network ──────────────────────────
 
-fn send_network_commands(
+pub fn send_network_commands(
     bridge: Res<NetworkBridge>,
     mut output: MessageReader<ClientOutput>,
     mut disconnect: MessageReader<DisconnectRequest>,
