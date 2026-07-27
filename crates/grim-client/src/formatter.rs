@@ -108,6 +108,3 @@ pub fn format_linkdead(name: &str, reconnecting: bool) -> String {
 }
 
 /// Format the `> ` prompt.
-pub fn format_prompt() -> String {
-    "> ".into()
-}
