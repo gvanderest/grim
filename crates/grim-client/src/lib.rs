@@ -919,7 +919,16 @@ fn capture_output(
 }
 
 /// Send the `> ` prompt to every in-game client after all output is processed.
-fn send_prompt(clients: Query<&Client>, mut outputs: MessageWriter<ClientOutput>) {
+/// Set by systems that produce output, cleared by `send_prompt` after sending.
+fn send_prompt(
+    clients: Query<&Client>,
+    mut outputs: MessageWriter<ClientOutput>,
+    mut output_reader: MessageReader<ClientOutput>,
+) {
+    // Only send prompt if there was actual output this frame.
+    if output_reader.read().next().is_none() {
+        return;
+    }
     for client in clients.iter() {
         if client.state != ClientState::InGame {
             continue;
