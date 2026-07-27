@@ -54,10 +54,15 @@ fn handle_connection_established(
 ) {
     for ev in established.read() {
         commands.spawn(Client::new(ev.connection));
-        commands.entity(ev.connection).insert(OutputHistory::with_max(100));
+        commands
+            .entity(ev.connection)
+            .insert(OutputHistory::with_max(100));
         outputs.write(ClientOutput {
             connection: ev.connection,
-            text: format!("{}\r\n\r\nEnter your email address: ", include_str!("../../../assets/login-banner.txt")),
+            text: format!(
+                "{}\r\n\r\nEnter your email address: ",
+                include_str!("../../../assets/login-banner.txt")
+            ),
             echo: None,
         });
     }
@@ -634,7 +639,6 @@ fn show_character_menu(
 
 // ─── Command queue dispatch ─────────────────────────────────────────
 #[allow(clippy::too_many_arguments)]
-
 fn process_command_queue(
     time: Res<Time>,
     mut clients: Query<(Entity, &mut Client)>,
@@ -665,7 +669,7 @@ fn process_command_queue(
                 if let Some(char_entity) = client.character {
                     if let Ok(ch) = characters.get(char_entity) {
                         let path = format!("data/characters/{}.json", ch.id);
-                        if let Ok(json) = serde_json::to_string_pretty(&*ch) {
+                        if let Ok(json) = serde_json::to_string_pretty(ch) {
                             let _ = std::fs::write(path, json);
                         }
                     }
