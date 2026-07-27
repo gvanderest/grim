@@ -4,6 +4,8 @@ A modular MUD engine built on Bevy ECS. Everything in the world is an entity. Ev
 
 For context: I come from a MUD called Waterdeep and am trying to recreate the general vibe, but with a more modern twist in Rust.
 
+NOTE: This project leverages AI assistance to develop the software. All code is reviewed and curated by a human maintainer.
+
 ## Status
 
 Currently functional: telnet login, account creation, character management, room movement, social channels, and basic world persistence. See `.planning/` for detailed architecture docs.
@@ -13,7 +15,7 @@ Currently functional: telnet login, account creation, character management, room
 ### ✅ Done
 - [x] Workspace structure: `grim` library + `grim-client` + `grim-protocol-telnet` crates
 - [x] Telnet server with IAC negotiation and password masking
-- [x] Account creation and login (username or email)
+- [x] Account creation and login (email only)
 - [x] Character creation, selection, and persistence
 - [x] MOTD gate before entering the world
 - [x] Room movement (north/east/south/west/up/down)

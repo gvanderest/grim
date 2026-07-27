@@ -25,8 +25,7 @@ impl fmt::Display for ValidationError {
 
 impl std::error::Error for ValidationError {}
 
-/// Validate and normalize a username or email.
-/// Usernames: alphanumeric + underscore, 3-20 chars, must start with a letter.
+/// Validate and normalize an email address for use as an account identifier.
 /// Emails: must contain @ with text before and after, and a dot in the domain.
 /// Returns normalized (lowercase, trimmed).
 pub fn validate_identifier(input: &str) -> Result<String, ValidationError> {
@@ -35,28 +34,9 @@ pub fn validate_identifier(input: &str) -> Result<String, ValidationError> {
         return Err(ValidationError::Empty);
     }
     let lower = trimmed.to_lowercase();
-    if lower.contains('@') {
-        validate_email(&lower)
-    } else {
-        validate_username(&lower)
-    }
+    validate_email(&lower)
 }
 
-fn validate_username(s: &str) -> Result<String, ValidationError> {
-    if s.len() < 3 {
-        return Err(ValidationError::TooShort(3));
-    }
-    if s.len() > 20 {
-        return Err(ValidationError::TooLong(20));
-    }
-    if !s.chars().all(|c| c.is_alphanumeric() || c == '_') {
-        return Err(ValidationError::InvalidCharacters);
-    }
-    if !s.chars().next().is_some_and(|c| c.is_alphabetic()) {
-        return Err(ValidationError::InvalidFormat);
-    }
-    Ok(s.to_string())
-}
 
 fn validate_email(s: &str) -> Result<String, ValidationError> {
     let parts: Vec<&str> = s.split('@').collect();

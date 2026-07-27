@@ -240,11 +240,13 @@ fn send_network_commands(
     for ev in output.read() {
         if let Ok(conn) = connections.get(ev.connection) {
             // Send echo mode BEFORE text if requested
-            if let Some(echo_on) = ev.echo {
-                let data = if echo_on {
-                    vec![255, 251, 1]  // IAC WILL ECHO
+            if let Some(echo_state) = ev.echo {
+                // IAC WILL ECHO = server will echo → client stops local echo → input HIDDEN
+                // IAC WONT ECHO  = server won't echo → client does local echo → input VISIBLE
+                let data = if echo_state {
+                    vec![255, 252, 1]  // IAC WONT ECHO → visible input (normal)
                 } else {
-                    vec![255, 252, 1]  // IAC WONT ECHO
+                    vec![255, 251, 1]  // IAC WILL ECHO → hidden input (password)
                 };
                 let _ = bridge.to_network.try_send(NetworkCommand::SendRaw {
                     conn_id: conn.id,

@@ -58,7 +58,7 @@ fn handle_connection_established(
         commands.spawn(Client::new(ev.connection));
         outputs.write(ClientOutput {
             connection: ev.connection,
-            text: "GRIMTIDE\r\n\r\nEnter your username or email address: ".into(),
+            text: "GRIMTIDE\r\n\r\nEnter your email address: ".into(),
             echo: None,
         });
     }
@@ -97,7 +97,7 @@ fn handle_client_input(
                 if text.trim().is_empty() {
                     outputs.write(ClientOutput {
                         connection: conn,
-                        text: "Enter your username or email address: ".into(),
+                        text: "Enter your email address: ".into(),
                         echo: None,
                     });
                     continue;
@@ -119,7 +119,7 @@ fn handle_client_input(
                             client.state = ClientState::ConfirmCreate { identifier: identifier.clone() };
                             outputs.write(ClientOutput {
                                 connection: conn,
-                                text: "Did not find that username or email, do you want to create an account? [Y/n] ".into(),
+                                text: "Did not find that email address, do you want to create an account? [Y/n] ".into(),
                                 echo: None,
                             });
                         }
@@ -128,7 +128,7 @@ fn handle_client_input(
                         outputs.write(ClientOutput {
                             connection: conn,
                             text: format!(
-                                "Invalid identifier: {}\r\nEnter your username or email address: ",
+                                "Invalid identifier: {}\r\nEnter your email address: ",
                                 e
                             ),
                             echo: None,
@@ -155,7 +155,7 @@ fn handle_client_input(
                     client.state = ClientState::LoginPrompt;
                     outputs.write(ClientOutput {
                         connection: conn,
-                        text: "Enter your username or email address: ".into(),
+                        text: "Enter your email address: ".into(),
                         echo: None,
                     });
                 }
@@ -169,7 +169,7 @@ fn handle_client_input(
                     client.state = ClientState::LoginPrompt;
                     outputs.write(ClientOutput {
                         connection: conn,
-                        text: "Invalid password.\r\nEnter your username or email address: ".into(),
+                        text: "Invalid password.\r\nEnter your email address: ".into(),
                         echo: Some(true),
                     });
                     continue;
@@ -235,7 +235,7 @@ fn handle_client_input(
                             client.state = ClientState::LoginPrompt;
                             outputs.write(ClientOutput {
                                 connection: conn,
-                                text: "Account not found.\r\nEnter your username or email address: "
+                                text: "Account not found.\r\nEnter your email address: "
                                     .into(),
                                 echo: Some(true),
                             });
@@ -246,84 +246,94 @@ fn handle_client_input(
 
             ClientState::CharacterSelect => {
                 let text = text.trim();
-                if text.to_lowercase() == "create" {
+                let lower = text.to_lowercase();
+                if lower == "create" || lower == "c" {
                     client.state = ClientState::CreateCharacter;
                     outputs.write(ClientOutput {
                         connection: conn,
                         text: "Enter a name for your new character: ".into(),
                         echo: None,
                     });
-                } else if let Ok(idx) = text.parse::<usize>() {
-                    let Some(account_entity) = client.account
-                    else {
-                        continue;
-                    };
-                    let Ok((_, account)) = accounts.get(account_entity)
-                    else {
-                        continue;
-                    };
-                    let char_uuids: Vec<&Uuid> = account
-                        .characters
-                        .iter()
-                        .filter(|u| characters.iter().any(|(_, c, _)| &c.id == *u))
-                        .collect();
-                    if idx == 0 || idx > char_uuids.len() {
-                        outputs.write(ClientOutput {
-                            connection: conn,
-                            text: "Invalid selection.\r\n".into(),
-                            echo: None,
+                    continue;
+                }
+
+                let Some(account_entity) = client.account
+                else {
+                    continue;
+                };
+                let Ok((_, account)) = accounts.get(account_entity)
+                else {
+                    continue;
+                };
+                let char_list: Vec<(Entity, Uuid, String)> = characters
+                    .iter()
+                    .filter(|(_, c, _)| account.characters.contains(&c.id))
+                    .map(|(e, c, n)| (e, c.id, n.0.clone()))
+                    .collect();
+
+                // Try number selection
+                let selected = if let Ok(idx) = lower.parse::<usize>() {
+                    if idx >= 1 && idx <= char_list.len() {
+                        Some(char_list[idx - 1].0)
+                    } else {
+                        None
+                    }
+                // Try name selection (case-insensitive)
+                } else {
+                    char_list.iter().find(|(_, _, n)| n.to_lowercase() == lower).map(|&(e, _, _)| e)
+                };
+
+                let Some(char_entity) = selected
+                else {
+                    show_character_menu(
+                        client_entity,
+                        &client,
+                        &characters,
+                        &accounts,
+                        &mut outputs,
+                        &linkdead,
+                        None,
+                    );
+                    continue;
+                };
+
+                let char_name = characters.get(char_entity).map(|(_, _, n)| n.0.clone()).ok();
+                if linkdead.get(char_entity).is_ok() {
+                    // Reconnecting linkdead
+                    commands.entity(char_entity).remove::<Linkdead>();
+                    commands.entity(char_entity).insert(Player {
+                        connection: conn,
+                    });
+                    client.character = Some(char_entity);
+                    client.state = ClientState::InGame;
+                    client.input_queue = VecDeque::new();
+                    client.command_cooldown =
+                        Timer::new(Duration::from_millis(100), TimerMode::Repeating);
+                    if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
+                        look_room.write(LookRoom {
+                            target: char_entity,
+                            room: ir.room,
                         });
                     }
-                    let char_uuid = char_uuids[idx - 1];
-                    for (char_entity, ch, name) in characters.iter() {
-                        if &ch.id != char_uuid {
-                            continue;
-                        }
-                        if linkdead.get(char_entity).is_ok() {
-                            // Reconnecting linkdead character - don't spawn new entity
-                            commands.entity(char_entity).remove::<Linkdead>();
-                            commands.entity(char_entity).insert(Player {
-                                connection: conn,
-                            });
-                            client.character = Some(char_entity);
-                            client.state = ClientState::InGame;
-                            client.input_queue = VecDeque::new();
-                            client.command_cooldown =
-                                Timer::new(Duration::from_millis(100), TimerMode::Repeating);
-                            if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
-                                look_room.write(LookRoom {
-                                    target: char_entity,
-                                    room: ir.room,
-                                });
-                            }
-                            announce_linkdead.write(LinkdeadAnnounce {
-                                name: name.0.clone(),
-                                reconnecting: true,
-                            });
-                            info!("Character '{}' reconnected", name.0);
-                        } else {
-                            commands.entity(char_entity).insert((
-                                Player {
-                                    connection: conn,
-                                },
-                                InRoom {
-                                    room: starting.0,
-                                },
-                            ));
-                            client.character = Some(char_entity);
-                            client.state = ClientState::MotdPrompt;
-                            outputs.write(ClientOutput {
-                                connection: conn,
-                                text: formatter::format_motd(),
-                                echo: None,
-                            });
-                        }
-                        break;
-                    }
+                    announce_linkdead.write(LinkdeadAnnounce {
+                        name: char_name.clone().unwrap_or_default(),
+                        reconnecting: true,
+                    });
+                    info!("Character '{}' reconnected", char_name.as_deref().unwrap_or("?"));
                 } else {
+                    commands.entity(char_entity).insert((
+                        Player {
+                            connection: conn,
+                        },
+                        InRoom {
+                            room: starting.0,
+                        },
+                    ));
+                    client.character = Some(char_entity);
+                    client.state = ClientState::MotdPrompt;
                     outputs.write(ClientOutput {
                         connection: conn,
-                        text: "Enter a number to select a character, or type 'create'.\r\n".into(),
+                        text: formatter::format_motd(),
                         echo: None,
                     });
                 }
@@ -505,7 +515,7 @@ fn show_character_menu(
         return;
     };
 
-    let mut menu = String::from("Characters:\r\n");
+    let mut menu = format!("Welcome back, {}!\r\n\r\n[ Characters ]\r\n", account.identifier);
     let mut idx = 1;
     for (char_entity, ch, name) in characters.iter() {
         if account.characters.contains(&ch.id) {
@@ -514,11 +524,14 @@ fn show_character_menu(
             } else {
                 ""
             };
-            menu.push_str(&format!("  {}. {}{}\r\n", idx, name.0, ld_suffix));
+            menu.push_str(&format!("{}. {} - 1 Human Adventurer{}\r\n", idx, name.0, ld_suffix));
             idx += 1;
         }
     }
-    menu.push_str("\r\nEnter a number to play, or type 'create': ");
+    if idx == 1 {
+        menu.push_str("You have no characters created yet.\r\n");
+    }
+    menu.push_str("\r\nc: Create a new character\r\n\r\nWhat would you like to do? ");
     outputs.write(ClientOutput {
         connection: conn,
         text: menu,
