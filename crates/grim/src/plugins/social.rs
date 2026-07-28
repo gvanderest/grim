@@ -39,7 +39,7 @@ fn handle_say(
         });
         info.write(InfoMessage {
             target: actor,
-            text: crate::color::tr("social.say.first_party", &[("text", text)]),
+            text: crate::tr!("social.say.first_party", text = text),
         });
     }
 }

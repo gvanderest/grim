@@ -18,10 +18,7 @@ pub fn format_entity(name: &str, desc: &str) -> String {
 
 /// Format a say message broadcast to a room.
 pub fn format_say(speaker: &str, text: &str) -> String {
-    grim::color::tr(
-        "social.say.third_party",
-        &[("speaker", speaker), ("text", text)],
-    )
+    grim::tr!("social.say.third_party", speaker = speaker, text = text)
 }
 
 /// Format a yell message broadcast to an area.
