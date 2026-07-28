@@ -289,7 +289,10 @@ pub fn convert_16color(s: &str) -> String {
                 Some('C') | Some('^') => out.push_str(CYAN_BRIGHT),
                 Some('W') | Some('&') => out.push_str(WHITE_BRIGHT),
                 Some('x' | 'X' | '9') => out.push_str(RESET),
-                Some(other) => { out.push('{'); out.push(other); }
+                Some(other) => {
+                    out.push('{');
+                    out.push(other);
+                }
                 None => out.push('{'),
             }
         } else {
