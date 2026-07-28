@@ -165,6 +165,20 @@ cargo run                        # start server on port 4000
 telnet localhost 4000            # connect
 ```
 
+
+## Workflow
+
+All work follows a branch → PR → review → merge cycle.
+
+1. **Branch** from `main` — descriptive name, no convention beyond readable.
+2. **Commit** incrementally — each commit is a coherent step.
+3. **Push**, open a **PR** against `main`.
+4. **CI** runs checks: build, lint, test.
+5. **Human review** — at least one set of eyes before merge.
+6. **Squash merge** into `main`.
+
+Pushing directly to `main` is reserved for trivial one-offs (docs, README tweaks). Everything else — any code change — goes through a PR.
+
 ## Security Notes (current PoC)
 
 - SHA-256 for passwords — no salt, not slow.
