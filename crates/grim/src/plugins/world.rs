@@ -61,7 +61,7 @@ fn handle_look(
                     None => {
                         info.write(InfoMessage {
                             target: actor,
-                            text: "You don't see that here.\r\n".into(),
+                            text: "You don't see that here.\n".into(),
                         });
                     }
                 }
@@ -109,14 +109,14 @@ fn handle_move(
                 None => {
                     info.write(InfoMessage {
                         target: actor,
-                        text: "You can't go that way.\r\n".into(),
+                        text: "You can't go that way.\n".into(),
                     });
                 }
             },
             Err(_) => {
                 info.write(InfoMessage {
                     target: actor,
-                    text: "You can't go that way.\r\n".into(),
+                    text: "You can't go that way.\n".into(),
                 });
             }
         }
@@ -238,7 +238,7 @@ mod tests {
             let mut iter = cursor.read(messages);
             let ev = iter.next().expect("expected one InfoMessage");
             assert_eq!(ev.target, actor);
-            assert_eq!(ev.text, "You don't see that here.\r\n");
+            assert_eq!(ev.text, "You don't see that here.\n");
             assert!(iter.next().is_none(), "expected exactly one InfoMessage");
         }
         assert_eq!(look_room_count(&app), 0);
@@ -290,7 +290,7 @@ mod tests {
             let mut cursor = messages.get_cursor();
             let mut iter = cursor.read(messages);
             let ev = iter.next().expect("expected one InfoMessage");
-            assert_eq!(ev.text, "You can't go that way.\r\n");
+            assert_eq!(ev.text, "You can't go that way.\n");
             assert!(iter.next().is_none(), "expected exactly one InfoMessage");
         }
     }

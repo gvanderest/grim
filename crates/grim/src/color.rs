@@ -215,7 +215,7 @@ mod tests {
     }
     #[test]
     fn no_codes() {
-        assert_eq!(ansi("just text\r\n"), "just text\r\n");
+        assert_eq!(ansi("just text\n"), "just text\n");
     }
 
     // ── 16-color terminal ──
@@ -377,10 +377,10 @@ mod tests {
 
     #[test]
     fn newlines_preserved() {
-        assert_eq!(ansi("line1\r\nline2"), "line1\r\nline2");
+        assert_eq!(ansi("line1\nline2"), "line1\nline2");
         assert_eq!(
-            ansi("line1\r\n{Rred line{x\r\nline2"),
-            "line1\r\n\x1b[91mred line\x1b[0m\r\nline2"
+            ansi("line1\n{Rred line{x\nline2"),
+            "line1\n\x1b[91mred line\x1b[0m\nline2"
         );
     }
 }

@@ -223,7 +223,7 @@ fn drain_network_events(
                         });
                         let _ = bridge.to_network.try_send(NetworkCommand::Send {
                             conn_id,
-                            text: "\r\n".into(),
+                            text: "\n".into(),
                         });
                         conn.echo_hidden = false;
                     }
@@ -269,7 +269,7 @@ fn send_network_commands(
                 if echo_state {
                     let _ = bridge.to_network.try_send(NetworkCommand::Send {
                         conn_id: conn.id,
-                        text: "\r\n".into(),
+                        text: "\n".into(),
                     });
                 }
             }
@@ -280,16 +280,18 @@ fn send_network_commands(
             // Prepend a newline for unsolicited events so they don't appear on the prompt line.
             let mut text = ev.text.clone();
             if ev.prepend_newline && !text.is_empty() {
-                text.insert_str(0, "\r\n");
+                text.insert(0, '\n');
             }
             let send_text = if is_ingame && !text.is_empty() {
-                format!("{}\r\n> ", text)
+                format!("{}\n> ", text)
             } else {
                 text
             };
+            let colored = ansi(&send_text);
+            let ready = colored.replace('\n', "\r\n");
             let _ = bridge.to_network.try_send(NetworkCommand::Send {
                 conn_id: conn.id,
-                text: ansi(&send_text),
+                text: ready,
             });
         }
     }
