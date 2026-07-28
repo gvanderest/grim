@@ -164,5 +164,5 @@ Unknown codes (e.g. `{z`, `{-`, `@q`) pass through as literal text.
 - **Linkdead**: Character stays in-world with `Linkdead` + `Player { connection: None }` on disconnect. On reconnect, skips MOTD and re-enters.
 - **Output formatting**: Lives in `grim-client::formatter`. Protocol layer never formats — it only writes bytes.
 - **Directions**: Single-letter shortcuts (`n`/`e`/`s`/`w`/`u`/`d`) beat alphabetic command overlap in the parser.
-- **i18n**: Locales in `locales/en.json`. `rust-i18n` interprets `{letter}` as interpolation — avoid placing `{` before variable-like identifiers; wrap raw color codes in Rust code.
+- **i18n + color strings**: Use `tr!()` macro (from `grim::color`) for locale strings containing color codes. Reads `locales/en.json`, converts `{X}` 16-color codes to `@xRGB` format (avoids i18n brace conflicts), then substitutes `%{var}` placeholders. Plain strings without colors still use `t!()` from rust-i18n.
 - **Security**: No TLS, no rate limiting, no crash recovery. SHA-256 only.
