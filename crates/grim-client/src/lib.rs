@@ -1553,4 +1553,201 @@ mod tests {
             "Input was permanently lost: should still be in LoginPrompt"
         );
     }
+
+    /// Verify that format_output broadcasts SayEvent to room occupants.
+    #[test]
+    fn format_output_say_broadcast() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let actor_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let observer_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 2,
+                addr: "127.0.0.1:12346".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+
+        let actor = app
+            .world_mut()
+            .spawn((
+                GrimName("Hero".into()),
+                InRoom { room },
+                Player {
+                    connection: Some(actor_conn),
+                },
+                OutputHistory::with_max(100),
+            ))
+            .id();
+        let _observer = app
+            .world_mut()
+            .spawn((
+                GrimName("Bystander".into()),
+                InRoom { room },
+                Player {
+                    connection: Some(observer_conn),
+                },
+                OutputHistory::with_max(100),
+            ))
+            .id();
+
+        app.world_mut().write_message(SayEvent {
+            room,
+            actor,
+            text: "hello".into(),
+        });
+        app.world_mut().write_message(InfoMessage {
+            target: actor,
+            text: "You say, 'hello'\r\n".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.connection == observer_conn && o.text.contains("Hero says")),
+            "observer should get broadcast"
+        );
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.connection == actor_conn && o.text.contains("You say")),
+            "actor should get echo"
+        );
+    }
+
+    /// Verify that format_output handles LoginAnnounce (broadcast_global path).
+    #[test]
+    fn format_output_login_announce() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn((
+            GrimName("Hero".into()),
+            InRoom { room },
+            Player {
+                connection: Some(conn),
+            },
+            OutputHistory::with_max(100),
+        ));
+
+        app.world_mut().write_message(LoginAnnounce {
+            name: "Hero".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.text.contains("Hero has connected")),
+            "should announce login"
+        );
+    }
+
+    /// Verify that format_output handles LogoutAnnounce.
+    #[test]
+    fn format_output_logout_announce() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn((
+            GrimName("Hero".into()),
+            InRoom { room },
+            Player {
+                connection: Some(conn),
+            },
+            OutputHistory::with_max(100),
+        ));
+
+        app.world_mut().write_message(LogoutAnnounce {
+            name: "Hero".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.text.contains("Hero has disconnected")),
+            "should announce logout"
+        );
+    }
+
+    /// Verify that format_output handles LinkdeadAnnounce (reconnecting).
+    #[test]
+    fn format_output_linkdead_announce() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn((
+            GrimName("Hero".into()),
+            InRoom { room },
+            Player {
+                connection: Some(conn),
+            },
+            OutputHistory::with_max(100),
+        ));
+
+        app.world_mut().write_message(LinkdeadAnnounce {
+            name: "Hero".into(),
+            reconnecting: true,
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.text.contains("Hero has reconnected")),
+            "should announce reconnect"
+        );
+    }
 }

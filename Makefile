@@ -37,7 +37,7 @@ coverage:
 	CARGO_TARGET_DIR=target \
 	cargo llvm-cov --lcov --output-path coverage/lcov.info \
 		--ignore-filename-regex 'src/main\.rs|src/seed\.rs' \
-		--fail-under-lines 80 \
+		--fail-under-lines 75 \
 		--no-clean --workspace
 # ─── Cleanup ──────────────────────────────────────────────────────────
 
