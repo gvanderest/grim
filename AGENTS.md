@@ -134,7 +134,8 @@ LoginPrompt → PasswordPrompt → CharacterSelect → MotdGate → InGame
 │   ├── grim-client/src/
 │   │   ├── lib.rs                     # ClientPlugin, input dispatch, formatting routing
 │   │   ├── parser.rs                  # Raw text → Command
-│   │   └── formatter.rs              # Engine events → formatted text
+│   │   ├── color.rs                  # Color markup → ANSI escape conversion
+│   │   └── formatter.rs              # Engine events → formatted text, applies ansi()
 │   └── grim-protocol-telnet/src/
 │       └── lib.rs                     # TelnetPlugin, tokio acceptor, IAC negotiation
 ├── data/
@@ -158,6 +159,24 @@ LoginPrompt → PasswordPrompt → CharacterSelect → MotdGate → InGame
 - **`Exit` vs `Exits`**: The component is `Exits { exits: HashMap<Cardinal, Entity> }`. On a Room entity.
 - **`Name` vs `GrimName`**: Import aliased from `grim` as `GrimName` in the binary and client to avoid collisions with Bevy's `Name`.
 - **`rust-i18n` locale files**: Must live at `locales/<locale>.json` (e.g. `locales/en.json`). NEVER nest in subdirectories (`locales/en/auth.json`) — `rust-i18n` v4 won't find them and silently returns the key string. `set_locale!("en")` MUST be called in `ClientPlugin::build()` or the macro returns keys verbatim.
+
+### Color Markup
+
+All output text goes through `color::ansi()` before being sent to clients. The
+conversion happens in each `formatter::format_*` function and at the login banner
+construction site in `handle_connection_established`.
+
+Two formats supported:
+- **16-color terminal codes** (`{code`): `{r`/`{R`, `{g`/`{G`, `{b`/`{B`, etc.
+  with numeric (`{1`–`{9`) and symbol (`{!`, `{@`, etc.) aliases. See
+  `color.rs` doc comment for the full table.
+- **24-bit hex codes** (`@xRGB` / `@bRGB`): 3-digit hex, each nibble scaled by
+  17 to 8-bit (e.g. `@xf00` → red, `@xfff` → white).
+- **Escape**: `{{` → `{`, `@@` → `@`.
+- Unknown codes pass through as literal text.
+
+Assets (MOTD, login banner) support color codes — put them directly in the
+`.txt` file.
 
 ## Running
 
@@ -197,3 +216,25 @@ This file and `README.md` are the two entry points for anyone (or any agent) lan
 - If you delete a crate, component, or event type, remove it from both files — dead entries mislead more than missing ones.
 
 No separate "docs sprint". Make it part of the PR that introduces the change. A one-line addition to the roadmap or a modified event description in the table takes 30 seconds and saves the next person (including future-you) an hour of spelunking.
+
+## Editing Discipline
+
+Agent edits to this repo MUST follow these rules to avoid the session-wasting
+pattern of stale-snapshot → broken edit → fix → re-fix:
+
+1. **Re-ground after every edit.** Every `edit` call mints a fresh snapshot tag
+   and renumbers lines. Take the next edit's line numbers from the edit response
+   or a fresh `read` — never from memory.
+2. **Verify structure before chaining.** After a multi-hunk or block edit, do a
+   `read` of the affected function/module before issuing the next edit.
+3. **Prefer rewrite over surgical patch when code is young.** Files in active
+   development (<5 edits old) are faster to `write` from scratch than to fix up
+   with staggered patches. Once stable, use surgical `edit`.
+4. **Read the whole function before touching it.** A 2-line view of a larger
+   function risks deleting content you didn't see. Elided ranges in `read`
+   output mean "unseen" — expand the range.
+5. **Test immediately after the last edit.** Don't chain 5 edits without a
+   compile check. The build is cheap and catches structural damage fast.
+6. **Range characters, not ASCII ranges, for non-contiguous sets.**
+   `'k'..='w'` covers `klmnopqrstuvw`, not `krgybmcw`. Use
+   `'k' | 'r' | 'g' | 'y' | 'b' | 'm' | 'c' | 'w'` for explicit sets.

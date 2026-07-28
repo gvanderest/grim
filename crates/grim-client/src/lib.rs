@@ -22,9 +22,9 @@ use std::collections::VecDeque;
 use std::time::Duration;
 use uuid::Uuid;
 
+mod color;
 mod formatter;
 mod parser;
-
 pub struct ClientPlugin;
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
@@ -62,16 +62,11 @@ fn handle_connection_established(
 ) {
     for ev in established.read() {
         commands.spawn(Client::new(ev.connection));
+        let banner = color::ansi(include_str!("../../../assets/login-banner.txt"));
+        let text = format!("{}\r\n\r\n{}", banner, t!("login.prompt"));
         outputs.write(ClientOutput {
             echo: None,
-            ..ClientOutput::new(
-                ev.connection,
-                format!(
-                    "{}\r\n\r\n{}",
-                    include_str!("../../../assets/login-banner.txt"),
-                    t!("login.prompt")
-                ),
-            )
+            ..ClientOutput::new(ev.connection, text)
         });
     }
 }
