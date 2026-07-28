@@ -64,7 +64,7 @@ fn handle_connection_established(
             ..ClientOutput::new(
                 ev.connection,
                 format!(
-                    "{}\r\n\r\nEnter your email address: ",
+                    "{}\r\n\r\nEnter your character name or email address: ",
                     include_str!("../../../assets/login-banner.txt")
                 ),
             )
@@ -107,7 +107,7 @@ fn handle_client_input(
                 if text.trim().is_empty() {
                     outputs.write(ClientOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, "Enter your email address: ")
+                        ..ClientOutput::new(conn, "Enter your character name or email address: ")
                     });
                     continue;
                 }
@@ -164,7 +164,7 @@ fn handle_client_input(
                     }
                     Err(e) => {
                         outputs.write(ClientOutput { echo: None, ..ClientOutput::new(conn, format!(
-                                "Invalid identifier: {}\r\nEnter your email address or character name: ",
+                                "Invalid identifier: {}\r\nEnter your character name or email address: ",
                                 e
                             )) });
                     }
@@ -189,7 +189,7 @@ fn handle_client_input(
                     client.state = ClientState::LoginPrompt;
                     outputs.write(ClientOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, "Enter your email address: ")
+                        ..ClientOutput::new(conn, "Enter your character name or email address: ")
                     });
                 }
             }
@@ -204,7 +204,10 @@ fn handle_client_input(
                     client.state = ClientState::LoginPrompt;
                     outputs.write(ClientOutput {
                         echo: Some(true),
-                        ..ClientOutput::new(conn, "Invalid password.\r\nEnter your email address: ")
+                        ..ClientOutput::new(
+                            conn,
+                            "Invalid password.\r\nEnter your character name or email address: ",
+                        )
                     });
                     continue;
                 }
