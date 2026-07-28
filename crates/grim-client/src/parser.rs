@@ -90,11 +90,15 @@ mod tests {
     fn test_north() {
         assert_eq!(
             parse_command("n"),
-            Some(Command::Move { direction: Cardinal::North })
+            Some(Command::Move {
+                direction: Cardinal::North
+            })
         );
         assert_eq!(
             parse_command("north"),
-            Some(Command::Move { direction: Cardinal::North })
+            Some(Command::Move {
+                direction: Cardinal::North
+            })
         );
     }
 
@@ -102,11 +106,15 @@ mod tests {
     fn test_east() {
         assert_eq!(
             parse_command("e"),
-            Some(Command::Move { direction: Cardinal::East })
+            Some(Command::Move {
+                direction: Cardinal::East
+            })
         );
         assert_eq!(
             parse_command("east"),
-            Some(Command::Move { direction: Cardinal::East })
+            Some(Command::Move {
+                direction: Cardinal::East
+            })
         );
     }
 
@@ -114,11 +122,15 @@ mod tests {
     fn test_south() {
         assert_eq!(
             parse_command("s"),
-            Some(Command::Move { direction: Cardinal::South })
+            Some(Command::Move {
+                direction: Cardinal::South
+            })
         );
         assert_eq!(
             parse_command("south"),
-            Some(Command::Move { direction: Cardinal::South })
+            Some(Command::Move {
+                direction: Cardinal::South
+            })
         );
     }
 
@@ -126,11 +138,15 @@ mod tests {
     fn test_west() {
         assert_eq!(
             parse_command("w"),
-            Some(Command::Move { direction: Cardinal::West })
+            Some(Command::Move {
+                direction: Cardinal::West
+            })
         );
         assert_eq!(
             parse_command("west"),
-            Some(Command::Move { direction: Cardinal::West })
+            Some(Command::Move {
+                direction: Cardinal::West
+            })
         );
     }
 
@@ -138,11 +154,15 @@ mod tests {
     fn test_up() {
         assert_eq!(
             parse_command("u"),
-            Some(Command::Move { direction: Cardinal::Up })
+            Some(Command::Move {
+                direction: Cardinal::Up
+            })
         );
         assert_eq!(
             parse_command("up"),
-            Some(Command::Move { direction: Cardinal::Up })
+            Some(Command::Move {
+                direction: Cardinal::Up
+            })
         );
     }
 
@@ -150,11 +170,15 @@ mod tests {
     fn test_down() {
         assert_eq!(
             parse_command("d"),
-            Some(Command::Move { direction: Cardinal::Down })
+            Some(Command::Move {
+                direction: Cardinal::Down
+            })
         );
         assert_eq!(
             parse_command("down"),
-            Some(Command::Move { direction: Cardinal::Down })
+            Some(Command::Move {
+                direction: Cardinal::Down
+            })
         );
     }
 
@@ -288,11 +312,15 @@ mod tests {
         // Single-letter direction shortcuts always parse as Move, never as social.
         assert_eq!(
             parse_command("n hello"),
-            Some(Command::Move { direction: Cardinal::North })
+            Some(Command::Move {
+                direction: Cardinal::North
+            })
         );
         assert_eq!(
             parse_command("s"),
-            Some(Command::Move { direction: Cardinal::South })
+            Some(Command::Move {
+                direction: Cardinal::South
+            })
         );
     }
 }

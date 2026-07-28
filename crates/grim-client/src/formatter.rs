@@ -218,20 +218,14 @@ mod tests {
 
     #[test]
     fn move_arriving() {
-        assert_eq!(
-            format_move("Bob", "east", false),
-            "Bob arrives.\r\n"
-        );
+        assert_eq!(format_move("Bob", "east", false), "Bob arrives.\r\n");
     }
 
     // ── format_who_list ──────────────────────────────────────────────────────────
 
     #[test]
     fn who_empty() {
-        assert_eq!(
-            format_who_list(&[]),
-            "No other players online.\r\n"
-        );
+        assert_eq!(format_who_list(&[]), "No other players online.\r\n");
     }
 
     #[test]
@@ -248,10 +242,7 @@ mod tests {
 
     #[test]
     fn where_empty() {
-        assert_eq!(
-            format_where_list(&[]),
-            "No other players in this area.\r\n"
-        );
+        assert_eq!(format_where_list(&[]), "No other players in this area.\r\n");
     }
 
     #[test]
@@ -298,9 +289,6 @@ mod tests {
 
     #[test]
     fn linkdead_reconnected() {
-        assert_eq!(
-            format_linkdead("Bob", true),
-            "Bob has reconnected.\r\n"
-        );
+        assert_eq!(format_linkdead("Bob", true), "Bob has reconnected.\r\n");
     }
 }

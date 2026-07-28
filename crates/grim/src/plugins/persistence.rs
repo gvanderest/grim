@@ -141,7 +141,6 @@ fn save_on_disconnect(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,11 +149,11 @@ mod tests {
 
     fn test_app() -> App {
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins).add_plugins(PersistencePlugin);
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(PersistencePlugin);
         app.add_message::<LinkdeadAnnounce>();
         app
     }
-
 
     #[test]
     fn test_load_persisted_data_with_valid_account() {

@@ -168,18 +168,12 @@ mod tests {
 
     #[test]
     fn validate_identifier_empty() {
-        assert_eq!(
-            validate_identifier(""),
-            Err(ValidationError::Empty)
-        );
+        assert_eq!(validate_identifier(""), Err(ValidationError::Empty));
     }
 
     #[test]
     fn validate_identifier_whitespace() {
-        assert_eq!(
-            validate_identifier("   "),
-            Err(ValidationError::Empty)
-        );
+        assert_eq!(validate_identifier("   "), Err(ValidationError::Empty));
     }
 
     #[test]
@@ -194,18 +188,12 @@ mod tests {
 
     #[test]
     fn validate_character_name_valid() {
-        assert_eq!(
-            validate_character_name("Aragorn").unwrap(),
-            "Aragorn"
-        );
+        assert_eq!(validate_character_name("Aragorn").unwrap(), "Aragorn");
     }
 
     #[test]
     fn validate_character_name_min_length() {
-        assert_eq!(
-            validate_character_name("Ara").unwrap(),
-            "Ara"
-        );
+        assert_eq!(validate_character_name("Ara").unwrap(), "Ara");
     }
 
     #[test]
@@ -262,26 +250,17 @@ mod tests {
 
     #[test]
     fn validate_character_name_contains_space() {
-        assert_eq!(
-            validate_character_name("Aragorn II").unwrap(),
-            "Aragorn Ii"
-        );
+        assert_eq!(validate_character_name("Aragorn II").unwrap(), "Aragorn Ii");
     }
 
     #[test]
     fn validate_character_name_contains_hyphen() {
-        assert_eq!(
-            validate_character_name("Aragorn-II").unwrap(),
-            "Aragorn-ii"
-        );
+        assert_eq!(validate_character_name("Aragorn-II").unwrap(), "Aragorn-ii");
     }
 
     #[test]
     fn validate_character_name_contains_apostrophe() {
-        assert_eq!(
-            validate_character_name("O'Brian").unwrap(),
-            "O'brian"
-        );
+        assert_eq!(validate_character_name("O'Brian").unwrap(), "O'brian");
     }
 
     #[test]
@@ -294,10 +273,7 @@ mod tests {
 
     #[test]
     fn validate_character_name_title_casing_mixed() {
-        assert_eq!(
-            validate_character_name("aRAGORN").unwrap(),
-            "Aragorn"
-        );
+        assert_eq!(validate_character_name("aRAGORN").unwrap(), "Aragorn");
     }
 
     // ── normalize_filename ──
@@ -328,34 +304,22 @@ mod tests {
 
     #[test]
     fn normalize_filename_multiple_special_chars() {
-        assert_eq!(
-            normalize_filename("hello---world"),
-            "hello---world"
-        );
+        assert_eq!(normalize_filename("hello---world"), "hello---world");
     }
 
     #[test]
     fn normalize_filename_leading_separators_trimmed() {
-        assert_eq!(
-            normalize_filename("__hello world__"),
-            "hello_world"
-        );
+        assert_eq!(normalize_filename("__hello world__"), "hello_world");
     }
 
     #[test]
     fn normalize_filename_trailing_separators_trimmed() {
-        assert_eq!(
-            normalize_filename("hello_world__"),
-            "hello_world"
-        );
+        assert_eq!(normalize_filename("hello_world__"), "hello_world");
     }
 
     #[test]
     fn normalize_filename_leading_and_trailing_trimmed() {
-        assert_eq!(
-            normalize_filename("  ___hello world___  "),
-            "hello_world"
-        );
+        assert_eq!(normalize_filename("  ___hello world___  "), "hello_world");
     }
 
     // ── validate_password ──
@@ -380,10 +344,7 @@ mod tests {
 
     #[test]
     fn validate_password_empty() {
-        assert_eq!(
-            validate_password(""),
-            Err(ValidationError::Empty)
-        );
+        assert_eq!(validate_password(""), Err(ValidationError::Empty));
     }
 
     // ── hash_password ──
@@ -425,11 +386,26 @@ mod tests {
     #[test]
     fn test_validation_error_display_variants() {
         assert_eq!(ValidationError::Empty.to_string(), "cannot be empty");
-        assert_eq!(ValidationError::TooShort(3).to_string(), "must be at least 3 characters");
-        assert_eq!(ValidationError::TooLong(20).to_string(), "must be at most 20 characters");
-        assert_eq!(ValidationError::InvalidCharacters.to_string(), "contains invalid characters");
-        assert_eq!(ValidationError::InvalidEmail.to_string(), "is not a valid email address");
-        assert_eq!(ValidationError::InvalidFormat.to_string(), "has an invalid format");
+        assert_eq!(
+            ValidationError::TooShort(3).to_string(),
+            "must be at least 3 characters"
+        );
+        assert_eq!(
+            ValidationError::TooLong(20).to_string(),
+            "must be at most 20 characters"
+        );
+        assert_eq!(
+            ValidationError::InvalidCharacters.to_string(),
+            "contains invalid characters"
+        );
+        assert_eq!(
+            ValidationError::InvalidEmail.to_string(),
+            "is not a valid email address"
+        );
+        assert_eq!(
+            ValidationError::InvalidFormat.to_string(),
+            "has an invalid format"
+        );
     }
 
     // ── validate_email: empty domain part ──
@@ -450,14 +426,8 @@ mod tests {
 
     #[test]
     fn test_validate_character_name_empty() {
-        assert_eq!(
-            validate_character_name(""),
-            Err(ValidationError::Empty)
-        );
-        assert_eq!(
-            validate_character_name("   "),
-            Err(ValidationError::Empty)
-        );
+        assert_eq!(validate_character_name(""), Err(ValidationError::Empty));
+        assert_eq!(validate_character_name("   "), Err(ValidationError::Empty));
     }
 
     // ── title_case: empty / whitespace-only input ──
