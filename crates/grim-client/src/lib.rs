@@ -22,7 +22,6 @@ use std::collections::VecDeque;
 use std::time::Duration;
 use uuid::Uuid;
 
-mod color;
 mod formatter;
 mod parser;
 pub struct ClientPlugin;
@@ -62,7 +61,7 @@ fn handle_connection_established(
 ) {
     for ev in established.read() {
         commands.spawn(Client::new(ev.connection));
-        let banner = color::ansi(include_str!("../../../assets/login-banner.txt"));
+        let banner = grim::color::ansi(include_str!("../../../assets/login-banner.txt"));
         let text = format!("{}\r\n\r\n{}", banner, t!("login.prompt"));
         outputs.write(ClientOutput {
             echo: None,
@@ -766,14 +765,14 @@ fn format_output(
     // ── Login / Logout announces ──
     for ev in announce_login.read() {
         broadcast_global(
-            &color::ansi(&format!("{} has connected.\r\n", ev.name)),
+            &format!("{} has connected.\r\n", ev.name),
             &room_occupants,
             &mut outputs,
         );
     }
     for ev in announce_logout.read() {
         broadcast_global(
-            &color::ansi(&format!("{} has disconnected.\r\n", ev.name)),
+            &format!("{} has disconnected.\r\n", ev.name),
             &room_occupants,
             &mut outputs,
         );
@@ -925,7 +924,7 @@ fn format_output(
         let conn = find_conn(ev.target);
         outputs.write(ClientOutput {
             prepend_newline: true,
-            ..ClientOutput::new(conn, color::ansi(&ev.text))
+            ..ClientOutput::new(conn, ev.text.clone())
         });
     }
 }

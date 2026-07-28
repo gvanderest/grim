@@ -1,5 +1,3 @@
-use crate::color;
-
 /// Format a room's full description.
 pub fn format_room(name: &str, desc: &str, exits: &[String], occupants: &[String]) -> String {
     let mut out = format!("{}\r\n{}", name, desc);
@@ -10,61 +8,61 @@ pub fn format_room(name: &str, desc: &str, exits: &[String], occupants: &[String
         out.push_str(&format!("\r\nAlso here: {}", occupants.join(", ")));
     }
     out.push_str("\r\n");
-    color::ansi(&out)
+    out
 }
 
 /// Format a look at a specific entity.
 pub fn format_entity(name: &str, desc: &str) -> String {
-    color::ansi(&format!("{}\r\n{}\r\n", name, desc))
+    format!("{}\r\n{}\r\n", name, desc)
 }
 
 /// Format a say message broadcast to a room.
 pub fn format_say(speaker: &str, text: &str) -> String {
-    color::ansi(&format!("{} says, '{}'\r\n", speaker, text))
+    format!("{} says, '{}'\r\n", speaker, text)
 }
 
 /// Format a yell message broadcast to an area.
 pub fn format_yell(speaker: &str, text: &str) -> String {
-    color::ansi(&format!("{} yells, '{}'\r\n", speaker, text))
+    format!("{} yells, '{}'\r\n", speaker, text)
 }
 
 /// Format an OOC message broadcast globally.
 pub fn format_ooc(speaker: &str, text: &str) -> String {
-    color::ansi(&format!("[OOC] {}: {}\r\n", speaker, text))
+    format!("[OOC] {}: {}\r\n", speaker, text)
 }
 
 /// Format a movement broadcast.
 pub fn format_move(actor: &str, direction: &str, leaving: bool) -> String {
     if leaving {
-        color::ansi(&format!("{} leaves {}.\r\n", actor, direction))
+        format!("{} leaves {}.\r\n", actor, direction)
     } else {
-        color::ansi(&format!("{} arrives.\r\n", actor))
+        format!("{} arrives.\r\n", actor)
     }
 }
 
 /// Format the who list.
 pub fn format_who_list(players: &[String]) -> String {
     if players.is_empty() {
-        color::ansi("No other players online.\r\n")
+        "No other players online.\r\n".into()
     } else {
         let mut out = format!("Players online ({}):\r\n", players.len());
         for name in players {
             out.push_str(&format!("  {}\r\n", name));
         }
-        color::ansi(&out)
+        out
     }
 }
 
 /// Format the where list (same-area players with room names).
 pub fn format_where_list(entries: &[(String, String)]) -> String {
     if entries.is_empty() {
-        color::ansi("No other players in this area.\r\n")
+        "No other players in this area.\r\n".into()
     } else {
         let mut out = "Players in your area:\r\n".to_string();
         for (name, room) in entries {
             out.push_str(&format!("  {} in [{}]\r\n", name, room));
         }
-        color::ansi(&out)
+        out
     }
 }
 
@@ -92,20 +90,20 @@ pub fn format_commands() -> String {
     for cmd in &cmds {
         out.push_str(&format!("  {}\r\n", cmd));
     }
-    color::ansi(&out)
+    out
 }
 
 /// Format the MOTD.
 pub fn format_motd() -> String {
-    color::ansi(include_str!("../../../assets/motd.txt"))
+    include_str!("../../../assets/motd.txt").to_string()
 }
 
 /// Format a linkdead announce.
 pub fn format_linkdead(name: &str, reconnecting: bool) -> String {
     if reconnecting {
-        color::ansi(&format!("{} has reconnected.\r\n", name))
+        format!("{} has reconnected.\r\n", name)
     } else {
-        color::ansi(&format!("{} has gone linkdead.\r\n", name))
+        format!("{} has gone linkdead.\r\n", name)
     }
 }
 
@@ -113,7 +111,7 @@ pub fn format_linkdead(name: &str, reconnecting: bool) -> String {
 mod tests {
     use super::*;
 
-    // ── format_room ──────────────────────────────────────────────────────────────
+    // ── format_room ──────────────────────────────────────────────
 
     #[test]
     fn room_with_exits_and_occupants() {
@@ -148,7 +146,7 @@ mod tests {
         assert_eq!(got, "Empty\r\nNothing.\r\n");
     }
 
-    // ── format_entity ────────────────────────────────────────────────────────────
+    // ── format_entity ────────────────────────────────────────────
 
     #[test]
     fn entity_basic() {
@@ -163,7 +161,7 @@ mod tests {
         assert_eq!(format_entity("Nothing", ""), "Nothing\r\n\r\n");
     }
 
-    // ── format_say ───────────────────────────────────────────────────────────────
+    // ── format_say ───────────────────────────────────────────────
 
     #[test]
     fn say_basic() {
@@ -178,7 +176,7 @@ mod tests {
         assert_eq!(format_say("Bob", ""), "Bob says, ''\r\n");
     }
 
-    // ── format_yell ──────────────────────────────────────────────────────────────
+    // ── format_yell ──────────────────────────────────────────────
 
     #[test]
     fn yell_basic() {
@@ -193,7 +191,7 @@ mod tests {
         assert_eq!(format_yell("Echo", ""), "Echo yells, ''\r\n");
     }
 
-    // ── format_ooc ───────────────────────────────────────────────────────────────
+    // ── format_ooc ───────────────────────────────────────────────
 
     #[test]
     fn ooc_basic() {
@@ -208,7 +206,7 @@ mod tests {
         assert_eq!(format_ooc("Bob", ""), "[OOC] Bob: \r\n");
     }
 
-    // ── format_move ──────────────────────────────────────────────────────────────
+    // ── format_move ──────────────────────────────────────────────
 
     #[test]
     fn move_leaving() {
@@ -223,7 +221,7 @@ mod tests {
         assert_eq!(format_move("Bob", "east", false), "Bob arrives.\r\n");
     }
 
-    // ── format_who_list ──────────────────────────────────────────────────────────
+    // ── format_who_list ──────────────────────────────────────────
 
     #[test]
     fn who_empty() {
@@ -240,7 +238,7 @@ mod tests {
         assert!(got.contains("  Charlie\r\n"));
     }
 
-    // ── format_where_list ────────────────────────────────────────────────────────
+    // ── format_where_list ────────────────────────────────────────
 
     #[test]
     fn where_empty() {
@@ -259,7 +257,7 @@ mod tests {
         assert!(got.contains("  Bob in [Garden]\r\n"));
     }
 
-    // ── format_commands ──────────────────────────────────────────────────────────
+    // ── format_commands ──────────────────────────────────────────
 
     #[test]
     fn commands_contains_known_entries() {
@@ -271,7 +269,7 @@ mod tests {
         assert!(got.ends_with("\r\n"));
     }
 
-    // ── format_motd ──────────────────────────────────────────────────────────────
+    // ── format_motd ──────────────────────────────────────────────
 
     #[test]
     fn motd_non_empty() {
@@ -279,7 +277,7 @@ mod tests {
         assert!(!got.is_empty());
     }
 
-    // ── format_linkdead ──────────────────────────────────────────────────────────
+    // ── format_linkdead ──────────────────────────────────────────
 
     #[test]
     fn linkdead_gone() {
