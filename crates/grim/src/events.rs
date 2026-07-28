@@ -31,7 +31,7 @@ pub struct ConnectionClosed {
 pub struct ClientOutput {
     pub connection: Entity,
     pub text: String,
-    /// If true, a `\r\n` is prepended before sending (used for unsolicited
+    /// If true, a `\n` is prepended before sending (used for unsolicited
     /// game events to avoid appearing on the same line as the user's prompt).
     /// Reset automatically after the buffer is sent.
     pub prepend_newline: bool,

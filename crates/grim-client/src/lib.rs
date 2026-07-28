@@ -1,6 +1,6 @@
 #[macro_use]
 extern crate rust_i18n;
-rust_i18n::i18n!("locales");
+rust_i18n::i18n!("../../locales");
 use bevy::ecs::schedule::IntoScheduleConfigs;
 
 use bevy::log::info;
@@ -62,7 +62,7 @@ fn handle_connection_established(
     for ev in established.read() {
         commands.spawn(Client::new(ev.connection));
         let banner = grim::color::ansi(include_str!("../../../assets/login-banner.txt"));
-        let text = format!("{}\r\n\r\n{}", banner, t!("login.prompt"));
+        let text = format!("{}\n\n{}", banner, t!("login.prompt"));
         outputs.write(ClientOutput {
             echo: None,
             ..ClientOutput::new(ev.connection, text)
@@ -162,7 +162,7 @@ fn handle_client_input(
                     }
                     Err(e) => {
                         outputs.write(ClientOutput { echo: None, ..ClientOutput::new(conn, format!(
-                                "Invalid identifier: {}\r\nEnter your character name or email address: ",
+                                "Invalid identifier: {}\nEnter your character name or email address: ",
                                 e
                             )) });
                     }
@@ -243,7 +243,7 @@ fn handle_client_input(
                                 echo: None,
                                 ..ClientOutput::new(
                                     conn,
-                                    format!("Invalid password: {}\r\nChoose a password: ", e),
+                                    format!("Invalid password: {}\nChoose a password: ", e),
                                 )
                             });
                         }
@@ -277,7 +277,7 @@ fn handle_client_input(
                                         };
                                         outputs.write(ClientOutput {
                                             echo: None,
-                                            ..ClientOutput::new(conn, "Reconnecting...\r\n")
+                                            ..ClientOutput::new(conn, "Reconnecting...\n")
                                         });
                                         // Replay buffered output from before disconnect
                                         if let Ok(mut history) = histories.get_mut(char_entity) {
@@ -332,7 +332,7 @@ fn handle_client_input(
                             } else {
                                 outputs.write(ClientOutput {
                                     echo: None,
-                                    ..ClientOutput::new(conn, "Invalid password.\r\nPassword: ")
+                                    ..ClientOutput::new(conn, "Invalid password.\nPassword: ")
                                 });
                             }
                         }
@@ -342,7 +342,7 @@ fn handle_client_input(
                                 echo: Some(true),
                                 ..ClientOutput::new(
                                     conn,
-                                    "Account not found.\r\nEnter your email address: ",
+                                    "Account not found.\nEnter your email address: ",
                                 )
                             });
                         }
@@ -423,7 +423,7 @@ fn handle_client_input(
                     };
                     outputs.write(ClientOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, "Reconnecting...\r\n")
+                        ..ClientOutput::new(conn, "Reconnecting...\n")
                     });
                     // Replay buffered output from before disconnect
                     if let Ok(mut history) = histories.get_mut(char_entity) {
@@ -517,7 +517,7 @@ fn handle_client_input(
                             echo: None,
                             ..ClientOutput::new(
                                 conn,
-                                format!("Invalid name: {}\r\nEnter a name for your character: ", e),
+                                format!("Invalid name: {}\nEnter a name for your character: ", e),
                             )
                         });
                     }
@@ -624,10 +624,7 @@ fn handle_client_input(
                 } else {
                     outputs.write(ClientOutput {
                         echo: None,
-                        ..ClientOutput::new(
-                            conn,
-                            "Unknown command. Type 'commands' for a list.\r\n",
-                        )
+                        ..ClientOutput::new(conn, "Unknown command. Type 'commands' for a list.\n")
                     });
                 }
             }
@@ -651,10 +648,10 @@ fn show_character_menu(
     // Account entity may not exist yet if just created via commands.spawn
     // (deferred execution). Handle gracefully by showing empty menu.
     let welcome = match accounts.get(account_entity) {
-        Ok((_, account)) => format!("Welcome back, {}!\r\n", account.identifier),
-        Err(_) => "Welcome!\r\n".into(),
+        Ok((_, account)) => format!("Welcome back, {}!\n", account.identifier),
+        Err(_) => "Welcome!\n".into(),
     };
-    let mut menu = format!("{}\r\n[ Characters ]\r\n", welcome);
+    let mut menu = format!("{}\n[ Characters ]\n", welcome);
     let mut idx = 1;
     for (char_entity, ch, name) in characters.iter() {
         if let Ok((_, account)) = accounts.get(account_entity) {
@@ -668,15 +665,15 @@ fn show_character_menu(
             ""
         };
         menu.push_str(&format!(
-            "{}. {} - 1 Human Adventurer{}\r\n",
+            "{}. {} - 1 Human Adventurer{}\n",
             idx, name.0, ld_suffix
         ));
         idx += 1;
     }
     if idx == 1 {
-        menu.push_str("You have no characters created yet.\r\n");
+        menu.push_str("You have no characters created yet.\n");
     }
-    menu.push_str("\r\nc: Create a new character\r\n\r\nWhat would you like to do? ");
+    menu.push_str("\nc: Create a new character\n\nWhat would you like to do? ");
     outputs.write(ClientOutput::new(conn, menu));
 }
 
@@ -765,14 +762,14 @@ fn format_output(
     // ── Login / Logout announces ──
     for ev in announce_login.read() {
         broadcast_global(
-            &format!("{} has connected.\r\n", ev.name),
+            &format!("{} has connected.\n", ev.name),
             &room_occupants,
             &mut outputs,
         );
     }
     for ev in announce_logout.read() {
         broadcast_global(
-            &format!("{} has disconnected.\r\n", ev.name),
+            &format!("{} has disconnected.\n", ev.name),
             &room_occupants,
             &mut outputs,
         );
@@ -1603,7 +1600,7 @@ mod tests {
         });
         app.world_mut().write_message(InfoMessage {
             target: actor,
-            text: "You say, 'hello'\r\n".into(),
+            text: "You say, 'hello'\n".into(),
         });
         app.update();
 

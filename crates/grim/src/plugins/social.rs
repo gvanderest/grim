@@ -39,7 +39,7 @@ fn handle_say(
         });
         info.write(InfoMessage {
             target: actor,
-            text: format!("You say, '{}'\r\n", text),
+            text: format!("{{M{}{{x'{{m{}{{x'\n", t!("social.say.first_party"), text),
         });
     }
 }
@@ -69,7 +69,7 @@ fn handle_yell(
         });
         info.write(InfoMessage {
             target: actor,
-            text: format!("You yell, '{}'\r\n", text),
+            text: format!("You yell, '{}'\n", text),
         });
     }
 }
@@ -89,7 +89,7 @@ fn handle_ooc(
         });
         info.write(InfoMessage {
             target: cmd.client,
-            text: format!("[OOC] You: {}\r\n", text),
+            text: format!("[OOC] You: {}\n", text),
         });
     }
 }
@@ -135,7 +135,7 @@ mod tests {
             let mut iter = cursor.read(messages);
             let ev = iter.next().expect("expected one InfoMessage");
             assert_eq!(ev.target, actor);
-            assert_eq!(ev.text, "You say, 'hi'\r\n");
+            assert_eq!(ev.text, "{MYou say {x'{mhi{x'\n");
             assert!(iter.next().is_none(), "expected exactly one InfoMessage");
         }
     }
@@ -181,7 +181,7 @@ mod tests {
             let mut iter = cursor.read(messages);
             let ev = iter.next().expect("expected one InfoMessage");
             assert_eq!(ev.target, actor);
-            assert_eq!(ev.text, "You yell, 'help!'\r\n");
+            assert_eq!(ev.text, "You yell, 'help!'\n");
             assert!(iter.next().is_none(), "expected exactly one InfoMessage");
         }
     }
@@ -212,7 +212,7 @@ mod tests {
             let mut iter = cursor.read(messages);
             let ev = iter.next().expect("expected one InfoMessage");
             assert_eq!(ev.target, actor);
-            assert_eq!(ev.text, "[OOC] You: hello everyone\r\n");
+            assert_eq!(ev.text, "[OOC] You: hello everyone\n");
             assert!(iter.next().is_none(), "expected exactly one InfoMessage");
         }
     }
