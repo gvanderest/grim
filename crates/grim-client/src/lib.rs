@@ -1,3 +1,8 @@
+#[macro_use]
+extern crate rust_i18n;
+
+rust_i18n::i18n!("locales");
+
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::log::info;
 use bevy::prelude::*;
@@ -64,8 +69,9 @@ fn handle_connection_established(
             ..ClientOutput::new(
                 ev.connection,
                 format!(
-                    "{}\r\n\r\nEnter your character name or email address: ",
-                    include_str!("../../../assets/login-banner.txt")
+                    "{}\r\n\r\n{}",
+                    include_str!("../../../assets/login-banner.txt"),
+                    t!("login.prompt")
                 ),
             )
         });
@@ -107,7 +113,7 @@ fn handle_client_input(
                 if text.trim().is_empty() {
                     outputs.write(ClientOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, "Enter your character name or email address: ")
+                        ..ClientOutput::new(conn, t!("login.prompt"))
                     });
                     continue;
                 }
@@ -189,7 +195,7 @@ fn handle_client_input(
                     client.state = ClientState::LoginPrompt;
                     outputs.write(ClientOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, "Enter your character name or email address: ")
+                        ..ClientOutput::new(conn, t!("login.prompt"))
                     });
                 }
             }
@@ -204,10 +210,7 @@ fn handle_client_input(
                     client.state = ClientState::LoginPrompt;
                     outputs.write(ClientOutput {
                         echo: Some(true),
-                        ..ClientOutput::new(
-                            conn,
-                            "Invalid password.\r\nEnter your character name or email address: ",
-                        )
+                        ..ClientOutput::new(conn, t!("login.wrong_password"))
                     });
                     continue;
                 }
