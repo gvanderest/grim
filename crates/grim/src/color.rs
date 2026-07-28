@@ -260,9 +260,11 @@ fn locale_data() -> &'static Value {
 }
 
 /// Convert `{X` 16-color markup codes to `@xRGB` equivalents, using
-/// the GitHub Dark terminal palette.
+/// our 75%-of-bright palette for dark colors and full RGB for bright.
 /// `{x` (reset) maps to `@r`. Unknown `{X` patterns pass through literally.
-fn convert_16color(s: &str) -> String {
+/// This is applied to ALL output before `ansi()` to ensure color codes
+/// use our palette rather than the terminal theme.
+pub fn convert_16color(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut cs = s.chars().peekable();
     while let Some(ch) = cs.next() {
