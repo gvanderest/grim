@@ -1,3 +1,5 @@
+use crate::color;
+
 /// Format a room's full description.
 pub fn format_room(name: &str, desc: &str, exits: &[String], occupants: &[String]) -> String {
     let mut out = format!("{}\r\n{}", name, desc);
@@ -8,61 +10,61 @@ pub fn format_room(name: &str, desc: &str, exits: &[String], occupants: &[String
         out.push_str(&format!("\r\nAlso here: {}", occupants.join(", ")));
     }
     out.push_str("\r\n");
-    out
+    color::ansi(&out)
 }
 
 /// Format a look at a specific entity.
 pub fn format_entity(name: &str, desc: &str) -> String {
-    format!("{}\r\n{}\r\n", name, desc)
+    color::ansi(&format!("{}\r\n{}\r\n", name, desc))
 }
 
 /// Format a say message broadcast to a room.
 pub fn format_say(speaker: &str, text: &str) -> String {
-    format!("{} says, '{}'\r\n", speaker, text)
+    color::ansi(&format!("{} says, '{}'\r\n", speaker, text))
 }
 
 /// Format a yell message broadcast to an area.
 pub fn format_yell(speaker: &str, text: &str) -> String {
-    format!("{} yells, '{}'\r\n", speaker, text)
+    color::ansi(&format!("{} yells, '{}'\r\n", speaker, text))
 }
 
 /// Format an OOC message broadcast globally.
 pub fn format_ooc(speaker: &str, text: &str) -> String {
-    format!("[OOC] {}: {}\r\n", speaker, text)
+    color::ansi(&format!("[OOC] {}: {}\r\n", speaker, text))
 }
 
 /// Format a movement broadcast.
 pub fn format_move(actor: &str, direction: &str, leaving: bool) -> String {
     if leaving {
-        format!("{} leaves {}.\r\n", actor, direction)
+        color::ansi(&format!("{} leaves {}.\r\n", actor, direction))
     } else {
-        format!("{} arrives.\r\n", actor)
+        color::ansi(&format!("{} arrives.\r\n", actor))
     }
 }
 
 /// Format the who list.
 pub fn format_who_list(players: &[String]) -> String {
     if players.is_empty() {
-        "No other players online.\r\n".into()
+        color::ansi("No other players online.\r\n")
     } else {
         let mut out = format!("Players online ({}):\r\n", players.len());
         for name in players {
             out.push_str(&format!("  {}\r\n", name));
         }
-        out
+        color::ansi(&out)
     }
 }
 
 /// Format the where list (same-area players with room names).
 pub fn format_where_list(entries: &[(String, String)]) -> String {
     if entries.is_empty() {
-        "No other players in this area.\r\n".into()
+        color::ansi("No other players in this area.\r\n")
     } else {
         let mut out = "Players in your area:\r\n".to_string();
         for (name, room) in entries {
             out.push_str(&format!("  {} in [{}]\r\n", name, room));
         }
-        out
+        color::ansi(&out)
     }
 }
 
@@ -90,20 +92,20 @@ pub fn format_commands() -> String {
     for cmd in &cmds {
         out.push_str(&format!("  {}\r\n", cmd));
     }
-    out
+    color::ansi(&out)
 }
 
 /// Format the MOTD.
 pub fn format_motd() -> String {
-    include_str!("../../../assets/motd.txt").to_string()
+    color::ansi(include_str!("../../../assets/motd.txt"))
 }
 
 /// Format a linkdead announce.
 pub fn format_linkdead(name: &str, reconnecting: bool) -> String {
     if reconnecting {
-        format!("{} has reconnected.\r\n", name)
+        color::ansi(&format!("{} has reconnected.\r\n", name))
     } else {
-        format!("{} has gone linkdead.\r\n", name)
+        color::ansi(&format!("{} has gone linkdead.\r\n", name))
     }
 }
 
