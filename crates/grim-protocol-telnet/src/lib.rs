@@ -293,7 +293,8 @@ fn send_network_commands(
             } else {
                 text
             };
-            let colored = ansi(&send_text);
+            let palette = grim::color::convert_16color(&send_text);
+            let colored = ansi(&palette);
             let ready = colored.replace('\n', "\r\n");
             let _ = bridge.to_network.try_send(NetworkCommand::Send {
                 conn_id: conn.id,
