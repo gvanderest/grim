@@ -51,16 +51,19 @@ pub fn ansi(input: &str) -> String {
                 Some('{') => out.push('{'),
                 Some('x' | 'X' | '9') => push_reset(&mut out),
                 Some(c @ '1'..='8') => push_ansi(&mut out, ansi_16_num(c)),
-                Some(c @ 'k' | c @ 'r' | c @ 'g' | c @ 'y' | c @ 'b' | c @ 'm' | c @ 'c' | c @ 'w') => {
-                    push_ansi(&mut out, ansi_16_dark(c))
-                }
-                Some(c @ 'K' | c @ 'R' | c @ 'G' | c @ 'Y' | c @ 'B' | c @ 'M' | c @ 'C' | c @ 'W') => {
-                    push_ansi(&mut out, ansi_16_bright(c))
-                }
+                Some(
+                    c @ 'k' | c @ 'r' | c @ 'g' | c @ 'y' | c @ 'b' | c @ 'm' | c @ 'c' | c @ 'w',
+                ) => push_ansi(&mut out, ansi_16_dark(c)),
+                Some(
+                    c @ 'K' | c @ 'R' | c @ 'G' | c @ 'Y' | c @ 'B' | c @ 'M' | c @ 'C' | c @ 'W',
+                ) => push_ansi(&mut out, ansi_16_bright(c)),
                 Some(c @ '!' | c @ '@' | c @ '#' | c @ '%' | c @ '^' | c @ '&' | c @ '*') => {
                     push_ansi(&mut out, ansi_16_symbol(c))
                 }
-                Some(other) => { out.push('{'); out.push(other); }
+                Some(other) => {
+                    out.push('{');
+                    out.push(other);
+                }
                 None => out.push('{'),
             },
             '@' => match cs.next() {
@@ -71,18 +74,27 @@ pub fn ansi(input: &str) -> String {
                     let mut n = 0;
                     for slot in &mut buf {
                         match cs.peek() {
-                            Some(c) if c.is_ascii_hexdigit() => { *slot = *c; cs.next(); n += 1; }
+                            Some(c) if c.is_ascii_hexdigit() => {
+                                *slot = *c;
+                                cs.next();
+                                n += 1;
+                            }
                             _ => break,
                         }
                     }
                     if n == 3 {
-                        push_24bit_fg(&mut out,
+                        push_24bit_fg(
+                            &mut out,
                             buf[0].to_digit(16).unwrap() as u8 * 17,
                             buf[1].to_digit(16).unwrap() as u8 * 17,
-                            buf[2].to_digit(16).unwrap() as u8 * 17);
+                            buf[2].to_digit(16).unwrap() as u8 * 17,
+                        );
                     } else {
-                        out.push('@'); out.push('x');
-                        for i in 0..n { out.push(buf[i]); }
+                        out.push('@');
+                        out.push('x');
+                        for &d in buf.iter().take(n) {
+                            out.push(d);
+                        }
                     }
                 }
                 Some('b' | 'B') => {
@@ -90,21 +102,33 @@ pub fn ansi(input: &str) -> String {
                     let mut n = 0;
                     for slot in &mut buf {
                         match cs.peek() {
-                            Some(c) if c.is_ascii_hexdigit() => { *slot = *c; cs.next(); n += 1; }
+                            Some(c) if c.is_ascii_hexdigit() => {
+                                *slot = *c;
+                                cs.next();
+                                n += 1;
+                            }
                             _ => break,
                         }
                     }
                     if n == 3 {
-                        push_24bit_bg(&mut out,
+                        push_24bit_bg(
+                            &mut out,
                             buf[0].to_digit(16).unwrap() as u8 * 17,
                             buf[1].to_digit(16).unwrap() as u8 * 17,
-                            buf[2].to_digit(16).unwrap() as u8 * 17);
+                            buf[2].to_digit(16).unwrap() as u8 * 17,
+                        );
                     } else {
-                        out.push('@'); out.push('b');
-                        for i in 0..n { out.push(buf[i]); }
+                        out.push('@');
+                        out.push('b');
+                        for &d in buf.iter().take(n) {
+                            out.push(d);
+                        }
                     }
                 }
-                Some(other) => { out.push('@'); out.push(other); }
+                Some(other) => {
+                    out.push('@');
+                    out.push(other);
+                }
                 None => out.push('@'),
             },
             _ => out.push(ch),
@@ -116,31 +140,52 @@ pub fn ansi(input: &str) -> String {
 
 fn ansi_16_dark(c: char) -> u8 {
     match c {
-        'k' => 30, 'r' => 31, 'g' => 32, 'y' => 33,
-        'b' => 34, 'm' => 35, 'c' => 36, 'w' => 37,
+        'k' => 30,
+        'r' => 31,
+        'g' => 32,
+        'y' => 33,
+        'b' => 34,
+        'm' => 35,
+        'c' => 36,
+        'w' => 37,
         _ => unreachable!(),
     }
 }
 
-fn ansi_16_bright(c: char) -> u8 { ansi_16_dark(c.to_ascii_lowercase()) + 60 }
+fn ansi_16_bright(c: char) -> u8 {
+    ansi_16_dark(c.to_ascii_lowercase()) + 60
+}
 
 fn ansi_16_num(c: char) -> u8 {
     match c {
-        '1' => 31, '2' => 32, '3' => 33, '4' => 34,
-        '5' => 35, '6' => 36, '7' => 37, '8' => 90,
+        '1' => 31,
+        '2' => 32,
+        '3' => 33,
+        '4' => 34,
+        '5' => 35,
+        '6' => 36,
+        '7' => 37,
+        '8' => 90,
         _ => unreachable!(),
     }
 }
 
 fn ansi_16_symbol(c: char) -> u8 {
     match c {
-        '!' => 91, '@' => 92, '#' => 93,
-        '%' => 95, '^' => 96, '&' => 97, '*' => 90,
+        '!' => 91,
+        '@' => 92,
+        '#' => 93,
+        '%' => 95,
+        '^' => 96,
+        '&' => 97,
+        '*' => 90,
         _ => unreachable!(),
     }
 }
 
-fn push_reset(out: &mut String) { out.push_str("\x1b[0m"); }
+fn push_reset(out: &mut String) {
+    out.push_str("\x1b[0m");
+}
 
 fn push_ansi(out: &mut String, code: u8) {
     let _ = write!(out, "\x1b[{code}m");
@@ -161,9 +206,17 @@ mod tests {
     // ── Passthrough ──
 
     #[test]
-    fn plain_text() { assert_eq!(ansi("hello world"), "hello world"); }
-    #[test] fn empty() { assert_eq!(ansi(""), ""); }
-    #[test] fn no_codes() { assert_eq!(ansi("just text\r\n"), "just text\r\n"); }
+    fn plain_text() {
+        assert_eq!(ansi("hello world"), "hello world");
+    }
+    #[test]
+    fn empty() {
+        assert_eq!(ansi(""), "");
+    }
+    #[test]
+    fn no_codes() {
+        assert_eq!(ansi("just text\r\n"), "just text\r\n");
+    }
 
     // ── 16-color terminal ──
 
@@ -176,40 +229,58 @@ mod tests {
 
     #[test]
     fn dark_colors() {
-        assert_eq!(ansi("{k"), "\x1b[30m"); assert_eq!(ansi("{r"), "\x1b[31m");
-        assert_eq!(ansi("{g"), "\x1b[32m"); assert_eq!(ansi("{y"), "\x1b[33m");
-        assert_eq!(ansi("{b"), "\x1b[34m"); assert_eq!(ansi("{m"), "\x1b[35m");
-        assert_eq!(ansi("{c"), "\x1b[36m"); assert_eq!(ansi("{w"), "\x1b[37m");
+        assert_eq!(ansi("{k"), "\x1b[30m");
+        assert_eq!(ansi("{r"), "\x1b[31m");
+        assert_eq!(ansi("{g"), "\x1b[32m");
+        assert_eq!(ansi("{y"), "\x1b[33m");
+        assert_eq!(ansi("{b"), "\x1b[34m");
+        assert_eq!(ansi("{m"), "\x1b[35m");
+        assert_eq!(ansi("{c"), "\x1b[36m");
+        assert_eq!(ansi("{w"), "\x1b[37m");
     }
 
     #[test]
     fn bright_colors() {
-        assert_eq!(ansi("{K"), "\x1b[90m"); assert_eq!(ansi("{R"), "\x1b[91m");
-        assert_eq!(ansi("{G"), "\x1b[92m"); assert_eq!(ansi("{Y"), "\x1b[93m");
-        assert_eq!(ansi("{B"), "\x1b[94m"); assert_eq!(ansi("{M"), "\x1b[95m");
-        assert_eq!(ansi("{C"), "\x1b[96m"); assert_eq!(ansi("{W"), "\x1b[97m");
+        assert_eq!(ansi("{K"), "\x1b[90m");
+        assert_eq!(ansi("{R"), "\x1b[91m");
+        assert_eq!(ansi("{G"), "\x1b[92m");
+        assert_eq!(ansi("{Y"), "\x1b[93m");
+        assert_eq!(ansi("{B"), "\x1b[94m");
+        assert_eq!(ansi("{M"), "\x1b[95m");
+        assert_eq!(ansi("{C"), "\x1b[96m");
+        assert_eq!(ansi("{W"), "\x1b[97m");
     }
 
     #[test]
     fn numeric_aliases() {
-        assert_eq!(ansi("{1"), "\x1b[31m"); assert_eq!(ansi("{2"), "\x1b[32m");
-        assert_eq!(ansi("{3"), "\x1b[33m"); assert_eq!(ansi("{4"), "\x1b[34m");
-        assert_eq!(ansi("{5"), "\x1b[35m"); assert_eq!(ansi("{6"), "\x1b[36m");
-        assert_eq!(ansi("{7"), "\x1b[37m"); assert_eq!(ansi("{8"), "\x1b[90m");
+        assert_eq!(ansi("{1"), "\x1b[31m");
+        assert_eq!(ansi("{2"), "\x1b[32m");
+        assert_eq!(ansi("{3"), "\x1b[33m");
+        assert_eq!(ansi("{4"), "\x1b[34m");
+        assert_eq!(ansi("{5"), "\x1b[35m");
+        assert_eq!(ansi("{6"), "\x1b[36m");
+        assert_eq!(ansi("{7"), "\x1b[37m");
+        assert_eq!(ansi("{8"), "\x1b[90m");
     }
 
     #[test]
     fn symbol_aliases() {
-        assert_eq!(ansi("{!"), "\x1b[91m"); assert_eq!(ansi("{@"), "\x1b[92m");
-        assert_eq!(ansi("{#"), "\x1b[93m"); assert_eq!(ansi("{%"), "\x1b[95m");
-        assert_eq!(ansi("{^"), "\x1b[96m"); assert_eq!(ansi("{&"), "\x1b[97m");
+        assert_eq!(ansi("{!"), "\x1b[91m");
+        assert_eq!(ansi("{@"), "\x1b[92m");
+        assert_eq!(ansi("{#"), "\x1b[93m");
+        assert_eq!(ansi("{%"), "\x1b[95m");
+        assert_eq!(ansi("{^"), "\x1b[96m");
+        assert_eq!(ansi("{&"), "\x1b[97m");
         assert_eq!(ansi("{*"), "\x1b[90m");
     }
 
     #[test]
     fn mixed_16color_text() {
         let got = ansi("Hello {RAlice{r, welcome to {cThe Tavern{x!");
-        assert_eq!(got, "Hello \x1b[91mAlice\x1b[31m, welcome to \x1b[36mThe Tavern\x1b[0m!");
+        assert_eq!(
+            got,
+            "Hello \x1b[91mAlice\x1b[31m, welcome to \x1b[36mThe Tavern\x1b[0m!"
+        );
     }
 
     #[test]
@@ -222,7 +293,9 @@ mod tests {
     // ── 24-bit hex color ──
 
     #[test]
-    fn hex_reset() { assert_eq!(ansi("@r"), "\x1b[0m"); }
+    fn hex_reset() {
+        assert_eq!(ansi("@r"), "\x1b[0m");
+    }
 
     #[test]
     fn hex_foreground() {
@@ -261,13 +334,24 @@ mod tests {
     }
 
     #[test]
-    fn hex_unknown_code() { assert_eq!(ansi("@q"), "@q"); }
-    #[test] fn hex_trailing_at() { assert_eq!(ansi("test@"), "test@"); }
+    fn hex_unknown_code() {
+        assert_eq!(ansi("@q"), "@q");
+    }
+    #[test]
+    fn hex_trailing_at() {
+        assert_eq!(ansi("test@"), "test@");
+    }
 
     // ── Escaping ──
 
-    #[test] fn escape_brace() { assert_eq!(ansi("{{"), "{"); }
-    #[test] fn escape_at() { assert_eq!(ansi("@@"), "@"); }
+    #[test]
+    fn escape_brace() {
+        assert_eq!(ansi("{{"), "{");
+    }
+    #[test]
+    fn escape_at() {
+        assert_eq!(ansi("@@"), "@");
+    }
     #[test]
     fn escaped_brace_no_color() {
         assert_eq!(ansi("{{c"), "{c");

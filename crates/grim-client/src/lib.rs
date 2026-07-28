@@ -766,14 +766,14 @@ fn format_output(
     // ── Login / Logout announces ──
     for ev in announce_login.read() {
         broadcast_global(
-            &format!("{} has connected.\r\n", ev.name),
+            &color::ansi(&format!("{} has connected.\r\n", ev.name)),
             &room_occupants,
             &mut outputs,
         );
     }
     for ev in announce_logout.read() {
         broadcast_global(
-            &format!("{} has disconnected.\r\n", ev.name),
+            &color::ansi(&format!("{} has disconnected.\r\n", ev.name)),
             &room_occupants,
             &mut outputs,
         );
@@ -925,7 +925,7 @@ fn format_output(
         let conn = find_conn(ev.target);
         outputs.write(ClientOutput {
             prepend_newline: true,
-            ..ClientOutput::new(conn, ev.text.clone())
+            ..ClientOutput::new(conn, color::ansi(&ev.text))
         });
     }
 }

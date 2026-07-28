@@ -194,10 +194,12 @@ All work follows a branch → PR → review → merge cycle.
    create a new branch from `main` first before any edits. Never modify unrelated work.
 1. **Branch** from `main` — descriptive name, no convention beyond readable.
 2. **Commit** incrementally — each commit is a coherent step.
-3. **Push**, open a **PR** against `main`.
-4. **CI** runs checks: build, lint, test.
-5. **Human review** — at least one set of eyes before merge.
-6. **Squash merge** into `main`.
+3. **Push** the branch.
+4. **Create a PR** — `gh pr create --fill --base main`. Pushing without opening a PR
+   is unfinished work. Always do both.
+5. **CI** runs checks: build, lint, test.
+6. **Human review** — at least one set of eyes before merge.
+7. **Squash merge** into `main`.
 
 Pushing directly to `main` is reserved for trivial one-offs (docs, README tweaks). Everything else — any code change — goes through a PR.
 ## Security Notes (current PoC)
