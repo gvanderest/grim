@@ -79,6 +79,7 @@ fn handle_client_input(
     characters: Query<(Entity, &Character, &GrimName)>,
     player_chars: Query<(Entity, &GrimName, &InRoom, Option<&Character>)>,
     players: Query<&Player>,
+    rooms: Query<(&Room, &GrimName)>,
     starting: Res<StartingRoom>,
     mut commands: Commands,
     mut outputs: MessageWriter<ClientOutput>,
@@ -563,7 +564,7 @@ fn handle_client_input(
                 }
             }
             ClientState::InGame => {
-                let Some(_char_entity) = client.character else {
+                let Some(char_entity) = client.character else {
                     continue;
                 };
                 // Handle "!" to repeat last command
@@ -584,8 +585,64 @@ fn handle_client_input(
                 if let Some(cmd) = parser::parse_command(text_to_parse) {
                     // Update last_input for future "!" repeats (store only non-"!" input)
                     client.last_input = Some(text_to_parse.to_string());
-                    // All commands go through the queue to enforce cooldown
-                    client.input_queue.push_back(cmd);
+                    // Handle special commands immediately
+                    match &cmd {
+                        Command::Who => {
+                            let mut entries: Vec<String> = player_chars
+                                .iter()
+                                .filter(|(_, _, _, c)| c.is_some())
+                                .map(|(e, n, _, _)| {
+                                    if linkdead.get(e).is_ok() {
+                                        format!("{} (Linkdead)", n.0)
+                                    } else {
+                                        n.0.clone()
+                                    }
+                                })
+                                .collect();
+                            entries.sort();
+                            outputs.write(ClientOutput {
+                                echo: None,
+                                ..ClientOutput::new(conn, formatter::format_who_list(&entries))
+                            });
+                        }
+                        Command::Where => {
+                            let actor_area =
+                                player_chars
+                                    .get(char_entity)
+                                    .ok()
+                                    .and_then(|(_, _, ir, _)| {
+                                        rooms.get(ir.room).ok().map(|(r, _)| r.area)
+                                    });
+                            let mut entries: Vec<(String, String)> = Vec::new();
+                            if let Some(area) = actor_area {
+                                for (e, n, ir, _) in player_chars.iter() {
+                                    if e == char_entity {
+                                        continue;
+                                    }
+                                    if let Ok((r, rn)) = rooms.get(ir.room) {
+                                        if r.area == area {
+                                            entries.push((n.0.clone(), rn.0.clone()));
+                                        }
+                                    }
+                                }
+                                entries.sort_by(|a, b| a.1.cmp(&b.1));
+                            }
+                            outputs.write(ClientOutput {
+                                echo: None,
+                                ..ClientOutput::new(conn, formatter::format_where_list(&entries))
+                            });
+                        }
+                        Command::Commands => {
+                            outputs.write(ClientOutput {
+                                echo: None,
+                                ..ClientOutput::new(conn, formatter::format_commands())
+                            });
+                        }
+                        _ => {
+                            // All other commands go through the queue to enforce cooldown
+                            client.input_queue.push_back(cmd);
+                        }
+                    }
                 } else if text.trim().is_empty() {
                     // Blank line — write a newline to trigger prompt on flush
                     outputs.write(ClientOutput {
