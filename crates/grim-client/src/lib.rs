@@ -1004,6 +1004,9 @@ mod tests {
     use uuid::Uuid;
 
     fn test_app() -> App {
+        // Clean up persisted data to avoid cross-test contamination
+        let _ = std::fs::remove_dir_all("data/accounts");
+        let _ = std::fs::remove_dir_all("data/characters");
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
         app.add_plugins(WorldPlugin);
@@ -1740,6 +1743,655 @@ mod tests {
                 .iter()
                 .any(|o| o.text.contains("Hero has reconnected")),
             "should announce reconnect"
+        );
+    }
+
+    // ── LoginPrompt: empty password → wrong_password path ──
+    #[test]
+    fn login_prompt_empty_password_goes_wrong_password() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+
+        let account = Account {
+            id: Uuid::new_v4(),
+            identifier: "test@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![],
+            created_at: Utc::now(),
+        };
+        app.world_mut().spawn(account);
+
+        // Step 1: Type email at login prompt → PasswordPrompt
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "test@example.com".into(),
+        });
+        app.update();
+
+        let mut query = app.world_mut().query::<(Entity, &Client)>();
+        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let (_client_entity, client) = found.unwrap();
+        assert_eq!(
+            client.state,
+            ClientState::PasswordPrompt {
+                identifier: "test@example.com".into(),
+                is_new: false,
+                character: None,
+            }
+        );
+
+        // Step 2: Empty password → should fall back to LoginPrompt with wrong_password msg
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "".into(),
+        });
+        app.update();
+
+        let mut query2 = app.world_mut().query::<(Entity, &Client)>();
+        let found2 = query2
+            .iter(&app.world())
+            .find(|(_, c)| c.connection == conn);
+        let (_client_entity2, client2) = found2.unwrap();
+        assert_eq!(
+            client2.state,
+            ClientState::LoginPrompt,
+            "Empty password should revert to LoginPrompt"
+        );
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.connection == conn && o.text.contains("Invalid password")),
+            "Should emit wrong_password output"
+        );
+    }
+
+    // ── PasswordPrompt: wrong password (non-empty) ──
+    #[test]
+    fn password_prompt_wrong_password() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+
+        let account = Account {
+            id: Uuid::new_v4(),
+            identifier: "test@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![],
+            created_at: Utc::now(),
+        };
+        app.world_mut().spawn(account);
+
+        // Step 1: Type email → PasswordPrompt
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "test@example.com".into(),
+        });
+        app.update();
+
+        // Step 2: Wrong password → stays in PasswordPrompt, shows error
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "wrongpassword".into(),
+        });
+        app.update();
+
+        let mut query = app.world_mut().query::<(Entity, &Client)>();
+        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let (_client_entity, client) = found.unwrap();
+        assert_eq!(
+            client.state,
+            ClientState::PasswordPrompt {
+                identifier: "test@example.com".into(),
+                is_new: false,
+                character: None,
+            },
+            "Should remain in PasswordPrompt after wrong password"
+        );
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.connection == conn && o.text.contains("Invalid password")),
+            "Should show invalid password message"
+        );
+    }
+
+    // ── PasswordPrompt with is_new=true → creates account ──
+    #[test]
+    fn password_prompt_is_new_creates_account() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+
+        // Step 1: Type new (unused) email → ConfirmCreate
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "newuser@example.com".into(),
+        });
+        app.update();
+
+        let mut query = app.world_mut().query::<(Entity, &Client)>();
+        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let (_client_entity, client) = found.unwrap();
+        assert_eq!(
+            client.state,
+            ClientState::ConfirmCreate {
+                identifier: "newuser@example.com".into(),
+            },
+            "New email should go to ConfirmCreate"
+        );
+
+        // Step 2: Confirm → PasswordPrompt with is_new=true
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "yes".into(),
+        });
+        app.update();
+
+        let mut query2 = app.world_mut().query::<(Entity, &Client)>();
+        let found2 = query2
+            .iter(&app.world())
+            .find(|(_, c)| c.connection == conn);
+        let (_client_entity2, client2) = found2.unwrap();
+        assert_eq!(
+            client2.state,
+            ClientState::PasswordPrompt {
+                identifier: "newuser@example.com".into(),
+                is_new: true,
+                character: None,
+            },
+            "Confirmation should lead to PasswordPrompt with is_new=true"
+        );
+
+        // Step 3: Valid password → creates account, moves to CharacterSelect
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "securepass1".into(),
+        });
+        app.update();
+
+        let mut query3 = app.world_mut().query::<(Entity, &Client)>();
+        let found3 = query3
+            .iter(&app.world())
+            .find(|(_, c)| c.connection == conn);
+        let (_client_entity3, client3) = found3.unwrap();
+        assert_eq!(
+            client3.state,
+            ClientState::CharacterSelect,
+            "Successful account creation should lead to CharacterSelect"
+        );
+    }
+
+    // ── ConfirmCreate with non-yes → LoginPrompt ──
+    #[test]
+    fn confirm_create_no_goes_login_prompt() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+
+        // Step 1: Type new email → ConfirmCreate
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "newuser@example.com".into(),
+        });
+        app.update();
+
+        // Step 2: "no" → back to LoginPrompt
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "no".into(),
+        });
+        app.update();
+
+        let mut query = app.world_mut().query::<(Entity, &Client)>();
+        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let (_client_entity, client) = found.unwrap();
+        assert_eq!(
+            client.state,
+            ClientState::LoginPrompt,
+            "Refusing account creation should go back to LoginPrompt"
+        );
+    }
+
+    // ── CharacterSelect: select third character ──
+    #[test]
+    fn character_select_third_character() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+
+        let account_id = Uuid::new_v4();
+        let char_ids = vec![Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+        let account = Account {
+            id: account_id,
+            identifier: "test@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: char_ids.clone(),
+            created_at: Utc::now(),
+        };
+        let _account_entity = app.world_mut().spawn(account).id();
+
+        // Spawn 3 characters (sorted C1, C2, C3 alphabetically by name)
+        for (i, cid) in char_ids.iter().enumerate() {
+            app.world_mut().spawn((
+                Character {
+                    id: *cid,
+                    name: format!("C{}", i + 1),
+                    account_id,
+                    created_at: Utc::now(),
+                    last_room: None,
+                },
+                GrimName(format!("C{}", i + 1)),
+                Description(format!("Character {}.", i + 1)),
+                InRoom { room },
+            ));
+        }
+
+        // Login
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "test@example.com".into(),
+        });
+        app.update();
+
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "password".into(),
+        });
+        app.update();
+
+        // Verify in CharacterSelect
+        let mut query = app.world_mut().query::<(Entity, &Client)>();
+        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let (_client_entity, client) = found.unwrap();
+        assert_eq!(client.state, ClientState::CharacterSelect);
+
+        // Select character 3
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "3".into(),
+        });
+        app.update();
+
+        // Should transition to MotdPrompt (not linkdead)
+        let mut query2 = app.world_mut().query::<(Entity, &Client)>();
+        let found2 = query2
+            .iter(&app.world())
+            .find(|(_, c)| c.connection == conn);
+        let (_client_entity2, client2) = found2.unwrap();
+        assert_eq!(
+            client2.state,
+            ClientState::MotdPrompt,
+            "Selecting third character should work"
+        );
+    }
+
+    // ── show_character_menu: linkdead characters show suffix ──
+    #[test]
+    fn character_menu_shows_linkdead_suffix() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+
+        let account_id = Uuid::new_v4();
+        let char_uuid = Uuid::new_v4();
+        let account = Account {
+            id: account_id,
+            identifier: "test@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![char_uuid],
+            created_at: Utc::now(),
+        };
+        app.world_mut().spawn(account);
+
+        // Spawn linkdead character
+        app.world_mut().spawn((
+            Character {
+                id: char_uuid,
+                name: "Linky".into(),
+                account_id,
+                created_at: Utc::now(),
+                last_room: None,
+            },
+            GrimName("Linky".into()),
+            Description("A linkdead character.".into()),
+            InRoom { room },
+            Player { connection: None },
+            Linkdead,
+            OutputHistory::with_max(100),
+        ));
+
+        // Login → CharacterSelect should show linkdead suffix
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "test@example.com".into(),
+        });
+        app.update();
+
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "password".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.connection == conn && o.text.contains("(linkdead)")),
+            "Character menu should show (linkdead) suffix for linkdead characters"
+        );
+    }
+
+    // ── format_output: look_room with missing room ──
+    #[test]
+    fn format_output_look_room_room_not_found() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        // Write LookRoom for a non-existent room → should not panic
+        app.world_mut().write_message(LookRoom {
+            target: Entity::PLACEHOLDER,
+            room: Entity::PLACEHOLDER,
+        });
+        app.update();
+
+        // No crash = success
+    }
+
+    // ── format_output: look_entity with missing subject name ──
+    #[test]
+    fn format_output_look_entity_not_found() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        // Entity with no GrimName component → lookup fails, format_output continues
+        let nameless = app.world_mut().spawn_empty().id();
+        app.world_mut().write_message(LookEntity {
+            target: Entity::PLACEHOLDER,
+            subject: nameless,
+        });
+        app.update();
+
+        // No crash = success
+    }
+
+    // ── format_output: move broadcasts to from/to rooms ──
+    #[test]
+    fn format_output_move_broadcasts() {
+        let mut app = test_app();
+        let from_room = spawn_room(&mut app);
+        let to_room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(from_room));
+
+        let actor_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let observer_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 2,
+                addr: "127.0.0.1:12346".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+
+        let actor = app
+            .world_mut()
+            .spawn((
+                GrimName("Mover".into()),
+                InRoom { room: from_room },
+                Player {
+                    connection: Some(actor_conn),
+                },
+                OutputHistory::with_max(100),
+            ))
+            .id();
+        let _observer = app
+            .world_mut()
+            .spawn((
+                GrimName("Watcher".into()),
+                InRoom { room: from_room },
+                Player {
+                    connection: Some(observer_conn),
+                },
+                OutputHistory::with_max(100),
+            ))
+            .id();
+
+        app.world_mut().write_message(MoveEvent {
+            actor,
+            from: from_room,
+            to: to_room,
+            direction: grim::cardinal::Cardinal::North,
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        // Observer in from_room should see departure
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.connection == observer_conn && o.text.contains("Mover leaves")),
+            "Observer should see departure message"
+        );
+    }
+
+    // ── handle_client_input: InGame with unknown command ──
+    #[test]
+    fn ingame_unknown_command_shows_error() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+
+        let char_entity = app
+            .world_mut()
+            .spawn((
+                GrimName("Hero".into()),
+                InRoom { room },
+                Player {
+                    connection: Some(conn),
+                },
+            ))
+            .id();
+
+        let mut client = Client::new(conn);
+        client.state = ClientState::InGame;
+        client.character = Some(char_entity);
+        app.world_mut().spawn(client);
+
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "blargh".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.connection == conn && o.text.contains("Unknown command")),
+            "Unknown command should show error message"
+        );
+    }
+
+    // ── handle_client_input: InGame with blank line ──
+    #[test]
+    fn ingame_blank_line_triggers_prompt() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+
+        let char_entity = app
+            .world_mut()
+            .spawn((
+                GrimName("Hero".into()),
+                InRoom { room },
+                Player {
+                    connection: Some(conn),
+                },
+            ))
+            .id();
+
+        let mut client = Client::new(conn);
+        client.state = ClientState::InGame;
+        client.character = Some(char_entity);
+        app.world_mut().spawn(client);
+
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.connection == conn && o.text == " "),
+            "Blank line should write a space to trigger prompt"
+        );
+    }
+
+    // ── handle_connection_established: banner rendering ──
+    #[test]
+    fn connection_established_shows_banner() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+
+        app.world_mut().write_message(ConnectionEstablished {
+            connection: conn,
+            addr: "127.0.0.1:12345".parse().unwrap(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        // Check that the banner (ASCII art) is in the output along with the login prompt
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.connection == conn && o.text.contains("______")),
+            "Banner should contain ASCII art"
+        );
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.connection == conn
+                    && o.text.contains("character name or email address")),
+            "Banner output should contain login prompt"
         );
     }
 }
