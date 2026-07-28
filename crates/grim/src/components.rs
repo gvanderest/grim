@@ -1,6 +1,5 @@
 use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
-use std::time::Duration;
 
 use bevy::prelude::*;
 use chrono::{DateTime, Utc};
@@ -45,7 +44,7 @@ impl Client {
             account: None,
             character: None,
             input_queue: VecDeque::new(),
-            command_cooldown: Timer::new(Duration::from_millis(500), TimerMode::Repeating),
+            command_cooldown: Timer::from_seconds(0.5, TimerMode::Once),
         }
     }
 }
