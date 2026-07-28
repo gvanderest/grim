@@ -121,6 +121,7 @@ LoginPrompt → PasswordPrompt → CharacterSelect → MotdGate → InGame
 ├── crates/
 │   ├── grim/src/
 │   │   ├── lib.rs                     # Module exports
+│   │   ├── color.rs                  # Color markup → ANSI escape conversion
 │   │   ├── components.rs              # ECS components
 │   │   ├── events.rs                  # Event/Message types
 │   │   ├── cardinal.rs                # Direction enum + parse/opposite
@@ -134,8 +135,7 @@ LoginPrompt → PasswordPrompt → CharacterSelect → MotdGate → InGame
 │   ├── grim-client/src/
 │   │   ├── lib.rs                     # ClientPlugin, input dispatch, formatting routing
 │   │   ├── parser.rs                  # Raw text → Command
-│   │   ├── color.rs                  # Color markup → ANSI escape conversion
-│   │   └── formatter.rs              # Engine events → formatted text, applies ansi()
+│   │   └── formatter.rs              # Engine events → formatted text
 │   └── grim-protocol-telnet/src/
 │       └── lib.rs                     # TelnetPlugin, tokio acceptor, IAC negotiation
 ├── data/
@@ -162,20 +162,23 @@ LoginPrompt → PasswordPrompt → CharacterSelect → MotdGate → InGame
 
 ### Color Markup
 
-All output text goes through `color::ansi()` before being sent to clients. The
-conversion happens in each `formatter::format_*` function and at the login banner
-construction site in `handle_connection_established`.
+Two markup formats are parsed by `grim::color::ansi()` and converted to ANSI
+escape sequences. The conversion happens at the protocol layer in
+`grim-protocol-telnet`'s `send_network_commands`, right before text is written
+to the TCP socket. This ensures every byte leaving the server is already
+ansi-encoded, regardless of which code path produced it.
 
-Two formats supported:
+Two markup formats supported:
 - **16-color terminal codes** (`{code`): `{r`/`{R`, `{g`/`{G`, `{b`/`{B`, etc.
   with numeric (`{1`–`{9`) and symbol (`{!`, `{@`, etc.) aliases. See
-  `color.rs` doc comment for the full table.
+  `grim::color` doc comment for the full table.
 - **24-bit hex codes** (`@xRGB` / `@bRGB`): 3-digit hex, each nibble scaled by
   17 to 8-bit (e.g. `@xf00` → red, `@xfff` → white).
-- **Escape**: `{{` → `{`, `@@` → `@`.
+- **Escape**: `{{` → `{`, `@@` → `@`. Escaped codes pass through as literal
+  text without color interpretation.
 - Unknown codes pass through as literal text.
 
-Assets (MOTD, login banner) support color codes — put them directly in the
+Assets (MOTD, login banner) also support color codes — put them directly in the
 `.txt` file.
 
 ## Running

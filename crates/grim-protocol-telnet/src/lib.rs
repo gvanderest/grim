@@ -1,3 +1,5 @@
+use grim::color::ansi;
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -287,7 +289,7 @@ fn send_network_commands(
             };
             let _ = bridge.to_network.try_send(NetworkCommand::Send {
                 conn_id: conn.id,
-                text: send_text,
+                text: ansi(&send_text),
             });
         }
     }
