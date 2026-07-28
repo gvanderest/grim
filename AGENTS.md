@@ -26,9 +26,8 @@ Protocol  ─→  Client  ─→  Engine  → Persistence
 - **User input filter**: Protocol layer strips all non-printable ASCII (32-126) from user input before creating `ClientInput`, preventing ANSI/control code injection.
 - **`Exit` vs `Exits`**: The component is `Exits { exits: HashMap<Cardinal, Entity> }`. On a Room entity.
 - **`Name` vs `GrimName`**: Import aliased from `grim` as `GrimName` in binary/client to avoid collisions with Bevy's `Name`.
-- **Testing**: Each plugin has `#[cfg(test)] mod tests` inline. Tests use Bevy `App` + `update()`.
-- **Single-letter directions** (`n`/`e`/`s`/`w`/`u`/`d`) are checked first in the parser.
-
+- **Single-letter directions** (`n`/`e`/`s`/`w`/`u`/`d`) work via prefix matching against the `CommandRegistry` trie. Directions are registered last in `parse.rs::build_registry()` so they always win for single-character input.
+- **Command resolution**: Uses a `CommandRegistry` (trie-based, `grim::command_registry`). Commands are registered by name + factory function. Resolution is case-insensitive prefix matching with "last registered wins" for ties. No separate "shortcut" aliases are needed — `l` is a registered name, `n` matches `north` via prefix.
 ## Workflow
 
 1. **Branch pre-check** — check current branch; if wrong, branch from `main`

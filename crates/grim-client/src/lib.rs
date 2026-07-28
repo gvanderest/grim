@@ -28,6 +28,7 @@ pub struct ClientPlugin;
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
         rust_i18n::set_locale("en");
+        parser::init_registry();
         app.add_message::<ClientOutput>()
             .add_message::<DisconnectRequest>()
             .add_message::<EngineCommand>()
