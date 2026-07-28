@@ -1,9 +1,8 @@
 #[macro_use]
 extern crate rust_i18n;
-
 rust_i18n::i18n!("locales");
-
 use bevy::ecs::schedule::IntoScheduleConfigs;
+
 use bevy::log::info;
 use bevy::prelude::*;
 use chrono::Utc;
@@ -29,6 +28,7 @@ mod parser;
 pub struct ClientPlugin;
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
+        rust_i18n::set_locale("en");
         app.add_message::<ClientOutput>()
             .add_message::<DisconnectRequest>()
             .add_message::<EngineCommand>()
@@ -54,8 +54,6 @@ impl Plugin for ClientPlugin {
             );
     }
 }
-
-// ─── Connection lifecycle ───────────────────────────────────────────
 
 fn handle_connection_established(
     mut established: MessageReader<ConnectionEstablished>,

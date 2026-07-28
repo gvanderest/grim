@@ -157,6 +157,7 @@ LoginPrompt → PasswordPrompt → CharacterSelect → MotdGate → InGame
 - **Directions**: Single-letter shortcuts (`n`/`e`/`s`/`w`/`u`/`d`) are checked first in the parser, so they always beat alphabetic command overlap.
 - **`Exit` vs `Exits`**: The component is `Exits { exits: HashMap<Cardinal, Entity> }`. On a Room entity.
 - **`Name` vs `GrimName`**: Import aliased from `grim` as `GrimName` in the binary and client to avoid collisions with Bevy's `Name`.
+- **`rust-i18n` locale files**: Must live at `locales/<locale>.json` (e.g. `locales/en.json`). NEVER nest in subdirectories (`locales/en/auth.json`) — `rust-i18n` v4 won't find them and silently returns the key string. `set_locale!("en")` MUST be called in `ClientPlugin::build()` or the macro returns keys verbatim.
 
 ## Running
 
@@ -170,6 +171,8 @@ telnet localhost 4000            # connect
 
 All work follows a branch → PR → review → merge cycle.
 
+0. **Branch pre-check** — At session start, check current branch. If it doesn't match the task,
+   create a new branch from `main` first before any edits. Never modify unrelated work.
 1. **Branch** from `main` — descriptive name, no convention beyond readable.
 2. **Commit** incrementally — each commit is a coherent step.
 3. **Push**, open a **PR** against `main`.
@@ -178,7 +181,6 @@ All work follows a branch → PR → review → merge cycle.
 6. **Squash merge** into `main`.
 
 Pushing directly to `main` is reserved for trivial one-offs (docs, README tweaks). Everything else — any code change — goes through a PR.
-
 ## Security Notes (current PoC)
 
 - SHA-256 for passwords — no salt, not slow.
