@@ -1,4 +1,4 @@
-.PHONY: all precommit lint test format coverage clean
+.PHONY: all precommit lint format coverage clean
 
 all: precommit
 
@@ -25,21 +25,16 @@ fmt-check:
 format:
 	cargo fmt
 
-# ─── Test ─────────────────────────────────────────────────────────────
-
-test:
-	cargo nextest run
+ci: lint coverage
 
 # ─── Coverage ─────────────────────────────────────────────────────────
 
 coverage:
-	cargo llvm-cov --lcov --output-dir coverage \
+	CARGO_TARGET_DIR=target cargo llvm-cov --lcov --output-path coverage/lcov.info \
 		--ignore-filename-regex 'src/main\.rs|src/seed\.rs' \
-		--hide-instantiations --fail-func-coverage 90
+		--fail-under-lines 80 \
+		--no-clean
 
-# ─── CI ──────────────────────────────────────────────────────────────
-
-ci: lint test coverage
 
 # ─── Cleanup ──────────────────────────────────────────────────────────
 

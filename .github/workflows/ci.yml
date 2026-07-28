@@ -22,14 +22,8 @@ jobs:
       - name: Lint
         run: make lint
 
-      - name: Install nextest
-        run: cargo install cargo-nextest --locked
-
-      - name: Test
-        run: cargo nextest run
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
 
       - name: Coverage
-        run: |
-          cargo install cargo-llvm-cov
-          make coverage
-        continue-on-error: false
+        run: make coverage

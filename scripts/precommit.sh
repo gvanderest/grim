@@ -7,8 +7,8 @@ cd "$REPO_ROOT" || exit 1
 echo "=== pre-commit: make lint ==="
 make lint || { echo "FAIL: make lint"; exit 1; }
 
-echo "=== pre-commit: cargo nextest ==="
-    cargo nextest run --no-tests=pass || { echo "FAIL: cargo nextest"; exit 1; }
+echo "=== pre-commit: make coverage ==="
+make coverage || { echo "FAIL: make coverage"; exit 1; }
 
 echo ""
 echo "pre-commit: all checks passed"
