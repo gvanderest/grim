@@ -7,7 +7,7 @@ use bevy::log::info;
 use bevy::prelude::*;
 use chrono::Utc;
 use grim::components::{
-    Account, Area, Character, Client, ClientState, Description, Exits, InRoom, Linkdead,
+    Account, Character, Client, ClientState, Description, Exits, InRoom, Linkdead,
     Name as GrimName, OutputHistory, Player, Room, StartingRoom,
 };
 use grim::events::{
@@ -79,17 +79,17 @@ fn handle_client_input(
     mut accounts: Query<(Entity, &mut Account)>,
     characters: Query<(Entity, &Character, &GrimName)>,
     player_chars: Query<(Entity, &GrimName, &InRoom, Option<&Character>)>,
+    players: Query<&Player>,
     rooms: Query<(&Room, &GrimName)>,
-    _areas: Query<&Area>,
     starting: Res<StartingRoom>,
     mut commands: Commands,
     mut outputs: MessageWriter<ClientOutput>,
     mut look_room: MessageWriter<LookRoom>,
-    _look_entity: MessageWriter<LookEntity>,
     mut announce_login: MessageWriter<LoginAnnounce>,
     mut announce_linkdead: MessageWriter<LinkdeadAnnounce>,
     linkdead: Query<&Linkdead>,
     mut histories: Query<&mut OutputHistory>,
+    mut disconnect: MessageWriter<DisconnectRequest>,
 ) {
     for ev in inputs.read() {
         let Some((client_entity, mut client)) = clients
@@ -237,6 +237,7 @@ fn handle_client_input(
                                 &accounts,
                                 &mut outputs,
                                 &linkdead,
+                                &players,
                             );
                         }
                         Err(e) => {
@@ -306,6 +307,15 @@ fn handle_client_input(
                                         // Start fresh output capture on the new connection
                                         commands.entity(conn).insert(OutputHistory::with_max(100));
                                     } else {
+                                        // Check if character is already online — disconnect old session
+                                        if let Ok(player) = players.get(char_entity) {
+                                            if let Some(old_conn) = player.connection {
+                                                outputs.write(ClientOutput::new(old_conn, "Someone else has logged into this character.\n"));
+                                                disconnect.write(DisconnectRequest {
+                                                    connection: old_conn,
+                                                });
+                                            }
+                                        }
                                         commands.entity(char_entity).insert((
                                             Player {
                                                 connection: Some(conn),
@@ -328,6 +338,7 @@ fn handle_client_input(
                                         &accounts,
                                         &mut outputs,
                                         &linkdead,
+                                        &players,
                                     );
                                 }
                             } else {
@@ -400,6 +411,7 @@ fn handle_client_input(
                         &accounts,
                         &mut outputs,
                         &linkdead,
+                        &players,
                     );
                     continue;
                 };
@@ -452,6 +464,18 @@ fn handle_client_input(
                     // Start fresh output capture on the new connection
                     commands.entity(conn).insert(OutputHistory::with_max(100));
                 } else {
+                    // Check if character is already online — disconnect old session
+                    if let Ok(player) = players.get(char_entity) {
+                        if let Some(old_conn) = player.connection {
+                            outputs.write(ClientOutput::new(
+                                old_conn,
+                                "Someone else has logged into this character.\n",
+                            ));
+                            disconnect.write(DisconnectRequest {
+                                connection: old_conn,
+                            });
+                        }
+                    }
                     commands.entity(char_entity).insert((
                         Player {
                             connection: Some(conn),
@@ -641,6 +665,7 @@ fn show_character_menu(
     accounts: &Query<(Entity, &mut Account)>,
     outputs: &mut MessageWriter<ClientOutput>,
     linkdead: &Query<&Linkdead>,
+    players: &Query<&Player>,
 ) {
     let conn = client.connection;
     let Some(account_entity) = client.account else {
@@ -660,14 +685,20 @@ fn show_character_menu(
                 continue;
             }
         }
-        let ld_suffix = if linkdead.get(char_entity).is_ok() {
+        let suffix = if linkdead.get(char_entity).is_ok() {
             " (linkdead)"
+        } else if let Ok(player) = players.get(char_entity) {
+            if player.connection.is_some() {
+                " (online)"
+            } else {
+                ""
+            }
         } else {
             ""
         };
         menu.push_str(&format!(
             "{}. {} - 1 Human Adventurer{}\n",
-            idx, name.0, ld_suffix
+            idx, name.0, suffix
         ));
         idx += 1;
     }
@@ -688,7 +719,7 @@ fn process_command_queue(
     mut disconnect: MessageWriter<DisconnectRequest>,
     player_chars: Query<(Entity, &GrimName)>,
     characters: Query<&Character>,
-    mut commands: Commands,
+    _commands: Commands,
 ) {
     for (entity, mut client) in clients.iter_mut() {
         let conn = client.connection;
@@ -706,7 +737,10 @@ fn process_command_queue(
                     .and_then(|c| player_chars.get(c).ok())
                     .map(|(_, n)| n.0.clone())
                     .unwrap_or_else(|| "Someone".into());
-                // Save character JSON and despawn
+                // Save character JSON to disk, then disconnect.
+                // Do NOT despawn the character entity — save_on_disconnect
+                // will mark it linkdead when ConnectionClosed fires,
+                // keeping it available for reconnect without server restart.
                 if let Some(char_entity) = client.character {
                     if let Ok(ch) = characters.get(char_entity) {
                         let path = format!("data/characters/{}.json", ch.name);
@@ -714,7 +748,6 @@ fn process_command_queue(
                             let _ = std::fs::write(path, json);
                         }
                     }
-                    commands.entity(char_entity).despawn();
                 }
                 announce_logout.write(LogoutAnnounce {
                     name: char_name.clone(),

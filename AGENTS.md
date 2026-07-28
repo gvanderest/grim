@@ -28,6 +28,10 @@ Protocol  ─→  Client  ─→  Engine  → Persistence
 - **`Name` vs `GrimName`**: Import aliased from `grim` as `GrimName` in binary/client to avoid collisions with Bevy's `Name`.
 - **Single-letter directions** (`n`/`e`/`s`/`w`/`u`/`d`) work via prefix matching against the `CommandRegistry` trie. Directions are registered last in `parse.rs::build_registry()` so they always win for single-character input.
 - **Command resolution**: Uses a `CommandRegistry` (trie-based, `grim::command_registry`). Commands are registered by name + factory function. Resolution is case-insensitive prefix matching with "last registered wins" for ties. No separate "shortcut" aliases are needed — `l` is a registered name, `n` matches `north` via prefix.
+- **Character takeover**: If a character is already online (has `Player` with `connection: Some(...)`) and another session selects it, the old session receives "Someone else has logged into this character." and is immediately disconnected. The new session proceeds normally.
+- **Online indicator**: The character select menu shows "(online)" for characters with a live `Player` connection and "(linkdead)" for linkdead characters.
+- **Multiple characters per account**: Allowed simultaneously. No check prevents multiple characters from the same account being `InGame` at the same time.
+- **save_on_disconnect guard**: On connection close, the character is only marked linkdead if it doesn't already have a live `Player` connection (guards against stale `ConnectionClosed` events from a takeover).
 ## Workflow
 
 1. **Branch pre-check** — check current branch; if wrong, branch from `main`
