@@ -73,6 +73,7 @@ fn save_on_disconnect(
     rooms: Query<(&Room, &Area)>,
     histories: Query<&OutputHistory>,
     mut announce_linkdead: MessageWriter<LinkdeadAnnounce>,
+    players: Query<&Player>,
 ) {
     for ev in closed.read() {
         let conn = ev.connection;
@@ -124,16 +125,26 @@ fn save_on_disconnect(
             if let Ok(history) = histories.get(conn) {
                 commands.entity(char_e).insert(history.clone());
             }
-            // Mark as linkdead: drop connection, keep Player with None
-            commands.entity(char_e).insert(Player { connection: None });
-            // Marker component for easy querying
-            commands.entity(char_e).insert(Linkdead);
-            if let Ok(ch) = characters.get(char_e) {
-                info!("Character '{}' went linkdead", ch.name);
-                announce_linkdead.write(LinkdeadAnnounce {
-                    name: ch.name.clone(),
-                    reconnecting: false,
-                });
+            // Only skip linkdead marking if the character was taken over by
+            // another session — meaning the Player.connection is different
+            // from the connection being closed.
+            let has_other_connection = players
+                .get(char_e)
+                .ok()
+                .and_then(|p| p.connection)
+                .is_some_and(|c| c != conn);
+            if !has_other_connection {
+                // Mark as linkdead: drop connection, keep Player with None
+                commands.entity(char_e).insert(Player { connection: None });
+                // Marker component for easy querying
+                commands.entity(char_e).insert(Linkdead);
+                if let Ok(ch) = characters.get(char_e) {
+                    info!("Character '{}' went linkdead", ch.name);
+                    announce_linkdead.write(LinkdeadAnnounce {
+                        name: ch.name.clone(),
+                        reconnecting: false,
+                    });
+                }
             }
         }
         commands.entity(client_e).despawn();
