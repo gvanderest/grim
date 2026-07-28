@@ -39,7 +39,7 @@ fn handle_say(
         });
         info.write(InfoMessage {
             target: actor,
-            text: format!("{{M{}{{x'{{m{}{{x'\n", t!("social.say.first_party"), text),
+            text: crate::color::tr("social.say.first_party", &[("text", text)]),
         });
     }
 }
@@ -135,7 +135,7 @@ mod tests {
             let mut iter = cursor.read(messages);
             let ev = iter.next().expect("expected one InfoMessage");
             assert_eq!(ev.target, actor);
-            assert_eq!(ev.text, "{MYou say {x'{mhi{x'\n");
+            assert_eq!(ev.text, "@xf0fYou say @r'@x808hi@r'\n");
             assert!(iter.next().is_none(), "expected exactly one InfoMessage");
         }
     }

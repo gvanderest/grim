@@ -18,8 +18,10 @@ pub fn format_entity(name: &str, desc: &str) -> String {
 
 /// Format a say message broadcast to a room.
 pub fn format_say(speaker: &str, text: &str) -> String {
-    let prefix = t!("social.say.third_party", speaker = speaker);
-    format!("{{M{}{{x'{{m{}{{x'\n", prefix, text)
+    grim::color::tr(
+        "social.say.third_party",
+        &[("speaker", speaker), ("text", text)],
+    )
 }
 
 /// Format a yell message broadcast to an area.
@@ -168,12 +170,12 @@ mod tests {
     fn say_basic() {
         assert_eq!(
             format_say("Alice", "hello there"),
-            "{MAlice says {x'{mhello there{x'\n"
+            "@xf0fAlice says @r'@x808hello there@r'\n"
         );
     }
     #[test]
     fn say_empty_text() {
-        assert_eq!(format_say("Bob", ""), "{MBob says {x'{m{x'\n");
+        assert_eq!(format_say("Bob", ""), "@xf0fBob says @r'@x808@r'\n");
     }
 
     // ── format_yell ──────────────────────────────────────────────
