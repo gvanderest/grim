@@ -31,9 +31,25 @@ pub struct ConnectionClosed {
 pub struct ClientOutput {
     pub connection: Entity,
     pub text: String,
+    /// If true, a `\r\n` is prepended before sending (used for unsolicited
+    /// game events to avoid appearing on the same line as the user's prompt).
+    /// Reset automatically after the buffer is sent.
+    pub prepend_newline: bool,
     /// If set, toggle telnet echo mode before sending text.
     /// `true` = enable echo (IAC WILL ECHO), `false` = disable (IAC WONT ECHO).
     pub echo: Option<bool>,
+}
+impl ClientOutput {
+    /// Create a new output with the required fields. Optional fields (`echo`,
+    /// `prepend_newline`) default to `None` / `false`.
+    pub fn new(connection: Entity, text: impl Into<String>) -> Self {
+        Self {
+            connection,
+            text: text.into(),
+            echo: None,
+            prepend_newline: false,
+        }
+    }
 }
 
 #[derive(Message, Debug)]

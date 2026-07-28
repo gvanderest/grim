@@ -235,7 +235,7 @@ fn drain_network_events(
                 info!("Connection {} disconnected", conn_id);
                 if let Some((entity, _)) = connections.iter().find(|(_, c)| c.id == conn_id) {
                     closed.write(ConnectionClosed { connection: entity });
-                    commands.entity(entity).despawn();
+                    // Despawn is handled by save_on_disconnect in the persistence plugin
                 }
             }
         }
@@ -271,14 +271,19 @@ fn send_network_commands(
                     });
                 }
             }
-            // Only append the prompt for in-game clients (post-MOTD).
             let is_ingame = clients
                 .iter()
                 .any(|c| c.state == ClientState::InGame && c.connection == ev.connection);
-            let send_text = if is_ingame && !ev.text.is_empty() {
-                format!("{}\r\n> ", ev.text)
+
+            // Prepend a newline for unsolicited events so they don't appear on the prompt line.
+            let mut text = ev.text.clone();
+            if ev.prepend_newline && !text.is_empty() {
+                text.insert_str(0, "\r\n");
+            }
+            let send_text = if is_ingame && !text.is_empty() {
+                format!("{}\r\n> ", text)
             } else {
-                ev.text.clone()
+                text
             };
             let _ = bridge.to_network.try_send(NetworkCommand::Send {
                 conn_id: conn.id,

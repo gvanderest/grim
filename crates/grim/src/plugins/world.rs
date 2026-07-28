@@ -134,9 +134,9 @@ fn handle_quit(
             continue;
         };
         if let Ok(player) = players.get(cmd.client) {
-            disconnect.write(DisconnectRequest {
-                connection: player.connection,
-            });
+            if let Some(conn) = player.connection {
+                disconnect.write(DisconnectRequest { connection: conn });
+            }
         }
     }
 }

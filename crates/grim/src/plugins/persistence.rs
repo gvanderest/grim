@@ -1,8 +1,8 @@
 use crate::components::{
-    Account, Area, Character, Client, Connection, Description, InRoom, Linkdead, Name, Room,
-    RoomLocation,
+    Account, Area, Character, Client, Connection, Description, InRoom, Linkdead, Name,
+    OutputHistory, Player, Room, RoomLocation,
 };
-use crate::events::ConnectionClosed;
+use crate::events::{ConnectionClosed, LinkdeadAnnounce};
 use bevy::log::info;
 use bevy::prelude::*;
 use std::fs;
@@ -71,10 +71,11 @@ fn save_on_disconnect(
     mut characters: Query<&mut Character>,
     inroom: Query<&InRoom>,
     rooms: Query<(&Room, &Area)>,
+    histories: Query<&OutputHistory>,
+    mut announce_linkdead: MessageWriter<LinkdeadAnnounce>,
 ) {
     for ev in closed.read() {
         let conn = ev.connection;
-
         if let Ok(c) = connections.get(conn) {
             info!("Connection closed from {}", c.addr);
         }
@@ -104,7 +105,6 @@ fn save_on_disconnect(
                 }
             }
         }
-
         if let Some(char_e) = character_entity {
             if let Ok(mut character) = characters.get_mut(char_e) {
                 if let Ok(ir) = inroom.get(char_e) {
@@ -115,18 +115,27 @@ fn save_on_disconnect(
                         });
                     }
                 }
-                let path = format!("data/characters/{}.json", character.id);
+                let path = format!("data/characters/{}.json", character.name);
                 if let Ok(json) = serde_json::to_string_pretty(&*character) {
                     let _ = fs::write(path, json);
                 }
             }
-            // Add Linkdead instead of despawning the character entity
+            // Transfer OutputHistory from connection to character before despawn
+            if let Ok(history) = histories.get(conn) {
+                commands.entity(char_e).insert(history.clone());
+            }
+            // Mark as linkdead: drop connection, keep Player with None
+            commands.entity(char_e).insert(Player { connection: None });
+            // Marker component for easy querying
             commands.entity(char_e).insert(Linkdead);
             if let Ok(ch) = characters.get(char_e) {
                 info!("Character '{}' went linkdead", ch.name);
+                announce_linkdead.write(LinkdeadAnnounce {
+                    name: ch.name.clone(),
+                    reconnecting: false,
+                });
             }
         }
-
         commands.entity(client_e).despawn();
         commands.entity(conn).despawn();
     }

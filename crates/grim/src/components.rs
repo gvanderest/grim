@@ -88,7 +88,7 @@ pub struct Account {
 }
 
 /// A character — belongs to an account, can be in-world.
-/// Saved to `data/characters/<uuid>.json`.
+/// Saved to `data/characters/<name>.json`.
 #[derive(Component, Serialize, Deserialize, Clone, Debug)]
 pub struct Character {
     pub id: Uuid,
@@ -151,14 +151,14 @@ pub struct Description(pub String);
 // ─── Markers ────────────────────────────────────────────────────────
 
 /// Marks a character as player-controlled and links to their connection for output.
+/// `connection: None` means the player is linkdead (disconnected but still in-world).
 #[derive(Component, Debug)]
 pub struct Player {
-    /// The `Connection` entity to send output to.
-    pub connection: Entity,
+    /// The `Connection` entity to send output to, or `None` if linkdead.
+    pub connection: Option<Entity>,
 }
 
-/// Buffer of recent output sent to a connection. Replayed on linkdead reconnect.
-#[derive(Component, Debug, Default)]
+#[derive(Component, Debug, Default, Clone)]
 pub struct OutputHistory {
     pub lines: std::collections::VecDeque<String>,
     pub max: usize,
@@ -189,10 +189,6 @@ pub struct Npc;
 /// Character is still in-world but the player disconnected (linkdead).
 #[derive(Component, Debug)]
 pub struct Linkdead;
-
-// ─── Resources ──────────────────────────────────────────────────────
-
-/// The default room for new characters to enter.
 /// Inserted by the seed world system, read by the client during character creation.
 #[derive(Resource, Debug)]
 pub struct StartingRoom(pub Entity);
