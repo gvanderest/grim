@@ -200,6 +200,9 @@ fn push_24bit_fg(out: &mut String, r: u8, g: u8, b: u8) {
 fn push_24bit_bg(out: &mut String, r: u8, g: u8, b: u8) {
     let _ = write!(out, "\x1b[48;2;{r};{g};{b}m");
 }
+
+// ─── Runtime translation (tr!) ────────────────────────────────────────
+
 /// Translate a locale key: convert `{X` 16-color codes to `@xRGB` format,
 /// then substitute `%{var}` placeholders with the provided arguments.
 ///
@@ -256,7 +259,8 @@ fn locale_data() -> &'static Value {
     &LOCALE
 }
 
-/// Convert `{X` 16-color markup codes to `@xRGB` equivalents.
+/// Convert `{X` 16-color markup codes to `@xRGB` equivalents, using
+/// the GitHub Dark terminal palette.
 /// `{x` (reset) maps to `@r`. Unknown `{X` patterns pass through literally.
 fn convert_16color(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -264,25 +268,25 @@ fn convert_16color(s: &str) -> String {
     while let Some(ch) = cs.next() {
         if ch == '{' {
             match cs.next() {
-                Some('{') => out.push('{'), // {{ → literal {
-                // Dark colors
-                Some('k') => out.push_str("@x000"),
-                Some('r') => out.push_str("@x800"),
-                Some('g') => out.push_str("@x080"),
-                Some('y') => out.push_str("@x880"),
-                Some('b') => out.push_str("@x008"),
-                Some('m') => out.push_str("@x808"),
-                Some('c') => out.push_str("@x088"),
-                Some('w') => out.push_str("@x888"),
-                // Bright colors
-                Some('K') | Some('8') | Some('*') => out.push_str("@x444"),
-                Some('R') | Some('!') => out.push_str("@xf00"),
-                Some('G') | Some('@') => out.push_str("@x0f0"),
-                Some('Y') | Some('#') => out.push_str("@xff0"),
-                Some('B') => out.push_str("@x00f"),
-                Some('M') | Some('%') => out.push_str("@xf0f"),
-                Some('C') | Some('^') => out.push_str("@x0ff"),
-                Some('W') | Some('&') => out.push_str("@xfff"),
+                Some('{') => out.push('{'),
+                // Dark colors (ANSI 0-7)
+                Some('k') => out.push_str("@x000"), // #484f58
+                Some('r') => out.push_str("@xb00"), // #ff7b72
+                Some('g') => out.push_str("@x0b0"), // #3fb950
+                Some('y') => out.push_str("@xbb0"), // #d29922
+                Some('b') => out.push_str("@x00b"), // #58a6ff
+                Some('m') => out.push_str("@xb0b"), // #bc8cff
+                Some('c') => out.push_str("@x0bb"), // #39c5cf
+                Some('w') => out.push_str("@xbbb"), // #b1bac4
+                // Bright colors (ANSI 8-15)
+                Some('K') | Some('8') | Some('*') => out.push_str("@x888"), // #6e7681
+                Some('R') | Some('!') => out.push_str("@xf00"),             // #ffa198
+                Some('G') | Some('@') => out.push_str("@x0f0"),             // #56d364
+                Some('Y') | Some('#') => out.push_str("@xff0"),             // #e3b341
+                Some('B') => out.push_str("@x00f"),                         // #79c0ff
+                Some('M') | Some('%') => out.push_str("@xf0f"),             // #d2a8ff
+                Some('C') | Some('^') => out.push_str("@x0ff"),             // #56d4dd
+                Some('W') | Some('&') => out.push_str("@xfff"),             // #ffffff
                 // Reset
                 Some('x' | 'X' | '9') => out.push_str("@r"),
                 // Unknown: passthrough
@@ -305,7 +309,7 @@ mod tr_tests {
 
     #[test]
     fn convert_dark_red() {
-        assert_eq!(convert_16color("{r"), "@x800");
+        assert_eq!(convert_16color("{r"), "@xb00");
     }
 
     #[test]
@@ -332,7 +336,7 @@ mod tr_tests {
     #[test]
     fn convert_mixed_text() {
         let got = convert_16color("{RHello {rworld{x");
-        assert_eq!(got, "@xf00Hello @x800world@r");
+        assert_eq!(got, "@xf00Hello @xb00world@r");
     }
 
     #[test]
@@ -342,10 +346,8 @@ mod tr_tests {
 
     #[test]
     fn tr_resolves_vars() {
-        // Note: this assumes the locale file exists and has the key.
-        // We test the logic via convert_16color + manual substitution.
-        let converted = convert_16color("{M%{speaker} says {x'{m%{text}{x'");
-        assert_eq!(converted, "@xf0f%{speaker} says @r'@x808%{text}@r'");
+        let converted = convert_16color("{M%{speaker} says @r'@xb0b%{text}{x'");
+        assert_eq!(converted, "@xf0f%{speaker} says @r'@xb0b%{text}@r'");
     }
 }
 
@@ -471,7 +473,6 @@ mod tests {
 
     #[test]
     fn hex_mixed_text() {
-        // @xf00 = red, @x000 = black
         let got = ansi("This is @xf00red@x000 text.");
         assert_eq!(got, "This is \x1b[38;2;255;0;0mred\x1b[38;2;0;0;0m text.");
     }
