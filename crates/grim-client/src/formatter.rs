@@ -1,3 +1,5 @@
+use grim::tr;
+
 /// Format a room's full description.
 pub fn format_room(name: &str, desc: &str, exits: &[String], occupants: &[String]) -> String {
     let mut out = format!("{}\n{}", name, desc);
@@ -15,10 +17,8 @@ pub fn format_room(name: &str, desc: &str, exits: &[String], occupants: &[String
 pub fn format_entity(name: &str, desc: &str) -> String {
     format!("{}\n{}\n", name, desc)
 }
-
-/// Format a say message broadcast to a room.
 pub fn format_say(speaker: &str, text: &str) -> String {
-    grim::tr!("social.say.third_party", speaker = speaker, text = text)
+    tr!("social.say.third_party", speaker = speaker, text = text)
 }
 
 /// Format a yell message broadcast to an area.

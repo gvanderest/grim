@@ -1,3 +1,5 @@
+use crate::tr;
+
 use crate::components::{InRoom, Name, Room};
 use crate::events::{Command, EngineCommand, InfoMessage, OocEvent, SayEvent, YellEvent};
 use bevy::prelude::*;
@@ -39,7 +41,7 @@ fn handle_say(
         });
         info.write(InfoMessage {
             target: actor,
-            text: crate::tr!("social.say.first_party", text = text),
+            text: tr!("social.say.first_party", text = text),
         });
     }
 }
