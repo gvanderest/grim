@@ -271,10 +271,10 @@ fn handle_client_input(
                                         client.input_queue = VecDeque::new();
                                         client.command_cooldown = {
                                             let mut t = Timer::new(
-                                                Duration::from_millis(10),
+                                                Duration::from_millis(500),
                                                 TimerMode::Repeating,
                                             );
-                                            t.set_elapsed(Duration::from_millis(10));
+                                            t.set_elapsed(Duration::from_millis(500));
                                             t
                                         };
                                         outputs.write(ClientOutput {
@@ -430,8 +430,8 @@ fn handle_client_input(
                     client.state = ClientState::InGame;
                     client.input_queue = VecDeque::new();
                     client.command_cooldown = {
-                        let mut t = Timer::new(Duration::from_millis(10), TimerMode::Repeating);
-                        t.set_elapsed(Duration::from_millis(10));
+                        let mut t = Timer::new(Duration::from_millis(500), TimerMode::Repeating);
+                        t.set_elapsed(Duration::from_millis(500));
                         t
                     };
                     outputs.write(ClientOutput {
@@ -561,8 +561,8 @@ fn handle_client_input(
                 client.state = ClientState::InGame;
                 client.input_queue = VecDeque::new();
                 client.command_cooldown = {
-                    let mut t = Timer::new(Duration::from_millis(10), TimerMode::Repeating);
-                    t.set_elapsed(Duration::from_millis(10));
+                    let mut t = Timer::new(Duration::from_millis(500), TimerMode::Repeating);
+                    t.set_elapsed(Duration::from_millis(500));
                     t
                 };
                 // Start output capture now that the character is in the world

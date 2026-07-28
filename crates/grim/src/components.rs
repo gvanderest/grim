@@ -45,7 +45,7 @@ impl Client {
             account: None,
             character: None,
             input_queue: VecDeque::new(),
-            command_cooldown: Timer::new(Duration::from_millis(100), TimerMode::Repeating),
+            command_cooldown: Timer::new(Duration::from_millis(500), TimerMode::Repeating),
         }
     }
 }
