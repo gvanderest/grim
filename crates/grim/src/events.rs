@@ -65,7 +65,7 @@ pub struct EngineCommand {
     pub command: Command,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     /// `look` or `look <target>`
     Look { target: Option<String> },

@@ -140,3 +140,50 @@ fn save_on_disconnect(
         commands.entity(conn).despawn();
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    fn test_app() -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins).add_plugins(PersistencePlugin);
+        app.add_message::<LinkdeadAnnounce>();
+        app
+    }
+
+
+    #[test]
+    fn test_load_persisted_data_with_valid_account() {
+        let _ = fs::remove_dir_all("data/accounts");
+        let _ = fs::remove_dir_all("data/characters");
+        let account_id = Uuid::new_v4();
+        let account = Account {
+            id: account_id,
+            identifier: "testuser".into(),
+            password_hash: "hash".into(),
+            characters: vec![],
+            created_at: Utc::now(),
+        };
+
+        let _ = fs::create_dir_all("data/accounts");
+        let _ = fs::create_dir_all("data/characters");
+        let account_path = format!("data/accounts/{account_id}.json");
+        fs::write(&account_path, serde_json::to_string(&account).unwrap()).unwrap();
+
+        let mut app = test_app();
+        app.update();
+
+        let mut query = app.world_mut().query::<&Account>();
+        let loaded: Vec<&Account> = query.iter(&app.world()).collect();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].identifier, "testuser");
+        assert_eq!(loaded[0].id, account_id);
+
+        let _ = fs::remove_dir_all("data/accounts");
+        let _ = fs::remove_dir_all("data/characters");
+    }
+}

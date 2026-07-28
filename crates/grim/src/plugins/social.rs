@@ -97,8 +97,8 @@ fn handle_ooc(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{InRoom, Name};
-    use crate::events::{Command, EngineCommand, InfoMessage, SayEvent};
+    use crate::components::{InRoom, Name, Room};
+    use crate::events::{Command, EngineCommand, InfoMessage, OocEvent, SayEvent, YellEvent};
 
     fn test_app() -> App {
         let mut app = App::new();
@@ -138,5 +138,140 @@ mod tests {
             assert_eq!(ev.text, "You say, 'hi'\r\n");
             assert!(iter.next().is_none(), "expected exactly one InfoMessage");
         }
+    }
+
+    #[test]
+    fn yell_emits_yell_event_and_info_message() {
+        let mut app = test_app();
+        let area = app.world_mut().spawn(()).id();
+        let room = app
+            .world_mut()
+            .spawn(Room {
+                id: uuid::Uuid::new_v4(),
+                friendly_id: "test".into(),
+                name: "Test Room".into(),
+                description: "".into(),
+                area,
+            })
+            .id();
+        let actor = app
+            .world_mut()
+            .spawn((InRoom { room }, Name("hero".into())))
+            .id();
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Yell {
+                text: "help!".into(),
+            },
+        });
+        app.update();
+        {
+            let messages = app.world().resource::<Messages<YellEvent>>();
+            let mut cursor = messages.get_cursor();
+            let mut iter = cursor.read(messages);
+            let ev = iter.next().expect("expected one YellEvent");
+            assert_eq!(ev.area, area);
+            assert_eq!(ev.actor, actor);
+            assert_eq!(ev.text, "help!");
+            assert!(iter.next().is_none(), "expected exactly one YellEvent");
+        }
+        {
+            let messages = app.world().resource::<Messages<InfoMessage>>();
+            let mut cursor = messages.get_cursor();
+            let mut iter = cursor.read(messages);
+            let ev = iter.next().expect("expected one InfoMessage");
+            assert_eq!(ev.target, actor);
+            assert_eq!(ev.text, "You yell, 'help!'\r\n");
+            assert!(iter.next().is_none(), "expected exactly one InfoMessage");
+        }
+    }
+
+    #[test]
+    fn ooc_emits_ooc_event_and_info_message() {
+        let mut app = test_app();
+        let actor = app.world_mut().spawn(()).id();
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Ooc {
+                text: "hello everyone".into(),
+            },
+        });
+        app.update();
+        {
+            let messages = app.world().resource::<Messages<OocEvent>>();
+            let mut cursor = messages.get_cursor();
+            let mut iter = cursor.read(messages);
+            let ev = iter.next().expect("expected one OocEvent");
+            assert_eq!(ev.actor, actor);
+            assert_eq!(ev.text, "hello everyone");
+            assert!(iter.next().is_none(), "expected exactly one OocEvent");
+        }
+        {
+            let messages = app.world().resource::<Messages<InfoMessage>>();
+            let mut cursor = messages.get_cursor();
+            let mut iter = cursor.read(messages);
+            let ev = iter.next().expect("expected one InfoMessage");
+            assert_eq!(ev.target, actor);
+            assert_eq!(ev.text, "[OOC] You: hello everyone\r\n");
+            assert!(iter.next().is_none(), "expected exactly one InfoMessage");
+        }
+    }
+
+    #[test]
+    fn test_say_without_inroom_does_nothing() {
+        let mut app = test_app();
+        let actor = app.world_mut().spawn(()).id();
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Say {
+                text: "hello".into(),
+            },
+        });
+        app.update();
+        // No SayEvent should be emitted
+        let messages = app.world().resource::<Messages<SayEvent>>();
+        let mut cursor = messages.get_cursor();
+        assert_eq!(
+            cursor.read(&messages).count(),
+            0,
+            "No SayEvent expected"
+        );
+        // No InfoMessage either
+        let info = app.world().resource::<Messages<InfoMessage>>();
+        let mut cursor = info.get_cursor();
+        assert_eq!(
+            cursor.read(&info).count(),
+            0,
+            "No InfoMessage expected"
+        );
+    }
+
+    #[test]
+    fn test_yell_without_inroom_does_nothing() {
+        let mut app = test_app();
+        let actor = app.world_mut().spawn(()).id();
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Yell {
+                text: "help!".into(),
+            },
+        });
+        app.update();
+        // No YellEvent should be emitted
+        let messages = app.world().resource::<Messages<YellEvent>>();
+        let mut cursor = messages.get_cursor();
+        assert_eq!(
+            cursor.read(&messages).count(),
+            0,
+            "No YellEvent expected"
+        );
+        // No InfoMessage either
+        let info = app.world().resource::<Messages<InfoMessage>>();
+        let mut cursor = info.get_cursor();
+        assert_eq!(
+            cursor.read(&info).count(),
+            0,
+            "No InfoMessage expected"
+        );
     }
 }

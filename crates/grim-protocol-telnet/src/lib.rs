@@ -299,3 +299,122 @@ fn send_network_commands(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpStream;
+    use std::io::{Read, Write};
+    use std::time::Duration;
+    use grim::components::Connection;
+    use grim::events::{
+        ClientInput, ConnectionClosed, ConnectionEstablished, ClientOutput, DisconnectRequest,
+    };
+
+    #[test]
+    fn test_telnet_plugin_accepts_connection() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(TelnetPlugin { port: 19999 });
+        app.add_message::<ConnectionEstablished>()
+            .add_message::<ClientInput>()
+            .add_message::<ConnectionClosed>()
+            .add_message::<ClientOutput>()
+            .add_message::<DisconnectRequest>();
+
+        app.update();
+
+        std::thread::sleep(Duration::from_millis(100));
+
+        let mut stream = TcpStream::connect_timeout(
+            &"127.0.0.1:19999".parse().unwrap(),
+            Duration::from_secs(2),
+        )
+        .expect("should connect to telnet server");
+
+        let mut handshake = [0u8; 6];
+        stream.set_read_timeout(Some(Duration::from_millis(200))).ok();
+        let _ = stream.read(&mut handshake);
+
+        app.update();
+
+        {
+            let msg_resource = app.world().resource::<Messages<ConnectionEstablished>>();
+            let mut cursor = msg_resource.get_cursor();
+            let events: Vec<&ConnectionEstablished> = cursor.read(&msg_resource).collect();
+            assert!(!events.is_empty(), "Should have received ConnectionEstablished");
+        }
+
+        stream.write_all(b"hello\n").ok();
+        std::thread::sleep(Duration::from_millis(50));
+
+        app.update();
+
+        {
+            let msg_resource = app.world().resource::<Messages<ClientInput>>();
+            let mut cursor = msg_resource.get_cursor();
+            let events: Vec<&ClientInput> = cursor.read(&msg_resource).collect();
+            let has_hello = events.iter().any(|e| e.text == "hello");
+            assert!(has_hello, "Should have received 'hello' ClientInput");
+        }
+
+        drop(stream);
+        std::thread::sleep(Duration::from_millis(100));
+        app.update();
+
+        {
+            let msg_resource = app.world().resource::<Messages<ConnectionClosed>>();
+            let mut cursor = msg_resource.get_cursor();
+            let events: Vec<&ConnectionClosed> = cursor.read(&msg_resource).collect();
+            assert!(!events.is_empty(), "Should have received ConnectionClosed");
+        }
+    }
+
+    #[test]
+    fn test_send_network_commands_sends_text() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(TelnetPlugin { port: 19998 });
+        app.add_message::<ConnectionEstablished>()
+            .add_message::<ClientInput>()
+            .add_message::<ConnectionClosed>()
+            .add_message::<ClientOutput>()
+            .add_message::<DisconnectRequest>();
+
+        app.update();
+        std::thread::sleep(Duration::from_millis(100));
+
+        let mut stream = TcpStream::connect_timeout(
+            &"127.0.0.1:19998".parse().unwrap(),
+            Duration::from_secs(2),
+        )
+        .expect("should connect");
+
+        let mut handshake = [0u8; 6];
+        stream.set_read_timeout(Some(Duration::from_millis(200))).ok();
+        let _ = stream.read(&mut handshake);
+
+        app.update();
+
+        let mut query = app.world_mut().query::<(Entity, &Connection)>();
+        let (conn_entity, _conn) = query.iter(&app.world()).next().expect("should have a connection");
+
+        app.world_mut().write_message(ClientOutput {
+            connection: conn_entity,
+            text: "test message".into(),
+            echo: None,
+            prepend_newline: false,
+        });
+        app.update();
+
+        std::thread::sleep(Duration::from_millis(100));
+
+        let mut buf = [0u8; 64];
+        stream.set_read_timeout(Some(Duration::from_millis(200))).ok();
+        let n = stream.read(&mut buf).ok().unwrap_or(0);
+        let response = String::from_utf8_lossy(&buf[..n]);
+        assert!(response.contains("test message"), "Should receive the sent text");
+
+        drop(stream);
+    }
+}

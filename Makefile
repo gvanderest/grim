@@ -30,10 +30,14 @@ ci: lint coverage
 # ─── Coverage ─────────────────────────────────────────────────────────
 
 coverage:
-	CARGO_TARGET_DIR=target cargo llvm-cov --lcov --output-path coverage/lcov.info \
+	mkdir -p coverage && \
+	LLVM_COV=/usr/bin/llvm-cov \
+	LLVM_PROFDATA=/usr/bin/llvm-profdata \
+	CARGO_TARGET_DIR=target \
+	cargo llvm-cov --lcov --output-path coverage/lcov.info \
 		--ignore-filename-regex 'src/main\.rs|src/seed\.rs' \
 		--fail-under-lines 80 \
-		--no-clean
+		--no-clean --workspace
 
 
 # ─── Cleanup ──────────────────────────────────────────────────────────

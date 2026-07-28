@@ -135,3 +135,336 @@ pub fn hash_password(password: &str) -> String {
 pub fn verify_password(password: &str, hash: &str) -> bool {
     hash_password(password) == hash
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── validate_identifier ──
+
+    #[test]
+    fn validate_identifier_valid_email() {
+        assert_eq!(
+            validate_identifier("User@Example.com").unwrap(),
+            "user@example.com"
+        );
+    }
+
+    #[test]
+    fn validate_identifier_no_at() {
+        assert_eq!(
+            validate_identifier("userexample.com"),
+            Err(ValidationError::InvalidEmail)
+        );
+    }
+
+    #[test]
+    fn validate_identifier_no_dot_in_domain() {
+        assert_eq!(
+            validate_identifier("user@example"),
+            Err(ValidationError::InvalidEmail)
+        );
+    }
+
+    #[test]
+    fn validate_identifier_empty() {
+        assert_eq!(
+            validate_identifier(""),
+            Err(ValidationError::Empty)
+        );
+    }
+
+    #[test]
+    fn validate_identifier_whitespace() {
+        assert_eq!(
+            validate_identifier("   "),
+            Err(ValidationError::Empty)
+        );
+    }
+
+    #[test]
+    fn validate_identifier_trailing_spaces_trimmed() {
+        assert_eq!(
+            validate_identifier("  User@Example.com  ").unwrap(),
+            "user@example.com"
+        );
+    }
+
+    // ── validate_character_name ──
+
+    #[test]
+    fn validate_character_name_valid() {
+        assert_eq!(
+            validate_character_name("Aragorn").unwrap(),
+            "Aragorn"
+        );
+    }
+
+    #[test]
+    fn validate_character_name_min_length() {
+        assert_eq!(
+            validate_character_name("Ara").unwrap(),
+            "Ara"
+        );
+    }
+
+    #[test]
+    fn validate_character_name_max_length() {
+        let name = "Aaaaaaaaaaaaaaaaaaaa"; // 20 chars, starts with letter
+        assert_eq!(name.len(), 20);
+        assert_eq!(
+            validate_character_name(name).unwrap(),
+            "Aaaaaaaaaaaaaaaaaaaa"
+        );
+    }
+
+    #[test]
+    fn validate_character_name_too_short() {
+        assert_eq!(
+            validate_character_name("Ab"),
+            Err(ValidationError::TooShort(3))
+        );
+    }
+
+    #[test]
+    fn validate_character_name_too_long() {
+        let name = "Aaaaaaaaaaaaaaaaaaaaa"; // 21 chars
+        assert_eq!(name.len(), 21);
+        assert_eq!(
+            validate_character_name(name),
+            Err(ValidationError::TooLong(20))
+        );
+    }
+
+    #[test]
+    fn validate_character_name_starts_with_non_letter() {
+        assert_eq!(
+            validate_character_name("1aragorn"),
+            Err(ValidationError::InvalidFormat)
+        );
+    }
+
+    #[test]
+    fn validate_character_name_starts_with_hyphen() {
+        assert_eq!(
+            validate_character_name("-aragorn"),
+            Err(ValidationError::InvalidFormat)
+        );
+    }
+
+    #[test]
+    fn validate_character_name_invalid_chars() {
+        assert_eq!(
+            validate_character_name("Aragorn!"),
+            Err(ValidationError::InvalidCharacters)
+        );
+    }
+
+    #[test]
+    fn validate_character_name_contains_space() {
+        assert_eq!(
+            validate_character_name("Aragorn II").unwrap(),
+            "Aragorn Ii"
+        );
+    }
+
+    #[test]
+    fn validate_character_name_contains_hyphen() {
+        assert_eq!(
+            validate_character_name("Aragorn-II").unwrap(),
+            "Aragorn-ii"
+        );
+    }
+
+    #[test]
+    fn validate_character_name_contains_apostrophe() {
+        assert_eq!(
+            validate_character_name("O'Brian").unwrap(),
+            "O'brian"
+        );
+    }
+
+    #[test]
+    fn validate_character_name_title_casing() {
+        assert_eq!(
+            validate_character_name("aragorn the great").unwrap(),
+            "Aragorn The Great"
+        );
+    }
+
+    #[test]
+    fn validate_character_name_title_casing_mixed() {
+        assert_eq!(
+            validate_character_name("aRAGORN").unwrap(),
+            "Aragorn"
+        );
+    }
+
+    // ── normalize_filename ──
+
+    #[test]
+    fn normalize_filename_basic() {
+        assert_eq!(normalize_filename("hello"), "hello");
+    }
+
+    #[test]
+    fn normalize_filename_spaces() {
+        assert_eq!(normalize_filename("hello world"), "hello_world");
+    }
+
+    #[test]
+    fn normalize_filename_mixed_separators() {
+        assert_eq!(
+            normalize_filename("hello world foo_bar"),
+            "hello_world_foo_bar"
+        );
+    }
+
+    #[test]
+    fn normalize_filename_special_chars() {
+        // non-alphanumeric, non-space → hyphens
+        assert_eq!(normalize_filename("hello!!!world"), "hello---world");
+    }
+
+    #[test]
+    fn normalize_filename_multiple_special_chars() {
+        assert_eq!(
+            normalize_filename("hello---world"),
+            "hello---world"
+        );
+    }
+
+    #[test]
+    fn normalize_filename_leading_separators_trimmed() {
+        assert_eq!(
+            normalize_filename("__hello world__"),
+            "hello_world"
+        );
+    }
+
+    #[test]
+    fn normalize_filename_trailing_separators_trimmed() {
+        assert_eq!(
+            normalize_filename("hello_world__"),
+            "hello_world"
+        );
+    }
+
+    #[test]
+    fn normalize_filename_leading_and_trailing_trimmed() {
+        assert_eq!(
+            normalize_filename("  ___hello world___  "),
+            "hello_world"
+        );
+    }
+
+    // ── validate_password ──
+
+    #[test]
+    fn validate_password_valid() {
+        assert_eq!(validate_password("abc123"), Ok(()));
+    }
+
+    #[test]
+    fn validate_password_exactly_six() {
+        assert_eq!(validate_password("abcdef"), Ok(()));
+    }
+
+    #[test]
+    fn validate_password_too_short() {
+        assert_eq!(
+            validate_password("abc12"),
+            Err(ValidationError::TooShort(6))
+        );
+    }
+
+    #[test]
+    fn validate_password_empty() {
+        assert_eq!(
+            validate_password(""),
+            Err(ValidationError::Empty)
+        );
+    }
+
+    // ── hash_password ──
+
+    #[test]
+    fn hash_password_returns_hex_string() {
+        let hash = hash_password("hello");
+        // SHA-256 hex = 64 chars
+        assert_eq!(hash.len(), 64);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn hash_password_deterministic() {
+        assert_eq!(hash_password("hello"), hash_password("hello"));
+    }
+
+    #[test]
+    fn hash_password_differs_for_diff_inputs() {
+        assert_ne!(hash_password("hello"), hash_password("world"));
+    }
+
+    // ── verify_password ──
+
+    #[test]
+    fn verify_password_matching() {
+        let hash = hash_password("correct_password");
+        assert!(verify_password("correct_password", &hash));
+    }
+
+    #[test]
+    fn verify_password_non_matching() {
+        let hash = hash_password("correct_password");
+        assert!(!verify_password("wrong_password", &hash));
+    }
+
+    // ── ValidationError Display ──
+
+    #[test]
+    fn test_validation_error_display_variants() {
+        assert_eq!(ValidationError::Empty.to_string(), "cannot be empty");
+        assert_eq!(ValidationError::TooShort(3).to_string(), "must be at least 3 characters");
+        assert_eq!(ValidationError::TooLong(20).to_string(), "must be at most 20 characters");
+        assert_eq!(ValidationError::InvalidCharacters.to_string(), "contains invalid characters");
+        assert_eq!(ValidationError::InvalidEmail.to_string(), "is not a valid email address");
+        assert_eq!(ValidationError::InvalidFormat.to_string(), "has an invalid format");
+    }
+
+    // ── validate_email: empty domain part ──
+
+    #[test]
+    fn test_validate_email_empty_domain_part() {
+        assert_eq!(
+            validate_identifier("a@b."),
+            Err(ValidationError::InvalidEmail)
+        );
+        assert_eq!(
+            validate_identifier("a@.b"),
+            Err(ValidationError::InvalidEmail)
+        );
+    }
+
+    // ── validate_character_name: empty / whitespace-only ──
+
+    #[test]
+    fn test_validate_character_name_empty() {
+        assert_eq!(
+            validate_character_name(""),
+            Err(ValidationError::Empty)
+        );
+        assert_eq!(
+            validate_character_name("   "),
+            Err(ValidationError::Empty)
+        );
+    }
+
+    // ── title_case: empty / whitespace-only input ──
+
+    #[test]
+    fn test_title_case_empty_word() {
+        assert_eq!(title_case(""), "");
+        assert_eq!(title_case("   "), "");
+    }
+}
