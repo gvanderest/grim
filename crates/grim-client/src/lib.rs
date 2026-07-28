@@ -19,7 +19,6 @@ use grim::validation::{
     hash_password, validate_character_name, validate_identifier, validate_password, verify_password,
 };
 use std::collections::VecDeque;
-use std::time::Duration;
 use uuid::Uuid;
 
 mod formatter;
@@ -269,14 +268,8 @@ fn handle_client_input(
                                         client.character = Some(char_entity);
                                         client.state = ClientState::InGame;
                                         client.input_queue = VecDeque::new();
-                                        client.command_cooldown = {
-                                            let mut t = Timer::new(
-                                                Duration::from_millis(500),
-                                                TimerMode::Repeating,
-                                            );
-                                            t.set_elapsed(Duration::from_millis(500));
-                                            t
-                                        };
+                                        client.command_cooldown =
+                                            Timer::from_seconds(0.5, TimerMode::Once);
                                         outputs.write(ClientOutput {
                                             echo: None,
                                             ..ClientOutput::new(conn, "Reconnecting...\n")
@@ -429,11 +422,7 @@ fn handle_client_input(
                     client.character = Some(char_entity);
                     client.state = ClientState::InGame;
                     client.input_queue = VecDeque::new();
-                    client.command_cooldown = {
-                        let mut t = Timer::new(Duration::from_millis(500), TimerMode::Repeating);
-                        t.set_elapsed(Duration::from_millis(500));
-                        t
-                    };
+                    client.command_cooldown = Timer::from_seconds(0.5, TimerMode::Once);
                     outputs.write(ClientOutput {
                         echo: None,
                         ..ClientOutput::new(conn, "Reconnecting...\n")
@@ -560,11 +549,7 @@ fn handle_client_input(
                 info!("Character '{}' entered the world", char_name);
                 client.state = ClientState::InGame;
                 client.input_queue = VecDeque::new();
-                client.command_cooldown = {
-                    let mut t = Timer::new(Duration::from_millis(500), TimerMode::Repeating);
-                    t.set_elapsed(Duration::from_millis(500));
-                    t
-                };
+                client.command_cooldown = Timer::from_seconds(0.5, TimerMode::Once);
                 // Start output capture now that the character is in the world
                 commands.entity(conn).insert(OutputHistory::with_max(100));
                 announce_login.write(LoginAnnounce { name: char_name });
@@ -727,7 +712,7 @@ fn process_command_queue(
             continue;
         }
         client.command_cooldown.tick(time.delta());
-        if !client.command_cooldown.just_finished() {
+        if !client.command_cooldown.is_finished() {
             continue;
         }
         if let Some(cmd) = client.input_queue.pop_front() {
@@ -760,6 +745,8 @@ fn process_command_queue(
                 client: client.character.unwrap_or(entity),
                 command: cmd,
             });
+            // Start cooldown for next command
+            client.command_cooldown.reset();
         }
     }
 }
