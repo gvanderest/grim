@@ -12,7 +12,7 @@ precommit:
 lint: check clippy fmt-check
 
 check:
-	cargo check
+	RUSTFLAGS="-D warnings" cargo check
 
 clippy:
 	cargo clippy --all-targets -- -D warnings
@@ -34,7 +34,7 @@ coverage:
 	if [ -x /usr/bin/llvm-cov ] && [ -x /usr/bin/llvm-profdata ]; then \
 		export LLVM_COV=/usr/bin/llvm-cov LLVM_PROFDATA=/usr/bin/llvm-profdata; \
 	fi && \
-	CARGO_TARGET_DIR=target \
+	CARGO_TARGET_DIR=target RUSTFLAGS="-D warnings" \
 	cargo llvm-cov --lcov --output-path coverage/lcov.info \
 		--ignore-filename-regex 'src/main\.rs|src/seed\.rs' \
 		--fail-under-lines 75 \
