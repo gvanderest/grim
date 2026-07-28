@@ -215,6 +215,12 @@ fn drain_network_events(
                 if let Some((entity, mut conn)) =
                     connections.iter_mut().find(|(_, c)| c.id == conn_id)
                 {
+                    // Filter to printable ASCII (32-126) — strip ANSI/control chars
+                    let text: String = text
+                        .chars()
+                        .filter(|&c| c.is_ascii_graphic() || c == ' ')
+                        .collect();
+
                     // If echo was hidden (password mode), auto-restore on user input.
                     if conn.echo_hidden {
                         let _ = bridge.to_network.try_send(NetworkCommand::SendRaw {

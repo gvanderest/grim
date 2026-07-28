@@ -1047,7 +1047,6 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "chrono",
- "rust-i18n",
  "serde",
  "serde_json",
  "sha2",

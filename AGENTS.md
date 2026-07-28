@@ -22,8 +22,8 @@ Protocol  ─→  Client  ─→  Engine  → Persistence
 ## Key Conventions for Agents
 
 - **`\n` everywhere**: Code uses `\n` for newlines. The protocol layer (`send_network_commands`) converts `\n` → `\r\n` before writing to TCP.
-- **Color markup**: `{code` and `@xRGB`/`@bRGB` — parsed by `grim::color::ansi()` at the protocol layer. See README for full table.
-- **i18n locale path**: `locales/en.json` at project root. `rust-i18n` interprets `{letter}` as interpolation — avoid `{` before variable names in locale strings; wrap color codes in Rust `format!()`.
+- **Color markup + i18n**: Use `grim::color::tr()` for locale strings containing color codes. The `tr()` function reads `locales/en.json`, converts `{X}` 16-color codes to `@xRGB` format (so i18n's `{var}` interpolation doesn't eat them), then replaces `%{var}` placeholders. Plain strings without colors still use `t!()`.
+- **User input filter**: Protocol layer strips all non-printable ASCII (32-126) from user input before creating `ClientInput`, preventing ANSI/control code injection.
 - **`Exit` vs `Exits`**: The component is `Exits { exits: HashMap<Cardinal, Entity> }`. On a Room entity.
 - **`Name` vs `GrimName`**: Import aliased from `grim` as `GrimName` in binary/client to avoid collisions with Bevy's `Name`.
 - **Testing**: Each plugin has `#[cfg(test)] mod tests` inline. Tests use Bevy `App` + `update()`.
