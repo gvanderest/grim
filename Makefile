@@ -37,7 +37,7 @@ coverage:
 	CARGO_TARGET_DIR=target RUSTFLAGS="-D warnings" \
 	cargo llvm-cov --lcov --output-path coverage/lcov.info \
 		--ignore-filename-regex 'src/main\.rs|src/seed\.rs' \
-		--fail-under-lines 75 \
+		--fail-under-lines 90 \
 		--no-clean --workspace
 # ─── Cleanup ──────────────────────────────────────────────────────────
 
