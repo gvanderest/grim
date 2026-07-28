@@ -223,6 +223,22 @@ pub fn tr(key: &str, args: &[(&str, &str)]) -> String {
     out
 }
 
+/// Translate with color-code conversion. Wraps `tr()` with `t!()`-style syntax.
+///
+/// # Examples
+///
+/// ```ignore
+/// tr!("social.say.first_party", text = text);
+/// tr!("social.say.third_party", speaker = speaker, text = text);
+/// ```
+#[macro_export]
+macro_rules! tr {
+    ($key:expr $(, $arg:ident = $val:expr)* $(,)?) => {{
+        let args: &[(&str, &str)] = &[$((stringify!($arg), $val.as_ref())),*];
+        $crate::color::tr($key, args)
+    }};
+}
+
 fn locale_string(key: &str) -> String {
     let data = locale_data();
     data.get(key)
