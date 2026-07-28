@@ -439,4 +439,429 @@ mod tests {
 
         drop(stream);
     }
+    #[test]
+    fn test_telnet_plugin_new() {
+        // L50-52: TelnetPlugin::new() — just instantiate it
+        let plugin = TelnetPlugin::new(8080);
+        assert_eq!(plugin.port, 8080);
+
+        let plugin2 = TelnetPlugin { port: 9090 };
+        assert_eq!(plugin2.port, 9090);
+    }
+
+    #[test]
+    fn test_echo_false_sets_echo_hidden() {
+        // L166-177: send_network_commands with echo: Some(false) sends IAC WILL ECHO
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(TelnetPlugin { port: 19995 });
+        app.add_message::<ConnectionEstablished>()
+            .add_message::<ClientInput>()
+            .add_message::<ConnectionClosed>()
+            .add_message::<ClientOutput>()
+            .add_message::<DisconnectRequest>();
+
+        app.update();
+        std::thread::sleep(Duration::from_millis(100));
+
+        let mut stream =
+            TcpStream::connect_timeout(&"127.0.0.1:19995".parse().unwrap(), Duration::from_secs(2))
+                .expect("should connect");
+
+        // Drain telnet handshake
+        let mut handshake = [0u8; 6];
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .ok();
+        let _ = stream.read(&mut handshake);
+
+        app.update();
+
+        // Find the connection entity
+        let mut query = app.world_mut().query::<(Entity, &Connection)>();
+        let (conn_entity, conn) = query
+            .iter(&app.world())
+            .next()
+            .expect("should have a connection");
+        assert!(!conn.echo_hidden, "echo_hidden should start false");
+
+        // Send ClientOutput with echo: Some(false) → sends IAC WILL ECHO, sets echo_hidden=true
+        app.world_mut().write_message(ClientOutput {
+            connection: conn_entity,
+            text: "".into(),
+            echo: Some(false),
+            prepend_newline: false,
+        });
+        app.update();
+        std::thread::sleep(Duration::from_millis(100));
+
+        // Read IAC WILL ECHO from TCP
+        let mut iac_buf = [0u8; 16];
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .ok();
+        let n = stream.read(&mut iac_buf).ok().unwrap_or(0);
+        assert!(n >= 3, "Should receive IAC WILL ECHO, got {} bytes", n);
+        assert_eq!(&iac_buf[..3], &[255, 251, 1], "Should be IAC WILL ECHO");
+
+        // Verify connection state
+        let (_, conn2) = query
+            .iter(&app.world())
+            .next()
+            .expect("connection should still exist");
+        assert!(
+            conn2.echo_hidden,
+            "echo_hidden should be true after echo: Some(false)"
+        );
+
+        drop(stream);
+    }
+
+    #[test]
+    fn test_echo_hidden_resets_on_input() {
+        // L225-231: drain_network_events with echo_hidden=true triggers IAC WONT ECHO
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(TelnetPlugin { port: 19994 });
+        app.add_message::<ConnectionEstablished>()
+            .add_message::<ClientInput>()
+            .add_message::<ConnectionClosed>()
+            .add_message::<ClientOutput>()
+            .add_message::<DisconnectRequest>();
+
+        app.update();
+        std::thread::sleep(Duration::from_millis(100));
+
+        let mut stream =
+            TcpStream::connect_timeout(&"127.0.0.1:19994".parse().unwrap(), Duration::from_secs(2))
+                .expect("should connect");
+
+        let mut handshake = [0u8; 6];
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .ok();
+        let _ = stream.read(&mut handshake);
+
+        app.update();
+
+        let mut query = app.world_mut().query::<(Entity, &Connection)>();
+        let (conn_entity, _conn) = query
+            .iter(&app.world())
+            .next()
+            .expect("should have a connection");
+
+        // Set echo_hidden=true via echo: Some(false)
+        app.world_mut().write_message(ClientOutput {
+            connection: conn_entity,
+            text: "".into(),
+            echo: Some(false),
+            prepend_newline: false,
+        });
+        app.update();
+        std::thread::sleep(Duration::from_millis(100));
+
+        let mut drain = [0u8; 16];
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .ok();
+        let _ = stream.read(&mut drain); // drain IAC WILL ECHO
+
+        // Verify echo_hidden is true
+        let (_, conn_before) = query.iter(&app.world()).next().unwrap();
+        assert!(
+            conn_before.echo_hidden,
+            "echo_hidden should be true before input"
+        );
+
+        // Send user input from the TCP client
+        stream.write_all(b"hello\n").ok();
+        std::thread::sleep(Duration::from_millis(50));
+
+        app.update();
+        std::thread::sleep(Duration::from_millis(100));
+
+        // Read IAC WONT ECHO from TCP
+        let mut response = [0u8; 16];
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .ok();
+        let n = stream.read(&mut response).ok().unwrap_or(0);
+        assert!(n >= 3, "Should receive IAC WONT ECHO, got {} bytes", n);
+        assert_eq!(&response[..3], &[255, 252, 1], "Should be IAC WONT ECHO");
+
+        // Verify echo_hidden was reset to false
+        let (_, conn_after) = query.iter(&app.world()).next().unwrap();
+        assert!(
+            !conn_after.echo_hidden,
+            "echo_hidden should be false after user input"
+        );
+
+        // ClientInput should have been written
+        let msg_resource = app.world().resource::<Messages<ClientInput>>();
+        let mut cursor = msg_resource.get_cursor();
+        let events: Vec<&ClientInput> = cursor.read(&msg_resource).collect();
+        let has_hello = events.iter().any(|e| e.text == "hello");
+        assert!(has_hello, "ClientInput should contain 'hello'");
+
+        drop(stream);
+    }
+
+    #[test]
+    fn test_input_filter_strips_control_chars() {
+        // L221: Input filter keeps only ASCII 32-126
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(TelnetPlugin { port: 19993 });
+        app.add_message::<ConnectionEstablished>()
+            .add_message::<ClientInput>()
+            .add_message::<ConnectionClosed>()
+            .add_message::<ClientOutput>()
+            .add_message::<DisconnectRequest>();
+
+        app.update();
+        std::thread::sleep(Duration::from_millis(100));
+
+        let mut stream =
+            TcpStream::connect_timeout(&"127.0.0.1:19993".parse().unwrap(), Duration::from_secs(2))
+                .expect("should connect");
+
+        let mut handshake = [0u8; 6];
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .ok();
+        let _ = stream.read(&mut handshake);
+
+        app.update();
+        std::thread::sleep(Duration::from_millis(50));
+
+        // Send input with control chars: tab (0x09), escape (0x1B), bell (0x07), and regular text
+        let raw = b"\x07\x1Bhello\x09world\n".to_vec();
+        stream.write_all(&raw).ok();
+        std::thread::sleep(Duration::from_millis(50));
+
+        app.update();
+
+        // Verify control chars are stripped
+        let msg_resource = app.world().resource::<Messages<ClientInput>>();
+        let mut cursor = msg_resource.get_cursor();
+        let events: Vec<&ClientInput> = cursor.read(&msg_resource).collect();
+        let has_filtered = events.iter().any(|e| e.text == "helloworld");
+        assert!(
+            has_filtered,
+            "Control chars should be stripped, got: {:?}",
+            events.iter().map(|e| &e.text).collect::<Vec<_>>()
+        );
+
+        // Verify tab is stripped (not a space) — tab is not in ASCII 32-126 range
+        let has_raw = events.iter().any(|e| e.text.contains('\t'));
+        assert!(!has_raw, "Tab should be stripped");
+
+        drop(stream);
+    }
+
+    #[test]
+    fn test_send_network_commands_in_game_prompt() {
+        // L282-295: In-game client gets "> " prompt appended
+        // L287-290: prepend_newline=true adds \n before text
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(TelnetPlugin { port: 19992 });
+        app.add_message::<ConnectionEstablished>()
+            .add_message::<ClientInput>()
+            .add_message::<ConnectionClosed>()
+            .add_message::<ClientOutput>()
+            .add_message::<DisconnectRequest>();
+
+        app.update();
+        std::thread::sleep(Duration::from_millis(100));
+
+        let mut stream =
+            TcpStream::connect_timeout(&"127.0.0.1:19992".parse().unwrap(), Duration::from_secs(2))
+                .expect("should connect");
+
+        let mut handshake = [0u8; 6];
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .ok();
+        let _ = stream.read(&mut handshake);
+
+        app.update();
+
+        let mut query = app.world_mut().query::<(Entity, &Connection)>();
+        let (conn_entity, _conn) = query
+            .iter(&app.world())
+            .next()
+            .expect("should have a connection");
+
+        // Spawn an in-game Client linked to this connection
+        use grim::components::{Client, ClientState};
+        let mut client = Client::new(conn_entity);
+        client.state = ClientState::InGame;
+        app.world_mut().spawn(client);
+
+        // Send output with prepend_newline=true
+        app.world_mut().write_message(ClientOutput {
+            connection: conn_entity,
+            text: "Someone enters the room.".into(),
+            echo: None,
+            prepend_newline: true,
+        });
+        app.update();
+        std::thread::sleep(Duration::from_millis(100));
+
+        // Read response — should contain the text with prompt
+        let mut buf = [0u8; 256];
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .ok();
+        let n = stream.read(&mut buf).ok().unwrap_or(0);
+        let response = String::from_utf8_lossy(&buf[..n]);
+
+        assert!(
+            response.contains("Someone enters the room."),
+            "Response should contain the text, got: {:?}",
+            response
+        );
+        assert!(
+            response.contains("> "),
+            "In-game response should contain prompt '> ', got: {:?}",
+            response
+        );
+
+        drop(stream);
+    }
+
+    #[test]
+    fn test_send_network_commands_no_prepend_in_game() {
+        // L287-295: prepend_newline=false for in-game; text with prompt but no leading \n
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(TelnetPlugin { port: 19991 });
+        app.add_message::<ConnectionEstablished>()
+            .add_message::<ClientInput>()
+            .add_message::<ConnectionClosed>()
+            .add_message::<ClientOutput>()
+            .add_message::<DisconnectRequest>();
+
+        app.update();
+        std::thread::sleep(Duration::from_millis(100));
+
+        let mut stream =
+            TcpStream::connect_timeout(&"127.0.0.1:19991".parse().unwrap(), Duration::from_secs(2))
+                .expect("should connect");
+
+        let mut handshake = [0u8; 6];
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .ok();
+        let _ = stream.read(&mut handshake);
+
+        app.update();
+
+        let mut query = app.world_mut().query::<(Entity, &Connection)>();
+        let (conn_entity, _conn) = query
+            .iter(&app.world())
+            .next()
+            .expect("should have a connection");
+
+        use grim::components::{Client, ClientState};
+        let mut client = Client::new(conn_entity);
+        client.state = ClientState::InGame;
+        app.world_mut().spawn(client);
+
+        // Send output with prepend_newline=false
+        app.world_mut().write_message(ClientOutput {
+            connection: conn_entity,
+            text: "stand".into(),
+            echo: None,
+            prepend_newline: false,
+        });
+        app.update();
+        std::thread::sleep(Duration::from_millis(100));
+
+        let mut buf = [0u8; 256];
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .ok();
+        let n = stream.read(&mut buf).ok().unwrap_or(0);
+        let response = String::from_utf8_lossy(&buf[..n]);
+
+        // Should contain "stand" and prompt, but NOT start with \r\n
+        assert!(
+            response.contains("stand"),
+            "Response should contain 'stand', got: {:?}",
+            response
+        );
+        assert!(
+            response.contains("> "),
+            "In-game response should contain '> ', got: {:?}",
+            response
+        );
+        assert!(
+            !response.starts_with("\r\n"),
+            "Response without prepend should not start with \\r\\n, got: {:?}",
+            response
+        );
+
+        drop(stream);
+    }
+
+    #[test]
+    fn test_send_network_commands_empty_text_ingame() {
+        // L291-294: Empty text with is_ingame — goes through else branch (empty string)
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(TelnetPlugin { port: 19990 });
+        app.add_message::<ConnectionEstablished>()
+            .add_message::<ClientInput>()
+            .add_message::<ConnectionClosed>()
+            .add_message::<ClientOutput>()
+            .add_message::<DisconnectRequest>();
+
+        app.update();
+        std::thread::sleep(Duration::from_millis(100));
+
+        let mut stream =
+            TcpStream::connect_timeout(&"127.0.0.1:19990".parse().unwrap(), Duration::from_secs(2))
+                .expect("should connect");
+
+        let mut handshake = [0u8; 6];
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .ok();
+        let _ = stream.read(&mut handshake);
+
+        app.update();
+
+        let mut query = app.world_mut().query::<(Entity, &Connection)>();
+        let (conn_entity, _conn) = query
+            .iter(&app.world())
+            .next()
+            .expect("should have a connection");
+
+        use grim::components::{Client, ClientState};
+        let mut client = Client::new(conn_entity);
+        client.state = ClientState::InGame;
+        app.world_mut().spawn(client);
+
+        // Empty text with in-game client — goes through else branch
+        app.world_mut().write_message(ClientOutput {
+            connection: conn_entity,
+            text: "".into(),
+            echo: None,
+            prepend_newline: false,
+        });
+        app.update();
+        std::thread::sleep(Duration::from_millis(100));
+
+        // Nothing should be sent for empty text
+        let mut buf = [0u8; 8];
+        stream
+            .set_read_timeout(Some(Duration::from_millis(100)))
+            .ok();
+        let n = stream.read(&mut buf).ok().unwrap_or(0);
+        assert_eq!(n, 0, "No data should be sent for empty text");
+
+        drop(stream);
+    }
 }
