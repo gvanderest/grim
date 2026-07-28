@@ -41,6 +41,7 @@ pub fn format_move(actor: &str, direction: &str, leaving: bool) -> String {
 }
 
 /// Format the who list.
+#[allow(dead_code)]
 pub fn format_who_list(players: &[String]) -> String {
     if players.is_empty() {
         "No other players online.\n".into()
@@ -54,6 +55,7 @@ pub fn format_who_list(players: &[String]) -> String {
 }
 
 /// Format the where list (same-area players with room names).
+#[allow(dead_code)]
 pub fn format_where_list(entries: &[(String, String)]) -> String {
     if entries.is_empty() {
         "No other players in this area.\n".into()
@@ -66,6 +68,7 @@ pub fn format_where_list(entries: &[(String, String)]) -> String {
     }
 }
 
+#[allow(dead_code)]
 /// Format the command list.
 pub fn format_commands() -> String {
     let cmds = [

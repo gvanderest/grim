@@ -34,6 +34,8 @@ pub struct Client {
     /// Parsed commands waiting to be dispatched (cooldown-gated).
     pub input_queue: VecDeque<Command>,
     pub command_cooldown: Timer,
+    /// The last raw input text (for "!" repeat support), excluding the "!" itself.
+    pub last_input: Option<String>,
 }
 
 impl Client {
@@ -45,6 +47,7 @@ impl Client {
             character: None,
             input_queue: VecDeque::new(),
             command_cooldown: Timer::from_seconds(0.5, TimerMode::Once),
+            last_input: None,
         }
     }
 }
