@@ -167,12 +167,12 @@ mod tests {
     fn say_basic() {
         assert_eq!(
             format_say("Alice", "hello there"),
-            "@xf0fAlice says @r'@xb0bhello there@r'\n"
+            "@xf0fAlice says @r'@x909hello there@r'\n"
         );
     }
     #[test]
     fn say_empty_text() {
-        assert_eq!(format_say("Bob", ""), "@xf0fBob says @r'@xb0b@r'\n");
+        assert_eq!(format_say("Bob", ""), "@xf0fBob says @r'@x909@r'\n");
     }
 
     // ── format_yell ──────────────────────────────────────────────

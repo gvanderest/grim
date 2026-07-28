@@ -265,37 +265,31 @@ fn locale_data() -> &'static Value {
 /// This is applied to ALL output before `ansi()` to ensure color codes
 /// use our palette rather than the terminal theme.
 pub fn convert_16color(s: &str) -> String {
+    use crate::palette::*;
     let mut out = String::with_capacity(s.len());
     let mut cs = s.chars().peekable();
     while let Some(ch) = cs.next() {
         if ch == '{' {
             match cs.next() {
                 Some('{') => out.push('{'),
-                // Dark colors (ANSI 0-7)
-                Some('k') => out.push_str("@x000"), // #484f58
-                Some('r') => out.push_str("@xb00"), // #ff7b72
-                Some('g') => out.push_str("@x0b0"), // #3fb950
-                Some('y') => out.push_str("@xbb0"), // #d29922
-                Some('b') => out.push_str("@x00b"), // #58a6ff
-                Some('m') => out.push_str("@xb0b"), // #bc8cff
-                Some('c') => out.push_str("@x0bb"), // #39c5cf
-                Some('w') => out.push_str("@xbbb"), // #b1bac4
-                // Bright colors (ANSI 8-15)
-                Some('K') | Some('8') | Some('*') => out.push_str("@x888"), // #6e7681
-                Some('R') | Some('!') => out.push_str("@xf00"),             // #ffa198
-                Some('G') | Some('@') => out.push_str("@x0f0"),             // #56d364
-                Some('Y') | Some('#') => out.push_str("@xff0"),             // #e3b341
-                Some('B') => out.push_str("@x00f"),                         // #79c0ff
-                Some('M') | Some('%') => out.push_str("@xf0f"),             // #d2a8ff
-                Some('C') | Some('^') => out.push_str("@x0ff"),             // #56d4dd
-                Some('W') | Some('&') => out.push_str("@xfff"),             // #ffffff
-                // Reset
-                Some('x' | 'X' | '9') => out.push_str("@r"),
-                // Unknown: passthrough
-                Some(other) => {
-                    out.push('{');
-                    out.push(other);
-                }
+                Some('k') => out.push_str(BLACK_DARK),
+                Some('r') | Some('1') => out.push_str(RED_DARK),
+                Some('g') | Some('2') => out.push_str(GREEN_DARK),
+                Some('y') | Some('3') => out.push_str(YELLOW_DARK),
+                Some('b') | Some('4') => out.push_str(BLUE_DARK),
+                Some('m') | Some('5') => out.push_str(MAGENTA_DARK),
+                Some('c') | Some('6') => out.push_str(CYAN_DARK),
+                Some('w') | Some('7') => out.push_str(WHITE_DARK),
+                Some('K') | Some('8') | Some('*') => out.push_str(BLACK_BRIGHT),
+                Some('R') | Some('!') => out.push_str(RED_BRIGHT),
+                Some('G') | Some('@') => out.push_str(GREEN_BRIGHT),
+                Some('Y') | Some('#') => out.push_str(YELLOW_BRIGHT),
+                Some('B') => out.push_str(BLUE_BRIGHT),
+                Some('M') | Some('%') => out.push_str(MAGENTA_BRIGHT),
+                Some('C') | Some('^') => out.push_str(CYAN_BRIGHT),
+                Some('W') | Some('&') => out.push_str(WHITE_BRIGHT),
+                Some('x' | 'X' | '9') => out.push_str(RESET),
+                Some(other) => { out.push('{'); out.push(other); }
                 None => out.push('{'),
             }
         } else {
@@ -311,7 +305,7 @@ mod tr_tests {
 
     #[test]
     fn convert_dark_red() {
-        assert_eq!(convert_16color("{r"), "@xb00");
+        assert_eq!(convert_16color("{r"), "@x900");
     }
 
     #[test]
@@ -338,7 +332,7 @@ mod tr_tests {
     #[test]
     fn convert_mixed_text() {
         let got = convert_16color("{RHello {rworld{x");
-        assert_eq!(got, "@xf00Hello @xb00world@r");
+        assert_eq!(got, "@xf00Hello @x900world@r");
     }
 
     #[test]
@@ -348,8 +342,8 @@ mod tr_tests {
 
     #[test]
     fn tr_resolves_vars() {
-        let converted = convert_16color("{M%{speaker} says @r'@xb0b%{text}{x'");
-        assert_eq!(converted, "@xf0f%{speaker} says @r'@xb0b%{text}@r'");
+        let converted = convert_16color("{M%{speaker} says @r'@x909%{text}{x'");
+        assert_eq!(converted, "@xf0f%{speaker} says @r'@x909%{text}@r'");
     }
 }
 
