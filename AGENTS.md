@@ -1,6 +1,6 @@
 # GRIM Engine — Agent Guide
 
-AI agent instructions for this repo. For project docs (architecture, roadmap, conventions), see [README.md](./README.md).
+AI agent instructions for this repo. For project docs (architecture, roadmap, conventions), see [README.md](./README.md) and [ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 
 ## Architecture
 
@@ -10,13 +10,24 @@ AI agent instructions for this repo. For project docs (architecture, roadmap, co
 Protocol  ─→  Client  ─→  Engine  → Persistence
 ```
 
-## Crate Map
+## Crate Map (Current)
 
 | Crate | Purpose |
 |---|---|
 | `grim` | Engine library: components, events, cardinals, validation, plugins |
 | `grim-client` | Session lifecycle, input parsing, output formatting |
 | `grim-protocol-telnet` | TCP server, IAC negotiation, tokio↔Bevy bridge |
+| `mud-example` (root) | Binary: composes plugins, seeds world |
+
+## Crate Map (Target Architecture v2)
+
+| Crate | Purpose |
+|-------|---------|
+| `grim-engine` | Core ECS wrapper + plugin binding point (THE ENGINE) |
+| `grim-client` | Session lifecycle, input parsing, output formatting |
+| `grim-protocol-telnet` | TCP server, IAC negotiation, tokio↔Bevy bridge |
+| `grim-core-*` | Core plugins: world, social, persistence, combat, networking |
+| `my-custom-*` | Community/user plugins (any name) |
 | `mud-example` (root) | Binary: composes plugins, seeds world |
 
 ## Key Conventions for Agents
@@ -32,6 +43,17 @@ Protocol  ─→  Client  ─→  Engine  → Persistence
 - **Online indicator**: The character select menu shows "(online)" for characters with a live `Player` connection and "(linkdead)" for linkdead characters.
 - **Multiple characters per account**: Allowed simultaneously. No check prevents multiple characters from the same account being `InGame` at the same time.
 - **save_on_disconnect guard**: On connection close, the character is only marked linkdead if it doesn't already have a live `Player` connection (guards against stale `ConnectionClosed` events from a takeover).
+
+## Architecture Decisions
+
+When developing new features, start by asking:
+
+1. **Does this already fit into the architecture?** → Implement as a plugin
+2. **Does this require a change to the architecture?** → Document in `docs/ARCHITECTURE.md`
+3. **Does this add new functionality needing API-level discussion?** → Open an issue
+
+**Reference:** `docs/ARCHITECTURE.md` for current architecture decisions.
+
 ## Workflow
 
 1. **Branch pre-check** — check current branch; if wrong, branch from `main`
