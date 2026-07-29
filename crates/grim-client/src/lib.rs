@@ -638,6 +638,26 @@ fn handle_client_input(
                                 ..ClientOutput::new(conn, formatter::format_commands())
                             });
                         }
+                        Command::Shutdown { .. } => {
+                            // Admin-gated. A non-admin must not be able to tell
+                            // the command exists, so respond exactly as for an
+                            // unknown command — same text, same framing (a
+                            // direct ClientOutput, no prepended newline). Routing
+                            // this through the engine's InfoMessage path would
+                            // add a leading newline and leak the difference.
+                            let is_admin = characters
+                                .get(char_entity)
+                                .map(|(_, c, _)| c.is_admin())
+                                .unwrap_or(false);
+                            if is_admin {
+                                client.input_queue.push_back(cmd);
+                            } else {
+                                outputs.write(ClientOutput {
+                                    echo: None,
+                                    ..ClientOutput::new(conn, tr!("error.unknown_command"))
+                                });
+                            }
+                        }
                         _ => {
                             // All other commands go through the queue to enforce cooldown
                             client.input_queue.push_back(cmd);
@@ -652,7 +672,7 @@ fn handle_client_input(
                 } else {
                     outputs.write(ClientOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, grim::UNKNOWN_COMMAND)
+                        ..ClientOutput::new(conn, tr!("error.unknown_command"))
                     });
                 }
             }
@@ -2477,6 +2497,109 @@ mod tests {
                 .iter()
                 .any(|o| o.connection == conn && o.text.contains("Unknown command")),
             "Unknown command should show error message"
+        );
+    }
+
+    // ── handle_client_input: shutdown is admin-gated + masked ──
+
+    fn spawn_ingame(app: &mut App, conn: Entity, character: Character) -> Entity {
+        let char_entity = app
+            .world_mut()
+            .spawn((
+                character,
+                GrimName("Hero".into()),
+                InRoom {
+                    room: Entity::PLACEHOLDER,
+                },
+                Player {
+                    connection: Some(conn),
+                },
+            ))
+            .id();
+        let mut client = Client::new(conn);
+        client.state = ClientState::InGame;
+        client.character = Some(char_entity);
+        app.world_mut().spawn(client);
+        char_entity
+    }
+
+    fn make_character(roles: Vec<Role>) -> Character {
+        Character {
+            id: Uuid::new_v4(),
+            name: "Hero".into(),
+            account_id: Uuid::new_v4(),
+            created_at: Utc::now(),
+            last_room: None,
+            roles,
+        }
+    }
+
+    /// A non-admin `shutdown` is indistinguishable from an unknown command:
+    /// same text, and the same framing (direct output, no prepended newline).
+    #[test]
+    fn ingame_shutdown_masked_for_non_admin() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        spawn_ingame(&mut app, conn, make_character(Vec::new()));
+
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "shutdown 30".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == conn)
+            .expect("expected a response");
+        assert_eq!(out.text, "Unknown command. Type 'commands' for a list.\n");
+        assert!(!out.prepend_newline, "must match unknown-command framing");
+
+        // And the command was not forwarded to the engine.
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        assert_eq!(engine.get_cursor().read(engine).count(), 0);
+    }
+
+    /// An admin `shutdown` is accepted (queued), never masked.
+    #[test]
+    fn ingame_shutdown_allowed_for_admin() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        spawn_ingame(&mut app, conn, make_character(vec![Role::Admin]));
+
+        app.world_mut().write_message(ClientInput {
+            connection: conn,
+            text: "shutdown 30".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        assert!(
+            !cursor
+                .read(msgs)
+                .any(|o| o.connection == conn && o.text.contains("Unknown command")),
+            "admin shutdown must not be masked"
         );
     }
 
