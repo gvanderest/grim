@@ -16,6 +16,7 @@ fn main() {
     app.add_plugins(grim::plugins::WorldPlugin);
     app.add_plugins(grim::plugins::SocialPlugin);
     app.add_plugins(grim::plugins::PersistencePlugin);
+    app.add_plugins(grim::plugins::ShutdownPlugin);
 
     // Client + Protocol
     app.add_plugins(grim_client::ClientPlugin);

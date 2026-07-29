@@ -1,0 +1,338 @@
+//! Admin-gated graceful server shutdown.
+//!
+//! `shutdown <seconds>` from an admin character schedules a countdown. Every
+//! connected player is warned at decreasing intervals, and when the countdown
+//! expires the app writes [`AppExit::Success`] (exit code 0). The systemd unit
+//! uses `Restart=on-failure`, so a clean exit stays down and lets the deploy
+//! swap the binary before restarting — see `docs/DEPLOY.md`.
+//!
+//! Player state is **not** flushed on shutdown: characters save on disconnect
+//! and on `quit`, and the project currently tolerates losing in-flight position
+//! changes across a restart.
+
+use crate::components::Character;
+use crate::events::{Command, EngineCommand, InfoMessage, ServerBroadcast};
+use bevy::prelude::*;
+
+/// Countdown thresholds (seconds remaining) at which a warning is broadcast.
+/// Only thresholds strictly below the requested duration fire.
+const WARN_AT: [u64; 6] = [30, 15, 10, 5, 3, 1];
+
+/// Pure countdown state. Kept free of Bevy types so the timing logic is unit
+/// testable without a running `App`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShutdownCountdown {
+    remaining: f32,
+    /// Warning thresholds not yet announced, in descending order.
+    pending: Vec<u64>,
+}
+
+/// What a single [`ShutdownCountdown::advance`] produced.
+#[derive(Debug, Default, PartialEq)]
+pub struct Tick {
+    /// Thresholds (seconds) crossed this tick, largest first.
+    pub warnings: Vec<u64>,
+    /// The countdown reached zero this tick or earlier.
+    pub expired: bool,
+}
+
+impl ShutdownCountdown {
+    /// Start a countdown of `seconds`.
+    pub fn new(seconds: u64) -> Self {
+        let mut pending: Vec<u64> = WARN_AT.iter().copied().filter(|&t| t < seconds).collect();
+        pending.sort_unstable_by(|a, b| b.cmp(a)); // descending
+        Self {
+            remaining: seconds as f32,
+            pending,
+        }
+    }
+
+    /// Advance by `dt` seconds, returning any warnings crossed and whether the
+    /// countdown has expired. Once expired, no further warnings are produced.
+    pub fn advance(&mut self, dt: f32) -> Tick {
+        self.remaining -= dt;
+        if self.remaining <= 0.0 {
+            self.pending.clear();
+            return Tick {
+                warnings: Vec::new(),
+                expired: true,
+            };
+        }
+        let mut warnings = Vec::new();
+        while let Some(&t) = self.pending.first() {
+            if self.remaining <= t as f32 {
+                warnings.push(t);
+                self.pending.remove(0);
+            } else {
+                break;
+            }
+        }
+        Tick {
+            warnings,
+            expired: false,
+        }
+    }
+}
+
+/// Present while a shutdown is counting down. Absence means no shutdown pending.
+#[derive(Resource, Debug)]
+pub struct ActiveShutdown(pub ShutdownCountdown);
+
+/// Registers the shutdown message + systems.
+pub struct ShutdownPlugin;
+
+impl Plugin for ShutdownPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_message::<ServerBroadcast>()
+            .add_systems(Update, (handle_shutdown_command, tick_shutdown));
+    }
+}
+
+fn warn_text(seconds: u64) -> String {
+    format!("{{R[SERVER]{{x The server is restarting in {{Y{seconds}{{x seconds.\n")
+}
+
+/// `shutdown <seconds>`: admin-gated. Non-admins get a permission error; a
+/// second request while one is pending is rejected.
+fn handle_shutdown_command(
+    mut engine: MessageReader<EngineCommand>,
+    characters: Query<&Character>,
+    active: Option<Res<ActiveShutdown>>,
+    mut info: MessageWriter<InfoMessage>,
+    mut broadcast: MessageWriter<ServerBroadcast>,
+    mut commands: Commands,
+) {
+    for cmd in engine.read() {
+        let Command::Shutdown { seconds } = cmd.command else {
+            continue;
+        };
+        let actor = cmd.client;
+        // Fail closed: an unresolvable/roleless character is not admin.
+        let is_admin = characters
+            .get(actor)
+            .map(Character::is_admin)
+            .unwrap_or(false);
+        if !is_admin {
+            info.write(InfoMessage {
+                target: actor,
+                text: "You do not have permission to do that.\n".into(),
+            });
+            continue;
+        }
+        if active.is_some() {
+            info.write(InfoMessage {
+                target: actor,
+                text: "A shutdown is already scheduled.\n".into(),
+            });
+            continue;
+        }
+        broadcast.write(ServerBroadcast {
+            text: warn_text(seconds),
+        });
+        commands.insert_resource(ActiveShutdown(ShutdownCountdown::new(seconds)));
+    }
+}
+
+/// Ticks the active countdown, emitting warnings and finally `AppExit`.
+fn tick_shutdown(
+    time: Res<Time>,
+    active: Option<ResMut<ActiveShutdown>>,
+    mut broadcast: MessageWriter<ServerBroadcast>,
+    mut exit: MessageWriter<AppExit>,
+) {
+    let Some(mut active) = active else {
+        return;
+    };
+    let tick = active.0.advance(time.delta_secs());
+    for secs in tick.warnings {
+        broadcast.write(ServerBroadcast {
+            text: warn_text(secs),
+        });
+    }
+    if tick.expired {
+        broadcast.write(ServerBroadcast {
+            text: "{R[SERVER]{x The server is restarting now.\n".into(),
+        });
+        exit.write(AppExit::Success);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_only_keeps_thresholds_below_duration() {
+        let cd = ShutdownCountdown::new(30);
+        // 30 is not < 30, so it is excluded; the rest descend.
+        assert_eq!(cd.pending, vec![15, 10, 5, 3, 1]);
+    }
+
+    #[test]
+    fn short_countdown_has_few_warnings() {
+        let cd = ShutdownCountdown::new(4);
+        assert_eq!(cd.pending, vec![3, 1]);
+    }
+
+    #[test]
+    fn advance_crosses_single_threshold() {
+        let mut cd = ShutdownCountdown::new(30);
+        // Down to 16: no threshold yet.
+        assert_eq!(cd.advance(14.0), Tick::default());
+        // Down to 14: crosses 15.
+        let t = cd.advance(2.0);
+        assert_eq!(t.warnings, vec![15]);
+        assert!(!t.expired);
+    }
+
+    #[test]
+    fn advance_crosses_multiple_thresholds_in_one_tick() {
+        let mut cd = ShutdownCountdown::new(30);
+        // Jump straight to 4 remaining: crosses 15, 10, 5 at once.
+        let t = cd.advance(26.0);
+        assert_eq!(t.warnings, vec![15, 10, 5]);
+        assert!(!t.expired);
+    }
+
+    #[test]
+    fn advance_expires_without_spurious_warnings() {
+        let mut cd = ShutdownCountdown::new(2);
+        let t = cd.advance(5.0);
+        assert!(t.expired);
+        assert!(t.warnings.is_empty());
+    }
+
+    #[test]
+    fn expiry_is_sticky_and_at_exact_zero() {
+        let mut cd = ShutdownCountdown::new(1);
+        let t = cd.advance(1.0);
+        assert!(t.expired);
+    }
+
+    #[test]
+    fn warn_text_contains_count_and_colour() {
+        let s = warn_text(15);
+        assert!(s.contains("15"));
+        assert!(s.starts_with("{R[SERVER]"));
+        assert!(s.ends_with('\n'));
+    }
+
+    // ── System-level tests ────────────────────────────────────────
+
+    use crate::components::Role;
+    use chrono::Utc;
+    use std::time::Duration;
+    use uuid::Uuid;
+
+    fn test_app() -> App {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(ShutdownPlugin);
+        app.add_message::<EngineCommand>()
+            .add_message::<InfoMessage>();
+        app
+    }
+
+    fn spawn_character(app: &mut App, roles: Vec<Role>) -> Entity {
+        app.world_mut()
+            .spawn(Character {
+                id: Uuid::new_v4(),
+                name: "Tester".into(),
+                account_id: Uuid::new_v4(),
+                created_at: Utc::now(),
+                last_room: None,
+                roles,
+            })
+            .id()
+    }
+
+    fn drain<M: Message + std::fmt::Debug>(app: &App) -> Vec<String> {
+        let messages = app.world().resource::<Messages<M>>();
+        let mut cursor = messages.get_cursor();
+        cursor.read(messages).map(|m| format!("{m:?}")).collect()
+    }
+
+    #[test]
+    fn non_admin_is_denied_and_nothing_scheduled() {
+        let mut app = test_app();
+        let actor = spawn_character(&mut app, Vec::new());
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Shutdown { seconds: 30 },
+        });
+        app.update();
+
+        assert!(app.world().get_resource::<ActiveShutdown>().is_none());
+        let infos = drain::<InfoMessage>(&app);
+        assert_eq!(infos.len(), 1);
+        assert!(infos[0].contains("permission"));
+        assert_eq!(drain::<ServerBroadcast>(&app).len(), 0);
+    }
+
+    #[test]
+    fn admin_schedules_and_broadcasts() {
+        let mut app = test_app();
+        let actor = spawn_character(&mut app, vec![Role::Admin]);
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Shutdown { seconds: 30 },
+        });
+        app.update();
+
+        assert!(app.world().get_resource::<ActiveShutdown>().is_some());
+        let casts = drain::<ServerBroadcast>(&app);
+        assert!(casts.iter().any(|c| c.contains("30")));
+    }
+
+    #[test]
+    fn second_shutdown_is_rejected() {
+        let mut app = test_app();
+        let actor = spawn_character(&mut app, vec![Role::Admin]);
+        app.world_mut()
+            .insert_resource(ActiveShutdown(ShutdownCountdown::new(30)));
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Shutdown { seconds: 10 },
+        });
+        app.update();
+
+        let infos = drain::<InfoMessage>(&app);
+        assert!(infos.iter().any(|i| i.contains("already scheduled")));
+    }
+
+    #[test]
+    fn expiry_writes_app_exit() {
+        let mut app = test_app();
+        app.world_mut()
+            .insert_resource(ActiveShutdown(ShutdownCountdown::new(0)));
+        app.update();
+
+        let exits = drain::<AppExit>(&app);
+        assert_eq!(exits.len(), 1);
+        let casts = drain::<ServerBroadcast>(&app);
+        assert!(casts.iter().any(|c| c.contains("now")));
+    }
+
+    #[test]
+    fn tick_broadcasts_threshold_warning() {
+        // Bare app (no TimePlugin) so we own the clock deterministically.
+        let mut app = App::new();
+        app.add_plugins(ShutdownPlugin);
+        app.add_message::<EngineCommand>()
+            .add_message::<InfoMessage>();
+        app.init_resource::<Time>();
+        app.insert_resource(ActiveShutdown(ShutdownCountdown::new(16)));
+
+        // Advance the clock 1.5s: 16 → 14.5 remaining, crossing the 15s mark.
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(Duration::from_millis(1500));
+        app.update();
+
+        let casts = drain::<ServerBroadcast>(&app);
+        assert!(
+            casts.iter().any(|c| c.contains("15")),
+            "expected a 15s warning, got {casts:?}"
+        );
+    }
+}

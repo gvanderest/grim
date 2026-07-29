@@ -85,6 +85,9 @@ pub enum Command {
     Where,
     /// `commands` — list all registered commands
     Commands,
+    /// `shutdown <seconds>` — admin-only. Schedules a graceful server shutdown
+    /// after a countdown, broadcasting warnings to all connected players.
+    Shutdown { seconds: u64 },
 }
 
 // ─── Engine → Client (semantic events for formatting) ───────────────
@@ -159,4 +162,12 @@ pub struct LogoutAnnounce {
 pub struct LinkdeadAnnounce {
     pub name: String,
     pub reconnecting: bool, // true = reconnecting, false = going linkdead
+}
+
+/// An out-of-band server message shown to every connected player, regardless of
+/// room or scene. Used for shutdown-countdown warnings. `text` may contain
+/// colour markup and should end with `\n`.
+#[derive(Message, Debug, Clone, PartialEq)]
+pub struct ServerBroadcast {
+    pub text: String,
 }

@@ -933,6 +933,7 @@ dependencies = [
  "chrono",
  "grim-color",
  "serde",
+ "serde_json",
  "sha2",
  "uuid",
 ]
