@@ -1,0 +1,16 @@
+[Unit]
+Description=GRIM MUD server
+After=network.target
+
+[Service]
+Type=simple
+User=grim
+WorkingDirectory=/opt/grim
+ExecStart=/opt/grim/bin/grim
+# Clean exit (code 0, from an admin `shutdown`) stays down so the deploy can
+# swap the binary. Only a crash (non-zero) auto-restarts.
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

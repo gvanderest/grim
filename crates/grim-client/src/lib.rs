@@ -11,7 +11,7 @@ use grim::components::{
 use grim::events::{
     ClientInput, ClientOutput, Command, ConnectionEstablished, DisconnectRequest, EngineCommand,
     InfoMessage, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce, LookEntity, LookRoom, MoveEvent,
-    OocEvent, SayEvent, YellEvent,
+    OocEvent, SayEvent, ServerBroadcast, YellEvent,
 };
 use grim::validation::{
     hash_password, validate_character_name, validate_identifier, validate_password, verify_password,
@@ -38,6 +38,7 @@ impl Plugin for ClientPlugin {
             .add_message::<LoginAnnounce>()
             .add_message::<LogoutAnnounce>()
             .add_message::<LinkdeadAnnounce>()
+            .add_message::<ServerBroadcast>()
             .add_systems(
                 Update,
                 (
@@ -45,6 +46,7 @@ impl Plugin for ClientPlugin {
                     handle_client_input.after(handle_connection_established),
                     process_command_queue,
                     format_output,
+                    format_server_broadcast,
                     capture_output,
                 ),
             );
@@ -493,6 +495,7 @@ fn handle_client_input(
                             account_id: account.id,
                             created_at: Utc::now(),
                             last_room: None,
+                            roles: Vec::new(),
                         };
                         // Save character to disk immediately
                         let path = format!("data/characters/{}.json", name);
@@ -1020,6 +1023,19 @@ fn broadcast_to_room(
 }
 
 /// Send text to every connected player.
+/// Out-of-band server messages (shutdown warnings) to every connected player.
+/// A separate system from `format_output` because that one is already at Bevy's
+/// system-parameter ceiling.
+fn format_server_broadcast(
+    mut broadcasts: MessageReader<ServerBroadcast>,
+    occupants: Query<(Entity, &InRoom, Option<&Player>, &GrimName)>,
+    mut outputs: MessageWriter<ClientOutput>,
+) {
+    for ev in broadcasts.read() {
+        broadcast_global(&ev.text, &occupants, &mut outputs);
+    }
+}
+
 fn broadcast_global(
     text: &str,
     occupants: &Query<(Entity, &InRoom, Option<&Player>, &GrimName)>,
@@ -1114,6 +1130,7 @@ mod tests {
             account_id,
             created_at: Utc::now(),
             last_room: None,
+            roles: Vec::new(),
         };
         let char_entity = app
             .world_mut()
@@ -1220,6 +1237,7 @@ mod tests {
             account_id,
             created_at: Utc::now(),
             last_room: None,
+            roles: Vec::new(),
         };
         let char_entity = app
             .world_mut()
@@ -1346,6 +1364,7 @@ mod tests {
                 account_id: account_uuid,
                 created_at: Utc::now(),
                 last_room: None,
+                roles: Vec::new(),
             },
             GrimName("Test".into()),
             Description("Stale copy.".into()),
@@ -1361,6 +1380,7 @@ mod tests {
                     account_id: account_uuid,
                     created_at: Utc::now(),
                     last_room: None,
+                    roles: Vec::new(),
                 },
                 GrimName("Test".into()),
                 Description("Real character.".into()),
@@ -1433,6 +1453,7 @@ mod tests {
                 account_id: account_uuid,
                 created_at: Utc::now(),
                 last_room: None,
+                roles: Vec::new(),
             },
             GrimName("Test".into()),
             Description("Stale copy.".into()),
@@ -1448,6 +1469,7 @@ mod tests {
                     account_id: account_uuid,
                     created_at: Utc::now(),
                     last_room: None,
+                    roles: Vec::new(),
                 },
                 GrimName("Test".into()),
                 Description("Real character.".into()),
@@ -1705,6 +1727,46 @@ mod tests {
                 .iter()
                 .any(|o| o.text.contains("Hero has connected")),
             "should announce login"
+        );
+    }
+
+    /// A `ServerBroadcast` reaches every connected player (shutdown warnings).
+    #[test]
+    fn server_broadcast_reaches_connected_players() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn((
+            GrimName("Hero".into()),
+            InRoom { room },
+            Player {
+                connection: Some(conn),
+            },
+            OutputHistory::with_max(100),
+        ));
+
+        app.world_mut().write_message(ServerBroadcast {
+            text: "{R[SERVER]{x Restarting in {Y15{x seconds.\n".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.connection == conn && o.text.contains("Restarting in")),
+            "connected player should receive the broadcast"
         );
     }
 
@@ -2075,6 +2137,7 @@ mod tests {
                     account_id,
                     created_at: Utc::now(),
                     last_room: None,
+                    roles: Vec::new(),
                 },
                 GrimName(format!("C{}", i + 1)),
                 Description(format!("Character {}.", i + 1)),
@@ -2155,6 +2218,7 @@ mod tests {
                 account_id,
                 created_at: Utc::now(),
                 last_room: None,
+                roles: Vec::new(),
             },
             GrimName("Linky".into()),
             Description("A linkdead character.".into()),
@@ -2219,6 +2283,7 @@ mod tests {
                 account_id: account_a_id,
                 created_at: Utc::now(),
                 last_room: None,
+                roles: Vec::new(),
             },
             GrimName("Aragorn".into()),
             Description("Heir of Isildur.".into()),

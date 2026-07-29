@@ -89,6 +89,15 @@ pub struct Account {
     pub created_at: DateTime<Utc>,
 }
 
+/// A privilege a character holds. Serialized lowercase (`"admin"`) so the
+/// character JSON stays human-editable — granting admin is a manual JSON edit
+/// today (see `docs/DEPLOY.md`).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    Admin,
+}
+
 /// A character — belongs to an account, can be in-world.
 /// Saved to `data/characters/<name>.json`.
 #[derive(Component, Serialize, Deserialize, Clone, Debug)]
@@ -100,6 +109,17 @@ pub struct Character {
     /// Last known room, persisted as (area_friendly_id, room_friendly_id).
     #[serde(default)]
     pub last_room: Option<RoomLocation>,
+    /// Privileges. Empty for normal players. `#[serde(default)]` keeps old
+    /// character JSON (written before roles existed) loading cleanly.
+    #[serde(default)]
+    pub roles: Vec<Role>,
+}
+
+impl Character {
+    /// Whether this character holds the admin role.
+    pub fn is_admin(&self) -> bool {
+        self.roles.contains(&Role::Admin)
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -194,3 +214,44 @@ pub struct Linkdead;
 /// Inserted by the seed world system, read by the client during character creation.
 #[derive(Resource, Debug)]
 pub struct StartingRoom(pub Entity);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    fn character(roles: Vec<Role>) -> Character {
+        Character {
+            id: Uuid::new_v4(),
+            name: "T".into(),
+            account_id: Uuid::new_v4(),
+            created_at: chrono::Utc::now(),
+            last_room: None,
+            roles,
+        }
+    }
+
+    #[test]
+    fn is_admin_reflects_roles() {
+        assert!(!character(vec![]).is_admin());
+        assert!(character(vec![Role::Admin]).is_admin());
+    }
+
+    #[test]
+    fn role_serializes_lowercase() {
+        assert_eq!(serde_json::to_string(&Role::Admin).unwrap(), "\"admin\"");
+        assert_eq!(
+            serde_json::from_str::<Role>("\"admin\"").unwrap(),
+            Role::Admin
+        );
+    }
+
+    #[test]
+    fn character_json_without_roles_defaults_empty() {
+        // Old character files, written before `roles` existed.
+        let json = r#"{"id":"00000000-0000-0000-0000-000000000000","name":"Old","account_id":"00000000-0000-0000-0000-000000000000","created_at":"2020-01-01T00:00:00Z"}"#;
+        let ch: Character = serde_json::from_str(json).unwrap();
+        assert!(ch.roles.is_empty());
+        assert!(ch.last_room.is_none());
+    }
+}

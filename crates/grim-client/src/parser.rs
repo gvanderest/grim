@@ -128,6 +128,14 @@ fn build_registry() -> CommandRegistry<Command> {
     r.register("quit", |_| Some(Command::Quit));
     r.register("exit", |_| Some(Command::Quit));
 
+    // ── Admin ────────────────────────────────────────────────────
+    // `shutdown [seconds]` — defaults to 30s when no/invalid count given.
+    // Admin-gated at dispatch (grim::plugins::ShutdownPlugin), not here.
+    r.register("shutdown", |rest| {
+        let seconds = rest.trim().parse::<u64>().unwrap_or(30);
+        Some(Command::Shutdown { seconds })
+    });
+
     // ── Cardinal directions (last = highest priority for single-char) ─
     r.register("north", |_| {
         Some(Command::Move {
@@ -394,6 +402,29 @@ mod tests {
         setup();
         assert_eq!(parse_command("quit"), Some(Command::Quit));
         assert_eq!(parse_command("exit"), Some(Command::Quit));
+    }
+
+    // ── Shutdown (admin; gating happens at dispatch) ───────────────
+    #[test]
+    fn test_shutdown_with_count() {
+        setup();
+        assert_eq!(
+            parse_command("shutdown 30"),
+            Some(Command::Shutdown { seconds: 30 })
+        );
+    }
+
+    #[test]
+    fn test_shutdown_defaults_to_30() {
+        setup();
+        assert_eq!(
+            parse_command("shutdown"),
+            Some(Command::Shutdown { seconds: 30 })
+        );
+        assert_eq!(
+            parse_command("shutdown abc"),
+            Some(Command::Shutdown { seconds: 30 })
+        );
     }
 
     // ── Edge cases ────────────────────────────────────────────────

@@ -219,6 +219,7 @@ mod tests {
             account_id: Uuid::new_v4(),
             created_at: Utc::now(),
             last_room: None,
+            roles: Vec::new(),
         };
         let char_path = format!("data/characters/{}.json", character.name);
         fs::write(&char_path, serde_json::to_string(&character).unwrap()).unwrap();
@@ -265,6 +266,7 @@ mod tests {
             account_id: account.id,
             created_at: Utc::now(),
             last_room: None,
+            roles: Vec::new(),
         };
         let char_path = format!("data/characters/{}.json", character.name);
         fs::write(&char_path, serde_json::to_string(&character).unwrap()).unwrap();
@@ -431,6 +433,7 @@ mod tests {
             account_id: Uuid::new_v4(), // orphan — no Account entity spawned
             created_at: Utc::now(),
             last_room: None,
+            roles: Vec::new(),
         };
         let char_e = app.world_mut().spawn(character.clone()).id();
 
@@ -485,6 +488,7 @@ mod tests {
             account_id: account.id,
             created_at: Utc::now(),
             last_room: None,
+            roles: Vec::new(),
         };
         let char_e = app.world_mut().spawn(character.clone()).id();
 
@@ -580,7 +584,8 @@ mod tests {
             name: "RoomHero".into(),
             account_id: account.id,
             created_at: Utc::now(),
-            last_room: None, // starts with no last_room
+            last_room: None,
+            roles: Vec::new(), // starts with no last_room
         };
         let char_e = app
             .world_mut()
@@ -638,6 +643,7 @@ mod tests {
             account_id: account.id,
             created_at: Utc::now(),
             last_room: None,
+            roles: Vec::new(),
         };
         let char_e = app.world_mut().spawn(character.clone()).id();
 

@@ -1,0 +1,83 @@
+name: Deploy
+
+# Every push to main builds a fresh static binary and rolls it onto the EC2 box.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Never let two deploys race onto the same host.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-musl-${{ hashFiles('**/Cargo.lock') }}
+
+      # Static musl build: one binary that runs on any x86_64 Linux AMI with no
+      # glibc-version matching. t2.micro never compiles anything — CI does.
+      - name: Install musl target and tools
+        run: |
+          rustup target add x86_64-unknown-linux-musl
+          sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build release binary
+        run: cargo build --release --target x86_64-unknown-linux-musl -p example-mud
+
+      - name: Stage artifact
+        run: |
+          mkdir -p dist
+          cp target/x86_64-unknown-linux-musl/release/example-mud dist/grim
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grim-binary
+          path: dist/grim
+          retention-days: 7
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: grim-binary
+          path: dist
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Upload binary and deploy scripts
+        env:
+          TARGET: ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}
+        run: |
+          scp -i ~/.ssh/id_deploy dist/grim "$TARGET:/opt/grim/bin/grim.new"
+          scp -i ~/.ssh/id_deploy deploy/deploy.sh deploy/trigger-shutdown.expect "$TARGET:/opt/grim/bin/"
+
+      - name: Run deploy
+        env:
+          TARGET: ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}
+        run: |
+          ssh -i ~/.ssh/id_deploy "$TARGET" \
+            "chmod +x /opt/grim/bin/deploy.sh /opt/grim/bin/trigger-shutdown.expect && \
+             ADMIN_LOGIN='${{ secrets.ADMIN_LOGIN }}' \
+             ADMIN_PASSWORD='${{ secrets.ADMIN_PASSWORD }}' \
+             /opt/grim/bin/deploy.sh"
