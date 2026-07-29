@@ -16,22 +16,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-musl-${{ hashFiles('**/Cargo.lock') }}
+          targets: x86_64-unknown-linux-musl
+
+      # Matches ci.yml. Keyed separately so the musl target dir doesn't collide
+      # with CI's host-target cache.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: musl-release
 
       # Static musl build: one binary that runs on any x86_64 Linux AMI with no
       # glibc-version matching. t2.micro never compiles anything — CI does.
-      - name: Install musl target and tools
-        run: |
-          rustup target add x86_64-unknown-linux-musl
-          sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Build release binary
         run: cargo build --release --target x86_64-unknown-linux-musl -p example-mud
