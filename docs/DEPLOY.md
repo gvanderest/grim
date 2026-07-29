@@ -17,9 +17,11 @@ the binary.
 
 `deploy/deploy.sh` (on the host):
 
-- If the server is **up**: `systemctl kill -s SIGUSR1 grim`. The server traps
-  `SIGUSR1` and runs a 30-second countdown, broadcasting warnings to every
-  connected player, then exits 0.
+- If the server is **up**: `kill -USR1 <MainPID>` (PID read via `systemctl show`).
+  The server traps `SIGUSR1` and runs a 30-second countdown, broadcasting
+  warnings to every connected player, then exits 0. Signalling the process
+  directly needs no privilege (the service runs as the deploy user) and works
+  even under a least-privilege sudoers policy that only allows `start`/`stop`.
 - If the server is **already down**: skip the countdown.
 - Swap `grim.new` into `grim`, then `systemctl start grim`.
 

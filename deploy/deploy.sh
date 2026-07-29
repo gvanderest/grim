@@ -21,8 +21,15 @@ log() { echo "[deploy] $*"; }
 
 if systemctl is-active --quiet grim; then
     log "server up — signalling graceful shutdown (${SHUTDOWN_SECS}s countdown)"
-    sudo systemctl kill -s SIGUSR1 grim \
-        || log "SIGUSR1 failed — will fall back to systemctl stop"
+    # Signal the process directly rather than `systemctl kill`: the service runs
+    # as this same user, so `kill` needs no privilege — and it works even under a
+    # least-privilege sudoers policy that only allows `systemctl start`/`stop`.
+    pid="$(systemctl show -p MainPID --value grim 2>/dev/null || true)"
+    if [[ -n "$pid" && "$pid" != 0 ]]; then
+        kill -USR1 "$pid" || log "SIGUSR1 failed — will fall back to systemctl stop"
+    else
+        log "could not read MainPID — will fall back to systemctl stop"
+    fi
 
     # The countdown exits the process cleanly (code 0); Restart=on-failure
     # leaves it down. Wait it out.

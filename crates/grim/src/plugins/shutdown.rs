@@ -2,8 +2,7 @@
 //!
 //! - **In-game:** `shutdown <seconds>` from an admin character.
 //! - **Out-of-band:** `SIGUSR1` to the process — this is what the deploy uses
-//!   (`systemctl kill -s SIGUSR1 grim`), so no login or admin credentials are
-//!   involved.
+//!   (`kill -USR1 <MainPID>`), so no login or admin credentials are involved.
 //!
 //! Either path schedules the same countdown: every connected player is warned
 //! at decreasing intervals, and when it expires the app writes
@@ -108,9 +107,13 @@ impl Plugin for ShutdownPlugin {
         app.add_message::<ServerBroadcast>()
             .init_resource::<ShutdownSignal>()
             .add_systems(Startup, install_signal_handler)
+            // Chained so the sync point between them applies each system's
+            // `insert_resource(ActiveShutdown)` before the next reads it —
+            // otherwise a SIGUSR1 and an admin `shutdown` in the same tick both
+            // observe no active shutdown and schedule conflicting countdowns.
             .add_systems(
                 Update,
-                (poll_shutdown_signal, handle_shutdown_command, tick_shutdown),
+                (poll_shutdown_signal, handle_shutdown_command, tick_shutdown).chain(),
             );
     }
 }
@@ -427,5 +430,30 @@ mod tests {
             casts.iter().any(|c| c.contains("15")),
             "expected a 15s warning, got {casts:?}"
         );
+    }
+
+    #[test]
+    fn signal_and_command_in_same_tick_schedule_once() {
+        let mut app = test_app();
+        let admin = spawn_character(&mut app, vec![Role::Admin]);
+        app.update(); // Startup; drain the install-time state.
+        let _ = drain::<ServerBroadcast>(&app);
+
+        // Both triggers arrive before a single update.
+        app.world()
+            .resource::<ShutdownSignal>()
+            .0
+            .store(true, Ordering::SeqCst);
+        app.world_mut().write_message(EngineCommand {
+            client: admin,
+            command: Command::Shutdown { seconds: 10 },
+        });
+        app.update();
+
+        // The chained sync point means the second trigger sees the first's
+        // ActiveShutdown, so exactly one countdown is scheduled and one warning
+        // is broadcast (not two conflicting ones).
+        assert!(app.world().get_resource::<ActiveShutdown>().is_some());
+        assert_eq!(drain::<ServerBroadcast>(&app).len(), 1);
     }
 }
