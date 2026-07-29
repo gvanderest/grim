@@ -52,39 +52,7 @@
 
 **Key principle:** This is a transitional crate. Eventually, plugins will import directly from `grim-engine-types`.
 
-### 3. Network Layer — `grim-core-networking` (future)
-
-**Purpose:** Normalized interface for network protocols.
-
-**Structure:**
-```
-Protocol (Telnet, SSH, WebSocket) → grim-core-networking → Client
-```
-
-**What grim-core-networking defines:**
-- Server/Connection trait (what a "server" looks like to GRIM)
-- ProtocolPlugin trait (how protocols register against the network layer)
-- Standardized incoming/outgoing message formats
-
-**Protocol-specific handling:**
-- Telnet: ANSI color support, IAC negotiation
-- SSH: Raw ANSI pass-through
-- WebSocket: Protocol-agnostic (client handles HTML/ANSI/etc.)
-
-### 4. Client Layer — `grim-client`
-
-**Purpose:** Client session state machine, command parser, output formatter.
-
-**What it does:**
-- Parses incoming protocol messages into `MudCommand`
-- Handles connection state (Disconnected → Connected → Authenticated → InGame)
-- Formats outgoing game events for the protocol
-
-**What it does NOT do:**
-- Protocol-specific formatting (ANSI vs HTML) - that's the protocol's job
-- Game logic - that's in grim-core-* plugins
-
-### 5. Core Plugins — `grim::plugins/*`
+### 3. Core Plugins — `grim::plugins/*`
 
 **Purpose:** Default MUD functionality provided by GRIM.
 
@@ -95,6 +63,24 @@ Protocol (Telnet, SSH, WebSocket) → grim-core-networking → Client
 | `persistence.rs` | Account/character save/load |
 
 **Key principle:** These are just Bevy plugins. Users can write their own.
+
+### 4. Client Layer — `grim-client`
+
+**Purpose:** Client session state machine, command parser, output formatter.
+
+**What it does:**
+- Parses incoming protocol messages into `MudCommand`
+- Handles connection state (Disconnected → Connected → Authenticated → InGame)
+- Formats outgoing game events for the protocol
+
+### 5. Protocol Layer — `grim-protocol-telnet`
+
+**Purpose:** TCP/telnet server with tokio bridge.
+
+**What it does:**
+- Handles raw TCP connections
+- IAC negotiation for telnet
+- Converts between raw bytes and ClientInput/ClientOutput messages
 
 ---
 
@@ -115,27 +101,17 @@ Protocol (Telnet, SSH, WebSocket) → grim-core-networking → Client
 
 ---
 
-## Key Principles
-
-1. **`grim-engine-types` has all core types** — Components, Events, Commands, Cardinal
-2. **Network is a plugin** — `grim-core-networking` provides the interface, protocols register against it
-3. **Client handles session** — State machine, command parsing, output formatting
-4. **Game is Bevy ECS** — Core plugins are just Bevy systems on top of the ECS
-5. **Protocol-specific** — Each protocol handles its own formatting (ANSI, HTML, etc.)
-6. **`MudCommand` is the normalized interface** — Everything flows through this
-
----
-
 ## Current State
 
 ### Implemented
-- `grim-engine-types` - Core types extracted
+- `grim-engine-types` - Core types extracted to separate crate
 - `grim` - Compatibility re-export layer
 - `grim-client` - Client session state machine
 - `grim-protocol-telnet` - Telnet protocol implementation
 - `grim::plugins` - World, Social, Persistence plugins
 
 ### TODO
-- `grim-core-networking` - Network interface plugin
+- Network interface plugin (`grim-core-networking`)
+- Protocol registration against network layer
 - Move core plugins to separate crates
-- Update docs/ARCHITECTURE.md to reflect new structure
+- Update docs to reflect new structure
