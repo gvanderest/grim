@@ -1,4 +1,4 @@
-#!/usr/bin/env expect -f
+#!/usr/bin/env -S expect -f
 #
 # Log into a running GRIM server as an admin character over localhost telnet and
 # issue `shutdown <secs>`, so connected players get the in-game countdown before
