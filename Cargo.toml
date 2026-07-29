@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/example-mud",
     "crates/grim",
     "crates/grim-protocol-telnet",
     "crates/grim-client",
