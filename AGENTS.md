@@ -1,6 +1,6 @@
 # GRIM Engine — Agent Guide
 
-AI agent instructions for this repo. For project docs (architecture, roadmap, conventions), see [README.md](./README.md) and [ARCHITECTURE.md](./docs/ARCHITECTURE.md).
+AI agent instructions for this repo. For project docs, see [README.md](./README.md) (roadmap, structure, conventions), [ARCHITECTURE.md](./docs/ARCHITECTURE.md) (target architecture), and [CONTEXT.md](./CONTEXT.md) (glossary).
 
 ## Architecture
 
