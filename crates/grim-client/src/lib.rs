@@ -679,28 +679,35 @@ fn show_character_menu(
     };
     let mut menu = format!("{}\n[ Characters ]\n", welcome);
     let mut idx = 1;
-    for (char_entity, ch, name) in characters.iter() {
-        if let Ok((_, account)) = accounts.get(account_entity) {
+    // Resolve the account's owned character ids ONCE, and fail closed: if the
+    // account entity is not resolvable (e.g. spawned this frame via
+    // commands.spawn and not yet flushed, which is exactly the case for an
+    // account created moments ago), show no characters. The previous code put
+    // the ownership check inside `if let Ok(..)` and let a failed lookup fall
+    // straight through to listing EVERY character in the world — a brand-new
+    // account saw every other account's characters.
+    if let Ok((_, account)) = accounts.get(account_entity) {
+        for (char_entity, ch, name) in characters.iter() {
             if !account.characters.contains(&ch.id) {
                 continue;
             }
-        }
-        let suffix = if linkdead.get(char_entity).is_ok() {
-            " (linkdead)"
-        } else if let Ok(player) = players.get(char_entity) {
-            if player.connection.is_some() {
-                " (online)"
+            let suffix = if linkdead.get(char_entity).is_ok() {
+                " (linkdead)"
+            } else if let Ok(player) = players.get(char_entity) {
+                if player.connection.is_some() {
+                    " (online)"
+                } else {
+                    ""
+                }
             } else {
                 ""
-            }
-        } else {
-            ""
-        };
-        menu.push_str(&format!(
-            "{}. {} - 1 Human Adventurer{}\n",
-            idx, name.0, suffix
-        ));
-        idx += 1;
+            };
+            menu.push_str(&format!(
+                "{}. {} - 1 Human Adventurer{}\n",
+                idx, name.0, suffix
+            ));
+            idx += 1;
+        }
     }
     if idx == 1 {
         menu.push_str("You have no characters created yet.\n");
@@ -2178,6 +2185,81 @@ mod tests {
                 .iter()
                 .any(|o| o.connection == conn && o.text.contains("(linkdead)")),
             "Character menu should show (linkdead) suffix for linkdead characters"
+        );
+    }
+
+    // ── account isolation: a freshly-created account sees no other account's characters ──
+    //
+    // Regression. Creating an account spawns it with `commands.spawn`, whose
+    // entity is not flushed until the next sync point — but `show_character_menu`
+    // runs in the same system tick. The menu used to put its ownership check
+    // inside `if let Ok(account) = accounts.get(..)`, so the unresolvable
+    // just-spawned entity skipped the filter and listed EVERY character in the
+    // world. A brand-new account B saw account A's characters.
+    #[test]
+    fn new_account_does_not_see_another_accounts_characters() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        // Account A already exists with a character.
+        let account_a_id = Uuid::new_v4();
+        let char_a = Uuid::new_v4();
+        app.world_mut().spawn(Account {
+            id: account_a_id,
+            identifier: "a@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![char_a],
+            created_at: Utc::now(),
+        });
+        app.world_mut().spawn((
+            Character {
+                id: char_a,
+                name: "Aragorn".into(),
+                account_id: account_a_id,
+                created_at: Utc::now(),
+                last_room: None,
+            },
+            GrimName("Aragorn".into()),
+            Description("Heir of Isildur.".into()),
+            InRoom { room },
+            OutputHistory::with_max(100),
+        ));
+
+        // A new connection registers account B via a never-seen email.
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 2,
+                addr: "127.0.0.1:22222".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+
+        for line in ["b@example.com", "y", "password"] {
+            app.world_mut().write_message(ClientInput {
+                connection: conn,
+                text: line.into(),
+            });
+            app.update();
+        }
+
+        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let text: String = cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn)
+            .map(|o| o.text.clone())
+            .collect();
+
+        assert!(
+            !text.contains("Aragorn"),
+            "new account B must not see account A's character; got:\n{text}"
+        );
+        assert!(
+            text.contains("no characters"),
+            "new account B should be told it has no characters; got:\n{text}"
         );
     }
 

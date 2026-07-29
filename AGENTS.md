@@ -60,6 +60,7 @@ extend.
 - **Online indicator**: The character select menu shows "(online)" for characters with a live `Player` connection and "(linkdead)" for linkdead characters.
 - **Multiple characters per account**: Allowed simultaneously. No check prevents multiple characters from the same account being `InGame` at the same time.
 - **save_on_disconnect guard**: On connection close, the character is only marked linkdead if it doesn't already have a live `Player` connection (guards against stale `ConnectionClosed` events from a takeover).
+- **Ownership/visibility checks must fail closed.** When a lookup that *gates* what a session may see can itself fail — most commonly a `commands.spawn` entity queried in the same tick before it is flushed — a failed lookup must show **nothing**, never fall through to unfiltered data. This bit `show_character_menu`: the account-ownership filter sat inside `if let Ok(account) = accounts.get(..)`, so a just-created account (unflushed entity) skipped the filter and listed every character in the world. Resolve the gating entity once, up front; if it is unavailable, return the empty/denied result. Mirror the pattern already used on the selection path (`let Ok(..) = accounts.get(..) else { continue };`).
 
 ## Architecture Decisions
 
