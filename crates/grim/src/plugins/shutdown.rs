@@ -1,10 +1,14 @@
-//! Admin-gated graceful server shutdown.
+//! Graceful server shutdown, triggered two ways:
 //!
-//! `shutdown <seconds>` from an admin character schedules a countdown. Every
-//! connected player is warned at decreasing intervals, and when the countdown
-//! expires the app writes [`AppExit::Success`] (exit code 0). The systemd unit
-//! uses `Restart=on-failure`, so a clean exit stays down and lets the deploy
-//! swap the binary before restarting — see `docs/DEPLOY.md`.
+//! - **In-game:** `shutdown <seconds>` from an admin character.
+//! - **Out-of-band:** `SIGUSR1` to the process — this is what the deploy uses
+//!   (`kill -USR1 <MainPID>`), so no login or admin credentials are involved.
+//!
+//! Either path schedules the same countdown: every connected player is warned
+//! at decreasing intervals, and when it expires the app writes
+//! [`AppExit::Success`] (exit code 0). The systemd unit uses `Restart=on-failure`,
+//! so a clean exit stays down and lets the deploy swap the binary before
+//! restarting — see `docs/DEPLOY.md`.
 //!
 //! Player state is **not** flushed on shutdown: characters save on disconnect
 //! and on `quit`, and the project currently tolerates losing in-flight position
@@ -13,6 +17,11 @@
 use crate::components::Character;
 use crate::events::{Command, EngineCommand, InfoMessage, ServerBroadcast};
 use bevy::prelude::*;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+/// Countdown used when the shutdown is triggered by `SIGUSR1` (the deploy path).
+const SIGNAL_COUNTDOWN_SECS: u64 = 30;
 
 /// Countdown thresholds (seconds remaining) at which a warning is broadcast.
 /// Only thresholds strictly below the requested duration fire.
@@ -78,14 +87,65 @@ impl ShutdownCountdown {
 #[derive(Resource, Debug)]
 pub struct ActiveShutdown(pub ShutdownCountdown);
 
+/// Shared flag set by the `SIGUSR1` handler and drained by `poll_shutdown_signal`.
+/// A signal handler can do almost nothing safely, so it only flips this bool; the
+/// real work happens on the next Bevy tick.
+#[derive(Resource, Clone)]
+struct ShutdownSignal(Arc<AtomicBool>);
+
+impl Default for ShutdownSignal {
+    fn default() -> Self {
+        Self(Arc::new(AtomicBool::new(false)))
+    }
+}
+
 /// Registers the shutdown message + systems.
 pub struct ShutdownPlugin;
 
 impl Plugin for ShutdownPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<ServerBroadcast>()
-            .add_systems(Update, (handle_shutdown_command, tick_shutdown));
+            .init_resource::<ShutdownSignal>()
+            .add_systems(Startup, install_signal_handler)
+            // Chained so the sync point between them applies each system's
+            // `insert_resource(ActiveShutdown)` before the next reads it —
+            // otherwise a SIGUSR1 and an admin `shutdown` in the same tick both
+            // observe no active shutdown and schedule conflicting countdowns.
+            .add_systems(
+                Update,
+                (poll_shutdown_signal, handle_shutdown_command, tick_shutdown).chain(),
+            );
     }
+}
+
+/// Wire `SIGUSR1` to the shared flag. Failure is logged, not fatal — the in-game
+/// `shutdown` command still works without it.
+fn install_signal_handler(signal: Res<ShutdownSignal>) {
+    match signal_hook::flag::register(signal_hook::consts::SIGUSR1, signal.0.clone()) {
+        Ok(_) => info!("SIGUSR1 will trigger a {SIGNAL_COUNTDOWN_SECS}s graceful shutdown"),
+        Err(e) => warn!("failed to register SIGUSR1 handler: {e}"),
+    }
+}
+
+/// If `SIGUSR1` fired, start the countdown (unless one is already running).
+fn poll_shutdown_signal(
+    signal: Res<ShutdownSignal>,
+    active: Option<Res<ActiveShutdown>>,
+    mut broadcast: MessageWriter<ServerBroadcast>,
+    mut commands: Commands,
+) {
+    if !signal.0.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    if active.is_some() {
+        return;
+    }
+    broadcast.write(ServerBroadcast {
+        text: warn_text(SIGNAL_COUNTDOWN_SECS),
+    });
+    commands.insert_resource(ActiveShutdown(ShutdownCountdown::new(
+        SIGNAL_COUNTDOWN_SECS,
+    )));
 }
 
 fn warn_text(seconds: u64) -> String {
@@ -285,6 +345,42 @@ mod tests {
     }
 
     #[test]
+    fn sigusr1_flag_triggers_countdown() {
+        let mut app = test_app();
+        app.update(); // Startup installs the handler.
+        let _ = drain::<ServerBroadcast>(&app);
+
+        // Simulate the signal handler firing.
+        app.world()
+            .resource::<ShutdownSignal>()
+            .0
+            .store(true, Ordering::SeqCst);
+        app.update();
+
+        assert!(app.world().get_resource::<ActiveShutdown>().is_some());
+        let casts = drain::<ServerBroadcast>(&app);
+        assert!(casts.iter().any(|c| c.contains("30")));
+    }
+
+    #[test]
+    fn sigusr1_ignored_when_already_counting_down() {
+        let mut app = test_app();
+        app.update();
+        app.world_mut()
+            .insert_resource(ActiveShutdown(ShutdownCountdown::new(30)));
+        let _ = drain::<ServerBroadcast>(&app);
+
+        app.world()
+            .resource::<ShutdownSignal>()
+            .0
+            .store(true, Ordering::SeqCst);
+        app.update();
+
+        // Signal drained but no fresh countdown/broadcast.
+        assert!(drain::<ServerBroadcast>(&app).is_empty());
+    }
+
+    #[test]
     fn second_shutdown_is_rejected() {
         let mut app = test_app();
         let actor = spawn_character(&mut app, vec![Role::Admin]);
@@ -334,5 +430,30 @@ mod tests {
             casts.iter().any(|c| c.contains("15")),
             "expected a 15s warning, got {casts:?}"
         );
+    }
+
+    #[test]
+    fn signal_and_command_in_same_tick_schedule_once() {
+        let mut app = test_app();
+        let admin = spawn_character(&mut app, vec![Role::Admin]);
+        app.update(); // Startup; drain the install-time state.
+        let _ = drain::<ServerBroadcast>(&app);
+
+        // Both triggers arrive before a single update.
+        app.world()
+            .resource::<ShutdownSignal>()
+            .0
+            .store(true, Ordering::SeqCst);
+        app.world_mut().write_message(EngineCommand {
+            client: admin,
+            command: Command::Shutdown { seconds: 10 },
+        });
+        app.update();
+
+        // The chained sync point means the second trigger sees the first's
+        // ActiveShutdown, so exactly one countdown is scheduled and one warning
+        // is broadcast (not two conflicting ones).
+        assert!(app.world().get_resource::<ActiveShutdown>().is_some());
+        assert_eq!(drain::<ServerBroadcast>(&app).len(), 1);
     }
 }
