@@ -1,0 +1,9 @@
+[package]
+name = "grim-text"
+version = "0.1.0"
+edition = "2021"
+
+# The text catalog: author-facing strings addressed by key. Depends only on
+# grim-color (to convert and escape markup) -- no Bevy, no i18n runtime.
+[dependencies]
+grim-color = { path = "../grim-color" }
