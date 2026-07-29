@@ -880,6 +880,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-mud"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "grim",
+ "grim-client",
+ "grim-protocol-telnet",
+ "uuid",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
