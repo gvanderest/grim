@@ -13,6 +13,10 @@ pub use grim_engine_types::*;
 // the old `tr!` in grim-engine-types did.
 pub use grim_text::tr;
 
+// Command resolution moved to grim-command; re-export so `grim::CommandRegistry`
+// keeps resolving.
+pub use grim_command::{CommandRegistry, Contest};
+
 pub mod plugins;
 
 pub use plugins::*;

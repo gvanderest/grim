@@ -1,0 +1,10 @@
+[package]
+name = "grim-command"
+version = "0.1.0"
+edition = "2021"
+
+# Command resolution: map the first word of a line to the command that
+# registered it. Generic over the produced command type, so it drags in no
+# game types -- only Bevy, to be usable as a resource.
+[dependencies]
+bevy = { workspace = true, default-features = false }

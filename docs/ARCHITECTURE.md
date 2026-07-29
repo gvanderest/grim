@@ -523,25 +523,46 @@ Six crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-client`,
   author overrides and `strings/`+`templates/` merge is still deferred to the
   plugin-composition work — `grim-text` is a static lookup for now, behaviour
   unchanged.
+- **`grim-command` extracted** (decomposition step 3). The registry moved to a
+  Bevy-only crate and is now **generic over the produced command type**
+  (`CommandRegistry<C>`), so it carries no game vocabulary — the closed `Command`
+  enum stays in `grim-engine-types` and `grim-client` instantiates
+  `CommandRegistry<Command>`. Two documented defects are addressed:
+  - **Priority is explicit and reorderable.** Resolution is exact-match-first, then
+    highest-priority prefix. `register` puts a command at the front (preserving
+    last-registered-wins by default); `prioritize`/`deprioritize` move a command
+    without renumbering anything. The `OnceLock`/`max(entry_idx)` trie is gone.
+  - **Contested prefixes are reported.** `contested_prefixes()` lists every
+    abbreviation more than one command answers to; `init_registry` logs each at
+    startup, so a plugin silently shadowing `n` surfaces instead of confusing a
+    player.
+
+  `CommandRegistry` derives `Resource` and is ready to be inserted, but is still
+  held in the `OnceLock` for now: its only caller, `handle_client_input`, sits at
+  Bevy's 16-parameter limit, so passing it as a `Res` needs that system split first.
+  That, and the typed-per-plugin-event dispatch of §5.2 (which also removes the
+  closed `Command` enum), belong with the session-dispatch rework — the enum is still
+  pattern-matched by the world/social plugins and by `grim-client` for
+  who/where/quit, which need session context an observer would not have.
 
 ### Gaps between this document and the code
 
 | Issue | Detail |
 |-------|--------|
-| `grim-engine-types` is a god-types crate | still mixes wire events, game events, command registry, components, validation. Colour/palette left in step 1; `tr` left in step 2. Remaining: events, command registry, components, validation |
+| `grim-engine-types` is a god-types crate | colour/palette left in step 1, `tr` in step 2, command registry in step 3. Remaining: wire events, game events, components, validation |
 | `grim` owns three plugins | World, Social, Persistence → three crates |
 | `SocialPlugin` holds `say`/`yell`/`ooc` as code | all three become `add_channel` data in `grim-channel` (§7) |
 | No attempt/fact split | `SayEvent`/`MoveEvent` are facts with no cancellable phase, so nothing can veto (§6) |
 | System ordering is a single `.after()` chain | `ClientPlugin` chains five systems; split across crates this needs explicit `SystemSet`s, or each dispatch hop costs a frame |
 | Dependencies point the wrong way | `grim-client` and `grim-protocol-telnet` depend on `grim`; the facade should depend on them |
-| `CommandRegistry` is a `OnceLock` | frozen after first init, so plugin-time registration is impossible; must be a resource |
+| `CommandRegistry` is held in a `OnceLock` | the type is now resource-ready (`grim-command`, step 3), but still stored in a `OnceLock` because its caller `handle_client_input` is at Bevy's 16-param limit. Resource wiring waits on splitting that system |
 | `Command` is a closed enum | downstream authors cannot add variants; replaced by per-plugin event types |
 | Two i18n systems | `rust_i18n` (2 keys) and a hand-rolled `tr!`; `tr()` bypasses `rust_i18n` entirely |
 | `convert_16color` runs twice | once inside `tr()`, once in the telnet output path. The `tr()` pass is vestigial — it existed to dodge `rust_i18n`, which `tr()` does not use. Now merely wasteful rather than wrong: the escape is idempotent across passes. Collapses when `grim-text` lands |
 | `include_str!("../../../locales/en.json")` | reaches out of the crate into the workspace root; breaks on publish |
 | `ClientState` is a single closed enum | no stack, no third-party scenes |
 | "Client" means three things | session state machine, wire framing, and terminal impersonation |
-| Prefix collisions resolve by link order | `resolve()` takes `max(entry_idx)` with no way to reorder; installing a plugin silently changes what `n` does |
+| ~~Prefix collisions resolve by link order~~ | Fixed in step 3. Priority is an explicit reorderable ordering (`prioritize`/`deprioritize`), and `contested_prefixes()` is logged at startup so a shadowed `n` is no longer silent |
 | ~~Colour codes are not escaped in interpolated values~~ | Fixed. `tr` escapes every argument via `escape_codes`, and `convert_16color` now forwards `{{` instead of resolving it so `ansi` is the escape's only consumer — without that, the second conversion pass undid the escaping. `format_yell`/`format_ooc` escape by hand because they bypass the catalog |
 
 ---

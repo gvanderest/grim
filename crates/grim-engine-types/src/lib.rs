@@ -2,7 +2,6 @@
 
 pub mod cardinal;
 pub mod color;
-pub mod command_registry;
 pub mod components;
 pub mod events;
 pub mod prelude;

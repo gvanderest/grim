@@ -894,6 +894,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "chrono",
+ "grim-command",
  "grim-engine-types",
  "grim-text",
  "serde",
@@ -916,6 +917,13 @@ dependencies = [
 [[package]]
 name = "grim-color"
 version = "0.1.0"
+
+[[package]]
+name = "grim-command"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+]
 
 [[package]]
 name = "grim-engine-types"
