@@ -2601,6 +2601,21 @@ mod tests {
                 .any(|o| o.connection == conn && o.text.contains("Unknown command")),
             "admin shutdown must not be masked"
         );
+
+        // Positively confirm it was accepted: the parsed command is queued for
+        // dispatch (a silent drop would still pass the not-masked check above).
+        let mut clients = app.world_mut().query::<&Client>();
+        let client = clients
+            .iter(app.world())
+            .find(|c| c.connection == conn)
+            .expect("expected the in-game client");
+        assert!(
+            matches!(
+                client.input_queue.front(),
+                Some(Command::Shutdown { seconds: 30 })
+            ),
+            "admin shutdown should be queued for the engine"
+        );
     }
 
     // ── handle_client_input: InGame with blank line ──

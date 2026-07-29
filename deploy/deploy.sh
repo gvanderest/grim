@@ -11,7 +11,7 @@ set -euo pipefail
 APP_DIR=/opt/grim
 BIN="$APP_DIR/bin/grim"
 STAGED="$APP_DIR/bin/grim.new"
-# Must match SIGNAL_COUNTDOWN_SECS in grim/src/plugins/shutdown.rs.
+# Must match SIGNAL_COUNTDOWN_SECS in crates/grim/src/plugins/shutdown.rs.
 SHUTDOWN_SECS=30
 GRACE_SECS=15
 
