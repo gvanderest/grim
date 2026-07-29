@@ -1,3 +1,4 @@
+use grim::color::escape_codes;
 use grim::tr;
 
 /// Format a room's full description.
@@ -22,13 +23,19 @@ pub fn format_say(speaker: &str, text: &str) -> String {
 }
 
 /// Format a yell message broadcast to an area.
+///
+/// `text` is escaped: these still build their string with `format!` rather than
+/// going through the catalog, so the escaping `tr` performs does not apply and
+/// has to be done here. Once these become channel configuration they inherit it.
 pub fn format_yell(speaker: &str, text: &str) -> String {
-    format!("{} yells, '{}'\n", speaker, text)
+    format!("{} yells, '{}'\n", speaker, escape_codes(text))
 }
 
 /// Format an OOC message broadcast globally.
+///
+/// See [`format_yell`] for why `text` is escaped here.
 pub fn format_ooc(speaker: &str, text: &str) -> String {
-    format!("[OOC] {}: {}\n", speaker, text)
+    format!("[OOC] {}: {}\n", speaker, escape_codes(text))
 }
 
 /// Format a movement broadcast.
@@ -176,6 +183,51 @@ mod tests {
     #[test]
     fn say_empty_text() {
         assert_eq!(format_say("Bob", ""), "@xf0fBob says @r'@x909@r'\n");
+    }
+
+    /// `say {RHELLO` used to turn the room's text red. Spoken text is data.
+    #[test]
+    fn say_does_not_let_speech_inject_colour() {
+        let out = format_say("Alice", "{RHELLO");
+        let rendered = grim::color::ansi(&grim::color::convert_16color(&out));
+        assert!(
+            rendered.contains("{RHELLO"),
+            "spoken markup must render literally: {rendered:?}"
+        );
+    }
+
+    /// `yell` and `ooc` build their string with `format!`, not the catalog, so
+    /// they need escaping of their own — verify they got it.
+    #[test]
+    fn yell_and_ooc_do_not_let_speech_inject_colour() {
+        for out in [
+            format_yell("Alice", "{RHELLO"),
+            format_ooc("Alice", "{RHELLO"),
+        ] {
+            let rendered = grim::color::ansi(&grim::color::convert_16color(&out));
+            assert!(
+                rendered.contains("{RHELLO"),
+                "spoken markup must render literally: {rendered:?}"
+            );
+            assert!(
+                !rendered.contains('\x1b'),
+                "no colour emitted: {rendered:?}"
+            );
+        }
+    }
+
+    /// Names cannot currently carry markup — `validate_character_name` allows
+    /// only alphanumerics, spaces, hyphens and apostrophes. This guards the
+    /// formatter anyway, so a future relaxation of that rule fails loudly here
+    /// rather than quietly becoming an injection.
+    #[test]
+    fn say_does_not_let_a_name_inject_colour() {
+        let out = format_say("@xf00Alice", "hi");
+        let rendered = grim::color::ansi(&grim::color::convert_16color(&out));
+        assert!(
+            rendered.contains("@xf00Alice"),
+            "name markup must render literally: {rendered:?}"
+        );
     }
 
     // ── format_yell ──────────────────────────────────────────────
