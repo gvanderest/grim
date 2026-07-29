@@ -194,7 +194,7 @@ mod tests {
         app.update();
 
         let mut query = app.world_mut().query::<&Account>();
-        let loaded: Vec<&Account> = query.iter(&app.world()).collect();
+        let loaded: Vec<&Account> = query.iter(app.world()).collect();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].identifier, "testuser");
         assert_eq!(loaded[0].id, account_id);
@@ -227,7 +227,7 @@ mod tests {
         app.update();
 
         let mut query = app.world_mut().query::<(&Character, &Name, &Description)>();
-        let loaded: Vec<_> = query.iter(&app.world()).collect();
+        let loaded: Vec<_> = query.iter(app.world()).collect();
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].0.name, "TestHero");
         assert_eq!(loaded[0].1 .0, "TestHero");
@@ -235,7 +235,7 @@ mod tests {
 
         // No account was loaded
         let mut acct_query = app.world_mut().query::<&Account>();
-        assert_eq!(acct_query.iter(&app.world()).len(), 0);
+        assert_eq!(acct_query.iter(app.world()).len(), 0);
 
         let _ = fs::remove_dir_all("data/accounts");
         let _ = fs::remove_dir_all("data/characters");
@@ -273,12 +273,12 @@ mod tests {
         app.update();
 
         let mut acct_query = app.world_mut().query::<&Account>();
-        let loaded_accts: Vec<_> = acct_query.iter(&app.world()).collect();
+        let loaded_accts: Vec<_> = acct_query.iter(app.world()).collect();
         assert_eq!(loaded_accts.len(), 1);
         assert_eq!(loaded_accts[0].identifier, "dualuser");
 
         let mut char_query = app.world_mut().query::<(&Character, &Name)>();
-        let loaded_chars: Vec<_> = char_query.iter(&app.world()).collect();
+        let loaded_chars: Vec<_> = char_query.iter(app.world()).collect();
         assert_eq!(loaded_chars.len(), 1);
         assert_eq!(loaded_chars[0].0.name, "DualHero");
 
@@ -299,7 +299,7 @@ mod tests {
         app.update();
 
         let mut query = app.world_mut().query::<&Character>();
-        assert_eq!(query.iter(&app.world()).len(), 0);
+        assert_eq!(query.iter(app.world()).len(), 0);
 
         let _ = fs::remove_dir_all("data/characters");
     }
@@ -317,7 +317,7 @@ mod tests {
         app.update();
 
         let mut query = app.world_mut().query::<&Character>();
-        assert_eq!(query.iter(&app.world()).len(), 0);
+        assert_eq!(query.iter(app.world()).len(), 0);
 
         let _ = fs::remove_dir_all("data/characters");
     }
@@ -453,7 +453,7 @@ mod tests {
 
         // Character marked linkdead
         let mut ld = app.world_mut().query::<&Linkdead>();
-        assert_eq!(ld.iter(&app.world()).len(), 1);
+        assert_eq!(ld.iter(app.world()).len(), 1);
 
         // Client + connection despawned
         assert!(app.world().get_entity(client_e).is_err());
@@ -512,7 +512,7 @@ mod tests {
 
         // Character marked linkdead with Player { connection: None }
         let mut ld = app.world_mut().query::<(&Character, &Linkdead, &Player)>();
-        let results: Vec<_> = ld.iter(&app.world()).collect();
+        let results: Vec<_> = ld.iter(app.world()).collect();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0.name, "FullSaveHero");
         assert!(results[0].2.connection.is_none());
@@ -520,7 +520,7 @@ mod tests {
         // LinkdeadAnnounce emitted
         let messages = app.world().resource::<Messages<LinkdeadAnnounce>>();
         let mut cursor = messages.get_cursor();
-        let events: Vec<_> = cursor.read(&messages).collect();
+        let events: Vec<_> = cursor.read(messages).collect();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].name, "FullSaveHero");
         assert!(!events[0].reconnecting);
@@ -654,7 +654,7 @@ mod tests {
 
         // Character should now have the OutputHistory
         let mut hist_query = app.world_mut().query::<(&Character, &OutputHistory)>();
-        let results: Vec<_> = hist_query.iter(&app.world()).collect();
+        let results: Vec<_> = hist_query.iter(app.world()).collect();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0.name, "HistoryHero");
         assert_eq!(
@@ -742,7 +742,7 @@ mod tests {
         // No LinkdeadAnnounce emitted (characters.get failed at line 131)
         let messages = app.world().resource::<Messages<LinkdeadAnnounce>>();
         let mut cursor = messages.get_cursor();
-        assert!(cursor.read(&messages).next().is_none());
+        assert!(cursor.read(messages).next().is_none());
 
         // Client + connection despawned
         assert!(app.world().get_entity(client_e).is_err());

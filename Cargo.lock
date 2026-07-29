@@ -1047,6 +1047,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "chrono",
+ "grim-engine-types",
  "serde",
  "serde_json",
  "sha2",
@@ -1062,6 +1063,18 @@ dependencies = [
  "grim",
  "rust-i18n",
  "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "grim-engine-types"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2",
  "uuid",
 ]
 
@@ -1322,17 +1335,6 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys",
-]
-
-[[package]]
-name = "mud-example"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "grim",
- "grim-client",
- "grim-protocol-telnet",
- "uuid",
 ]
 
 [[package]]

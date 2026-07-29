@@ -352,7 +352,7 @@ mod tests {
         {
             let msg_resource = app.world().resource::<Messages<ConnectionEstablished>>();
             let mut cursor = msg_resource.get_cursor();
-            let events: Vec<&ConnectionEstablished> = cursor.read(&msg_resource).collect();
+            let events: Vec<&ConnectionEstablished> = cursor.read(msg_resource).collect();
             assert!(
                 !events.is_empty(),
                 "Should have received ConnectionEstablished"
@@ -367,7 +367,7 @@ mod tests {
         {
             let msg_resource = app.world().resource::<Messages<ClientInput>>();
             let mut cursor = msg_resource.get_cursor();
-            let events: Vec<&ClientInput> = cursor.read(&msg_resource).collect();
+            let events: Vec<&ClientInput> = cursor.read(msg_resource).collect();
             let has_hello = events.iter().any(|e| e.text == "hello");
             assert!(has_hello, "Should have received 'hello' ClientInput");
         }
@@ -379,7 +379,7 @@ mod tests {
         {
             let msg_resource = app.world().resource::<Messages<ConnectionClosed>>();
             let mut cursor = msg_resource.get_cursor();
-            let events: Vec<&ConnectionClosed> = cursor.read(&msg_resource).collect();
+            let events: Vec<&ConnectionClosed> = cursor.read(msg_resource).collect();
             assert!(!events.is_empty(), "Should have received ConnectionClosed");
         }
     }
@@ -412,7 +412,7 @@ mod tests {
 
         let mut query = app.world_mut().query::<(Entity, &Connection)>();
         let (conn_entity, _conn) = query
-            .iter(&app.world())
+            .iter(app.world())
             .next()
             .expect("should have a connection");
 
@@ -480,7 +480,7 @@ mod tests {
         // Find the connection entity
         let mut query = app.world_mut().query::<(Entity, &Connection)>();
         let (conn_entity, conn) = query
-            .iter(&app.world())
+            .iter(app.world())
             .next()
             .expect("should have a connection");
         assert!(!conn.echo_hidden, "echo_hidden should start false");
@@ -506,7 +506,7 @@ mod tests {
 
         // Verify connection state
         let (_, conn2) = query
-            .iter(&app.world())
+            .iter(app.world())
             .next()
             .expect("connection should still exist");
         assert!(
@@ -546,7 +546,7 @@ mod tests {
 
         let mut query = app.world_mut().query::<(Entity, &Connection)>();
         let (conn_entity, _conn) = query
-            .iter(&app.world())
+            .iter(app.world())
             .next()
             .expect("should have a connection");
 
@@ -567,7 +567,7 @@ mod tests {
         let _ = stream.read(&mut drain); // drain IAC WILL ECHO
 
         // Verify echo_hidden is true
-        let (_, conn_before) = query.iter(&app.world()).next().unwrap();
+        let (_, conn_before) = query.iter(app.world()).next().unwrap();
         assert!(
             conn_before.echo_hidden,
             "echo_hidden should be true before input"
@@ -590,7 +590,7 @@ mod tests {
         assert_eq!(&response[..3], &[255, 252, 1], "Should be IAC WONT ECHO");
 
         // Verify echo_hidden was reset to false
-        let (_, conn_after) = query.iter(&app.world()).next().unwrap();
+        let (_, conn_after) = query.iter(app.world()).next().unwrap();
         assert!(
             !conn_after.echo_hidden,
             "echo_hidden should be false after user input"
@@ -599,7 +599,7 @@ mod tests {
         // ClientInput should have been written
         let msg_resource = app.world().resource::<Messages<ClientInput>>();
         let mut cursor = msg_resource.get_cursor();
-        let events: Vec<&ClientInput> = cursor.read(&msg_resource).collect();
+        let events: Vec<&ClientInput> = cursor.read(msg_resource).collect();
         let has_hello = events.iter().any(|e| e.text == "hello");
         assert!(has_hello, "ClientInput should contain 'hello'");
 
@@ -644,7 +644,7 @@ mod tests {
         // Verify control chars are stripped
         let msg_resource = app.world().resource::<Messages<ClientInput>>();
         let mut cursor = msg_resource.get_cursor();
-        let events: Vec<&ClientInput> = cursor.read(&msg_resource).collect();
+        let events: Vec<&ClientInput> = cursor.read(msg_resource).collect();
         let has_filtered = events.iter().any(|e| e.text == "helloworld");
         assert!(
             has_filtered,
@@ -689,7 +689,7 @@ mod tests {
 
         let mut query = app.world_mut().query::<(Entity, &Connection)>();
         let (conn_entity, _conn) = query
-            .iter(&app.world())
+            .iter(app.world())
             .next()
             .expect("should have a connection");
 
@@ -760,7 +760,7 @@ mod tests {
 
         let mut query = app.world_mut().query::<(Entity, &Connection)>();
         let (conn_entity, _conn) = query
-            .iter(&app.world())
+            .iter(app.world())
             .next()
             .expect("should have a connection");
 
@@ -835,7 +835,7 @@ mod tests {
 
         let mut query = app.world_mut().query::<(Entity, &Connection)>();
         let (conn_entity, _conn) = query
-            .iter(&app.world())
+            .iter(app.world())
             .next()
             .expect("should have a connection");
 
