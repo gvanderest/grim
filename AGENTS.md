@@ -22,7 +22,9 @@ meanings. See CONTEXT.md.
 
 | Crate | Purpose |
 |---|---|
-| `grim` | Engine library: components, events, cardinals, validation, plugins |
+| `grim-color` | Colour markup, ANSI rendering, palette, `escape_codes`. No Bevy, no serde |
+| `grim-engine-types` | Wire/game events, command registry, components, validation; re-exports `grim-color` and hosts `tr`/`tr!` (moves to `grim-text` in step 2) |
+| `grim` | Engine library: re-exports types, owns World/Social/Persistence plugins |
 | `grim-client` | Session lifecycle, input parsing, output formatting |
 | `grim-protocol-telnet` | TCP server, IAC negotiation, tokio↔Bevy bridge |
 | `example-mud` | Binary (`crates/example-mud`): composes plugins, seeds world |

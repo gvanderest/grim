@@ -1078,11 +1078,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "grim-color"
+version = "0.1.0"
+
+[[package]]
 name = "grim-engine-types"
 version = "0.1.0"
 dependencies = [
  "bevy",
  "chrono",
+ "grim-color",
  "serde",
  "serde_json",
  "sha2",
