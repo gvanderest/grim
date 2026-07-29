@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 grim-engine-types = { path = "../grim-engine-types" }
 grim-text = { path = "../grim-text" }
+grim-command = { path = "../grim-command" }
 bevy = { workspace = true, default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }

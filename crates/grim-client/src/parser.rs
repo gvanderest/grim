@@ -1,10 +1,18 @@
 use std::sync::OnceLock;
 
-use grim::command_registry::CommandRegistry;
+use bevy::log::warn;
 use grim::events::Command;
+use grim::CommandRegistry;
 
 /// Global command registry, initialized once at plugin startup.
-static REGISTRY: OnceLock<CommandRegistry> = OnceLock::new();
+///
+/// This remains a process-global `OnceLock` rather than a Bevy resource for now:
+/// the sole caller, [`handle_client_input`](crate::handle_client_input), is
+/// already at Bevy's 16-parameter system limit, so threading the registry
+/// through as a `Res` needs that system broken up first. `CommandRegistry` is a
+/// resource-ready type (see `grim-command`); wiring it in belongs with the
+/// session-dispatch rework.
+static REGISTRY: OnceLock<CommandRegistry<Command>> = OnceLock::new();
 
 /// Parse user input into a Command using the global command registry.
 ///
@@ -33,12 +41,26 @@ pub fn parse_command(input: &str) -> Option<Command> {
 
 /// Initialize the global command registry with all game commands.
 ///
-/// Safe to call multiple times — only the first call takes effect.
-pub fn init_registry() -> &'static CommandRegistry {
-    REGISTRY.get_or_init(build_registry)
+/// Safe to call multiple times — only the first call takes effect. On the first
+/// call, any prefix answered by more than one command is logged, so an
+/// abbreviation silently shadowed by another command surfaces at startup rather
+/// than as a confused player.
+pub fn init_registry() -> &'static CommandRegistry<Command> {
+    REGISTRY.get_or_init(|| {
+        let r = build_registry();
+        for contest in r.contested_prefixes() {
+            warn!(
+                "command prefix '{}' resolves to '{}', shadowing {}",
+                contest.prefix,
+                contest.winner,
+                contest.shadowed.join(", ")
+            );
+        }
+        r
+    })
 }
 
-fn build_registry() -> CommandRegistry {
+fn build_registry() -> CommandRegistry<Command> {
     let mut r = CommandRegistry::new();
 
     // ── Social commands ──────────────────────────────────────────
@@ -144,8 +166,8 @@ fn build_registry() -> CommandRegistry {
 #[cfg(test)]
 mod tests {
     use grim::cardinal::Cardinal;
-    use grim::command_registry::CommandRegistry;
     use grim::events::Command;
+    use grim::CommandRegistry;
 
     use super::{init_registry, parse_command};
 
