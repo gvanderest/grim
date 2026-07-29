@@ -8,6 +8,11 @@
 pub use bevy::prelude::*;
 pub use grim_engine_types::*;
 
+// The text catalog. `tr` is re-exported at the crate root so `grim::tr` (the
+// function) and `grim::tr!` (the macro, via #[macro_export]) both resolve, as
+// the old `tr!` in grim-engine-types did.
+pub use grim_text::tr;
+
 pub mod plugins;
 
 pub use plugins::*;

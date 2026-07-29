@@ -1,7 +1,5 @@
-#[macro_use]
-extern crate rust_i18n;
-rust_i18n::i18n!("../../locales");
 use bevy::ecs::schedule::IntoScheduleConfigs;
+use grim::tr;
 
 use bevy::log::info;
 use bevy::prelude::*;
@@ -26,7 +24,6 @@ mod parser;
 pub struct ClientPlugin;
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
-        rust_i18n::set_locale("en");
         parser::init_registry();
         app.add_message::<ClientOutput>()
             .add_message::<DisconnectRequest>()
@@ -62,7 +59,7 @@ fn handle_connection_established(
     for ev in established.read() {
         commands.spawn(Client::new(ev.connection));
         let banner = grim::color::ansi(include_str!("../../../assets/login-banner.txt"));
-        let text = format!("{}\n\n{}", banner, t!("login.prompt"));
+        let text = format!("{}\n\n{}", banner, tr!("login.prompt"));
         outputs.write(ClientOutput {
             echo: None,
             ..ClientOutput::new(ev.connection, text)
@@ -105,7 +102,7 @@ fn handle_client_input(
                 if text.trim().is_empty() {
                     outputs.write(ClientOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, t!("login.prompt"))
+                        ..ClientOutput::new(conn, tr!("login.prompt"))
                     });
                     continue;
                 }
@@ -187,7 +184,7 @@ fn handle_client_input(
                     client.state = ClientState::LoginPrompt;
                     outputs.write(ClientOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, t!("login.prompt"))
+                        ..ClientOutput::new(conn, tr!("login.prompt"))
                     });
                 }
             }
@@ -202,7 +199,7 @@ fn handle_client_input(
                     client.state = ClientState::LoginPrompt;
                     outputs.write(ClientOutput {
                         echo: Some(true),
-                        ..ClientOutput::new(conn, t!("login.wrong_password"))
+                        ..ClientOutput::new(conn, tr!("login.wrong_password"))
                     });
                     continue;
                 }

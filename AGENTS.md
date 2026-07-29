@@ -23,8 +23,9 @@ meanings. See CONTEXT.md.
 | Crate | Purpose |
 |---|---|
 | `grim-color` | Colour markup, ANSI rendering, palette, `escape_codes`. No Bevy, no serde |
-| `grim-engine-types` | Wire/game events, command registry, components, validation; re-exports `grim-color` and hosts `tr`/`tr!` (moves to `grim-text` in step 2) |
-| `grim` | Engine library: re-exports types, owns World/Social/Persistence plugins |
+| `grim-text` | Text catalog: `tr`/`tr!`, inlined defaults. Depends only on `grim-color`. No Bevy |
+| `grim-engine-types` | Wire/game events, command registry, components, validation; re-exports `grim-color` |
+| `grim` | Engine library: re-exports types + `grim_text::tr`, owns World/Social/Persistence plugins |
 | `grim-client` | Session lifecycle, input parsing, output formatting |
 | `grim-protocol-telnet` | TCP server, IAC negotiation, tokio↔Bevy bridge |
 | `example-mud` | Binary (`crates/example-mud`): composes plugins, seeds world |
@@ -43,12 +44,12 @@ a crate:
 ## Key Conventions for Agents
 
 These describe **current** code. Several are slated to change — ARCHITECTURE.md §8
-lists every gap. Do not treat them as targets: notably `tr()`/`t!()` coexisting,
-"last registered wins" command resolution, and the closed `Command` enum are all
-documented as defects, not conventions to extend.
+lists every gap. Do not treat them as targets: notably "last registered wins" command
+resolution and the closed `Command` enum are documented as defects, not conventions to
+extend.
 
 - **`\n` everywhere**: Code uses `\n` for newlines. The protocol layer (`send_network_commands`) converts `\n` → `\r\n` before writing to TCP.
-- **Color markup + i18n**: Use `grim::color::tr()` for locale strings containing color codes. The `tr()` function reads `locales/en.json`, converts `{X}` 16-color codes to `@xRGB` format (so i18n's `{var}` interpolation doesn't eat them), then replaces `%{var}` placeholders. Plain strings without colors still use `t!()`.
+- **Text catalog**: Use `grim::tr!("key", var = value)` (or `grim::tr(key, args)`) for all author-facing strings — this is `grim-text`. It converts `{X` colour codes to `@xRGB`, then substitutes `%{var}` placeholders, escaping each value so it cannot inject colour. Defaults are inlined in `grim-text`. `rust-i18n`/`t!` and `locales/en.json` are gone. Colour rendering to ANSI (`ansi`, `convert_16color`, `escape_codes`) is `grim-color`, re-exported at `grim::color::*`.
 - **User input filter**: Protocol layer strips all non-printable ASCII (32-126) from user input before creating `ClientInput`, preventing ANSI/control code injection.
 - **`Exit` vs `Exits`**: The component is `Exits { exits: HashMap<Cardinal, Entity> }`. On a Room entity.
 - **`Name` vs `GrimName`**: Import aliased from `grim` as `GrimName` in binary/client to avoid collisions with Bevy's `Name`.

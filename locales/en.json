@@ -1,7 +1,0 @@
-{
-  "_version": 1,
-  "login.prompt": "Enter your character name or email address: ",
-  "login.wrong_password": "Invalid password.\nEnter your character name or email address: ",
-  "social.say.first_party": "{MYou say {x'{m%{text}{x'\n",
-  "social.say.third_party": "{M%{speaker} says {x'{m%{text}{x'\n"
-}

@@ -512,15 +512,23 @@ Six crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-client`,
   declared in `lib.rs`, so none was ever compiled.
 - **`grim-color` extracted** (decomposition step 1). Colour markup, ANSI rendering,
   the palette, and `escape_codes` now live in a Bevy-free, serde-free crate.
-  `grim-engine-types::color` re-exports it and still hosts `tr`/`tr!` (which the text
-  catalog will subsume in step 2), so `grim::color::*` and the `tr!` macro resolve
+  `grim-engine-types::color` re-exports it, so `grim::color::*` resolves unchanged.
+- **`grim-text` extracted, `rust-i18n` deleted** (decomposition step 2). The catalog
+  (`tr`/`tr!`) moved to a Bevy-free crate depending only on `grim-color`. This
+  collapsed **two** parallel string systems into one: `rust-i18n`'s `t!` served two
+  plain login keys, the hand-rolled `tr` served two coloured social keys, and both
+  read the same `locales/en.json`. That file and the `rust-i18n` dependency are gone;
+  the four defaults are inlined in `grim-text`. `grim` re-exports `grim_text::tr` at
+  its root so `grim::tr` and `grim::tr!` still resolve. The `Catalog` resource with
+  author overrides and `strings/`+`templates/` merge is still deferred to the
+  plugin-composition work — `grim-text` is a static lookup for now, behaviour
   unchanged.
 
 ### Gaps between this document and the code
 
 | Issue | Detail |
 |-------|--------|
-| `grim-engine-types` is a god-types crate | still mixes wire events, game events, command registry, components, validation, and the locale-backed `tr`. Colour/palette left in step 1; `tr` leaves in step 2 |
+| `grim-engine-types` is a god-types crate | still mixes wire events, game events, command registry, components, validation. Colour/palette left in step 1; `tr` left in step 2. Remaining: events, command registry, components, validation |
 | `grim` owns three plugins | World, Social, Persistence → three crates |
 | `SocialPlugin` holds `say`/`yell`/`ooc` as code | all three become `add_channel` data in `grim-channel` (§7) |
 | No attempt/fact split | `SayEvent`/`MoveEvent` are facts with no cancellable phase, so nothing can veto (§6) |
