@@ -498,8 +498,11 @@ Scene **output policy** (§5.3). Channels need no rule of their own.
 
 ## 8. Current state
 
-Six crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-client`,
-`grim-protocol-telnet`, `grim-color`.
+Eight crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-client`,
+`grim-protocol-telnet`, `grim-color`, `grim-text`, `grim-command`.
+
+Decomposition steps 1–3 (grim-color, grim-text, grim-command) are done. Steps
+4–9 remain and are **not** mechanical moves — see the note at the end of §8.
 
 ### Done
 
@@ -556,14 +559,39 @@ Six crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-client`,
 | System ordering is a single `.after()` chain | `ClientPlugin` chains five systems; split across crates this needs explicit `SystemSet`s, or each dispatch hop costs a frame |
 | Dependencies point the wrong way | `grim-client` and `grim-protocol-telnet` depend on `grim`; the facade should depend on them |
 | `CommandRegistry` is held in a `OnceLock` | the type is now resource-ready (`grim-command`, step 3), but still stored in a `OnceLock` because its caller `handle_client_input` is at Bevy's 16-param limit. Resource wiring waits on splitting that system |
-| `Command` is a closed enum | downstream authors cannot add variants; replaced by per-plugin event types |
-| Two i18n systems | `rust_i18n` (2 keys) and a hand-rolled `tr!`; `tr()` bypasses `rust_i18n` entirely |
-| `convert_16color` runs twice | once inside `tr()`, once in the telnet output path. The `tr()` pass is vestigial — it existed to dodge `rust_i18n`, which `tr()` does not use. Now merely wasteful rather than wrong: the escape is idempotent across passes. Collapses when `grim-text` lands |
-| `include_str!("../../../locales/en.json")` | reaches out of the crate into the workspace root; breaks on publish |
+| `Command` is a closed enum | downstream authors cannot add variants; replaced by per-plugin event types. `grim-command` (step 3) no longer *depends* on the enum, but grim-client/world/social still pattern-match it — retiring it is part of the §5.2 typed-event dispatch, coupled to the session rework |
+| ~~Two i18n systems~~ | Fixed in step 2. `rust_i18n` deleted; one catalog (`grim-text`) serves every key |
+| `convert_16color` runs twice | once inside `tr()`, once in the telnet output path. The `tr()` pass is vestigial — it predates the escape and no longer dodges anything. Now merely wasteful rather than wrong: the escape is idempotent across passes. Collapses when the `Catalog` resource lands |
+| ~~`include_str!` reaching out of the crate~~ | Fixed in step 2. `locales/en.json` deleted; defaults are inlined in `grim-text` |
 | `ClientState` is a single closed enum | no stack, no third-party scenes |
 | "Client" means three things | session state machine, wire framing, and terminal impersonation |
 | ~~Prefix collisions resolve by link order~~ | Fixed in step 3. Priority is an explicit reorderable ordering (`prioritize`/`deprioritize`), and `contested_prefixes()` is logged at startup so a shadowed `n` is no longer silent |
 | ~~Colour codes are not escaped in interpolated values~~ | Fixed. `tr` escapes every argument via `escape_codes`, and `convert_16color` now forwards `{{` instead of resolving it so `ansi` is the escape's only consumer — without that, the second conversion pass undid the escaping. `format_yell`/`format_ooc` escape by hand because they bypass the catalog |
+
+### Why decomposition steps 4–9 are not mechanical moves
+
+Steps 1–3 were separable because the code moved was pure or near-pure with narrow,
+well-understood call sites. The rest reworks the running session and dispatch, and
+each carries a real design decision that wants review before it lands, not an
+unattended refactor:
+
+- **Step 4 (`grim-networking`)** would define a `Transport` trait against a *single*
+  implementation (telnet) — SSH and WebSocket do not exist yet — which is the classic
+  premature-abstraction trap. The tokio-bridge extraction is reasonable, but the trait
+  shape is a guess until a second transport exists. The `ClientInput`/`ClientOutput` →
+  `ConnectionInput`/`ConnectionOutput` rename is mechanical, but belongs with the crate
+  it names.
+- **Step 6 (`grim-scene`)** replaces the `ClientState` enum — which drives the entire
+  16-parameter `handle_client_input` state machine — with a stack of scene entities.
+  That is a rewrite of the session loop, and the current tests assert `ClientState`
+  transitions, so behavioural equivalence cannot be leaned on to catch mistakes.
+- **Step 9 (facade inversion)** reverses the dependency direction and depends on the
+  plugin split (step 7), which in turn depends on where session state lands (step 6).
+
+Recommendation: take 4–9 one at a time, each as its own reviewed change, starting from
+the session-state model (step 6) since 7 and 9 hang off it. The `handle_client_input`
+16-parameter limit is the concrete forcing function — splitting it is the prerequisite
+for both the `CommandRegistry` resource wiring and the scene rework.
 
 ---
 
