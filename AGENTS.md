@@ -4,11 +4,19 @@ AI agent instructions for this repo. For project docs (architecture, roadmap, co
 
 ## Architecture
 
-4 event-passing layers, no layer calls another's functions:
+**[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) is authoritative for the target
+architecture, and [CONTEXT.md](./CONTEXT.md) for vocabulary.** Read both before
+designing anything. This file describes how to work in the repo and what the code
+looks like *today*.
+
+Current shape — 4 event-passing layers, no layer calls another's functions:
 
 ```
 Protocol  ─→  Client  ─→  Engine  → Persistence
 ```
+
+⚠️ "Client" is retired in the target architecture; it was carrying three unrelated
+meanings. See CONTEXT.md.
 
 ## Crate Map (Current)
 
@@ -17,20 +25,25 @@ Protocol  ─→  Client  ─→  Engine  → Persistence
 | `grim` | Engine library: components, events, cardinals, validation, plugins |
 | `grim-client` | Session lifecycle, input parsing, output formatting |
 | `grim-protocol-telnet` | TCP server, IAC negotiation, tokio↔Bevy bridge |
-| `mud-example` (root) | Binary: composes plugins, seeds world |
+| `example-mud` | Binary (`crates/example-mud`): composes plugins, seeds world |
 
-## Crate Map (Target Architecture v2)
+## Crate Map (Target)
 
-| Crate | Purpose |
-|-------|---------|
-| `grim-engine` | Core ECS wrapper + plugin binding point (THE ENGINE) |
-| `grim-client` | Session lifecycle, input parsing, output formatting |
-| `grim-protocol-telnet` | TCP server, IAC negotiation, tokio↔Bevy bridge |
-| `grim-core-*` | Core plugins: world, social, persistence, combat, networking |
-| `my-custom-*` | Community/user plugins (any name) |
-| `mud-example` (root) | Binary: composes plugins, seeds world |
+See [ARCHITECTURE.md §4](./docs/ARCHITECTURE.md). Naming rules that matter when adding
+a crate:
+
+- **`grim-<system>`** for a subsystem, **`grim-<system>-<extension>`** only once a
+  second real implementation exists.
+- **There is no `grim-core-*`.** The `grim-` prefix already marks a crate as ours.
+- Not every crate is a plugin. A crate with no `App` state (pure functions) stays a
+  plain library — do not add an empty `impl Plugin`.
 
 ## Key Conventions for Agents
+
+These describe **current** code. Several are slated to change — ARCHITECTURE.md §8
+lists every gap. Do not treat them as targets: notably `tr()`/`t!()` coexisting,
+"last registered wins" command resolution, and the closed `Command` enum are all
+documented as defects, not conventions to extend.
 
 - **`\n` everywhere**: Code uses `\n` for newlines. The protocol layer (`send_network_commands`) converts `\n` → `\r\n` before writing to TCP.
 - **Color markup + i18n**: Use `grim::color::tr()` for locale strings containing color codes. The `tr()` function reads `locales/en.json`, converts `{X}` 16-color codes to `@xRGB` format (so i18n's `{var}` interpolation doesn't eat them), then replaces `%{var}` placeholders. Plain strings without colors still use `t!()`.
