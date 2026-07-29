@@ -498,8 +498,8 @@ Scene **output policy** (§5.3). Channels need no rule of their own.
 
 ## 8. Current state
 
-Five crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-client`,
-`grim-protocol-telnet`.
+Six crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-client`,
+`grim-protocol-telnet`, `grim-color`.
 
 ### Done
 
@@ -510,12 +510,17 @@ Five crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-client`,
 - **Dead duplicates deleted.** Seven files in `crates/grim/src/` were byte-identical
   to their `grim-engine-types` twins and one (`prelude.rs`) had drifted. None was
   declared in `lib.rs`, so none was ever compiled.
+- **`grim-color` extracted** (decomposition step 1). Colour markup, ANSI rendering,
+  the palette, and `escape_codes` now live in a Bevy-free, serde-free crate.
+  `grim-engine-types::color` re-exports it and still hosts `tr`/`tr!` (which the text
+  catalog will subsume in step 2), so `grim::color::*` and the `tr!` macro resolve
+  unchanged.
 
 ### Gaps between this document and the code
 
 | Issue | Detail |
 |-------|--------|
-| `grim-engine-types` is a god-types crate | 1877 LOC mixing wire events, game events, colour, palette, command registry, components, validation |
+| `grim-engine-types` is a god-types crate | still mixes wire events, game events, command registry, components, validation, and the locale-backed `tr`. Colour/palette left in step 1; `tr` leaves in step 2 |
 | `grim` owns three plugins | World, Social, Persistence → three crates |
 | `SocialPlugin` holds `say`/`yell`/`ooc` as code | all three become `add_channel` data in `grim-channel` (§7) |
 | No attempt/fact split | `SayEvent`/`MoveEvent` are facts with no cancellable phase, so nothing can veto (§6) |

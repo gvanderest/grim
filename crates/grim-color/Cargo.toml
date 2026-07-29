@@ -1,0 +1,10 @@
+[package]
+name = "grim-color"
+version = "0.1.0"
+edition = "2021"
+
+# GRIM's transport-independent colour markup and its rendering to ANSI.
+# Deliberately depends on nothing but std: it is used by protocols (to render)
+# and by the text catalog (to escape and convert), neither of which should drag
+# Bevy or serde in through this crate.
+[dependencies]

@@ -6,6 +6,7 @@ members = [
     "crates/grim-protocol-telnet",
     "crates/grim-client",
     "crates/grim-engine-types",
+    "crates/grim-color",
 ]
 
 [workspace.dependencies]
