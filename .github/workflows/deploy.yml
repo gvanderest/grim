@@ -65,19 +65,16 @@ jobs:
           chmod 600 ~/.ssh/id_deploy
           ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Upload binary and deploy scripts
+      - name: Upload binary and deploy script
         env:
           TARGET: ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}
         run: |
           scp -i ~/.ssh/id_deploy dist/grim "$TARGET:/opt/grim/bin/grim.new"
-          scp -i ~/.ssh/id_deploy deploy/deploy.sh deploy/trigger-shutdown.expect "$TARGET:/opt/grim/bin/"
+          scp -i ~/.ssh/id_deploy deploy/deploy.sh "$TARGET:/opt/grim/bin/"
 
       - name: Run deploy
         env:
           TARGET: ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}
         run: |
           ssh -i ~/.ssh/id_deploy "$TARGET" \
-            "chmod +x /opt/grim/bin/deploy.sh /opt/grim/bin/trigger-shutdown.expect && \
-             ADMIN_LOGIN='${{ secrets.ADMIN_LOGIN }}' \
-             ADMIN_PASSWORD='${{ secrets.ADMIN_PASSWORD }}' \
-             /opt/grim/bin/deploy.sh"
+            "chmod +x /opt/grim/bin/deploy.sh && /opt/grim/bin/deploy.sh"
