@@ -152,8 +152,9 @@ fn warn_text(seconds: u64) -> String {
     format!("{{R[SERVER]{{x The server is restarting in {{Y{seconds}{{x seconds.\n")
 }
 
-/// `shutdown <seconds>`: admin-gated. Non-admins get a permission error; a
-/// second request while one is pending is rejected.
+/// `shutdown <seconds>`: admin-gated (defense in depth — the client gates first).
+/// Non-admins are ignored silently; a second request while one is pending is
+/// rejected.
 fn handle_shutdown_command(
     mut engine: MessageReader<EngineCommand>,
     characters: Query<&Character>,
@@ -167,16 +168,16 @@ fn handle_shutdown_command(
             continue;
         };
         let actor = cmd.client;
-        // Fail closed: an unresolvable/roleless character is not admin.
+        // Defense in depth. The client already gates `shutdown` and masks it as
+        // an unknown command for non-admins, so a well-behaved session never
+        // sends this for a non-admin. If one arrives anyway (a non-client
+        // command source), fail closed and stay silent — emitting anything here
+        // would leak the command's existence with the wrong output framing.
         let is_admin = characters
             .get(actor)
             .map(Character::is_admin)
             .unwrap_or(false);
         if !is_admin {
-            info.write(InfoMessage {
-                target: actor,
-                text: "You do not have permission to do that.\n".into(),
-            });
             continue;
         }
         if active.is_some() {
@@ -322,10 +323,11 @@ mod tests {
         });
         app.update();
 
+        // Silent fail-closed: no schedule, and no output at all (the client
+        // owns the unknown-command masking; the engine must not emit anything
+        // that would leak the command's existence).
         assert!(app.world().get_resource::<ActiveShutdown>().is_none());
-        let infos = drain::<InfoMessage>(&app);
-        assert_eq!(infos.len(), 1);
-        assert!(infos[0].contains("permission"));
+        assert_eq!(drain::<InfoMessage>(&app).len(), 0);
         assert_eq!(drain::<ServerBroadcast>(&app).len(), 0);
     }
 

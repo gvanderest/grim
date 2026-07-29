@@ -44,6 +44,7 @@ fn default_string(key: &str) -> String {
         "login.wrong_password" => "Invalid password.\nEnter your character name or email address: ",
         "social.say.first_party" => "{MYou say {x'{m%{text}{x'\n",
         "social.say.third_party" => "{M%{speaker} says {x'{m%{text}{x'\n",
+        "error.unknown_command" => "Unknown command. Type 'commands' for a list.\n",
         other => return other.to_string(),
     }
     .to_string()
