@@ -652,7 +652,7 @@ fn handle_client_input(
                 } else {
                     outputs.write(ClientOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, "Unknown command. Type 'commands' for a list.\n")
+                        ..ClientOutput::new(conn, grim::UNKNOWN_COMMAND)
                     });
                 }
             }

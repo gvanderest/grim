@@ -113,9 +113,11 @@ fn handle_shutdown_command(
             .map(Character::is_admin)
             .unwrap_or(false);
         if !is_admin {
+            // Mask the command's existence: respond exactly as for an unknown
+            // command, never "permission denied".
             info.write(InfoMessage {
                 target: actor,
-                text: "You do not have permission to do that.\n".into(),
+                text: crate::UNKNOWN_COMMAND.into(),
             });
             continue;
         }
@@ -265,7 +267,9 @@ mod tests {
         assert!(app.world().get_resource::<ActiveShutdown>().is_none());
         let infos = drain::<InfoMessage>(&app);
         assert_eq!(infos.len(), 1);
-        assert!(infos[0].contains("permission"));
+        // Masked as an unknown command — no hint that `shutdown` exists.
+        assert!(infos[0].contains("Unknown command"));
+        assert!(!infos[0].contains("permission"));
         assert_eq!(drain::<ServerBroadcast>(&app).len(), 0);
     }
 
