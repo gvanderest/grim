@@ -2602,19 +2602,28 @@ mod tests {
             "admin shutdown must not be masked"
         );
 
-        // Positively confirm it was accepted: the parsed command is queued for
-        // dispatch (a silent drop would still pass the not-masked check above).
+        // Positively confirm it was accepted (a silent drop would still pass the
+        // not-masked check above). Depending on the command cooldown, after one
+        // update it is either still queued or already dispatched as an
+        // EngineCommand — accept either so the test doesn't depend on timing.
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        let dispatched = engine
+            .get_cursor()
+            .read(engine)
+            .any(|e| matches!(e.command, Command::Shutdown { seconds: 30 }));
         let mut clients = app.world_mut().query::<&Client>();
-        let client = clients
+        let queued = clients
             .iter(app.world())
             .find(|c| c.connection == conn)
-            .expect("expected the in-game client");
+            .is_some_and(|c| {
+                matches!(
+                    c.input_queue.front(),
+                    Some(Command::Shutdown { seconds: 30 })
+                )
+            });
         assert!(
-            matches!(
-                client.input_queue.front(),
-                Some(Command::Shutdown { seconds: 30 })
-            ),
-            "admin shutdown should be queued for the engine"
+            queued || dispatched,
+            "admin shutdown should be queued or dispatched, not dropped"
         );
     }
 
