@@ -180,7 +180,19 @@ app.add_observer(on_look);
 
 `add_command` is generic over `E: Event`. The concrete type is erased at the
 registration site into a uniform boxed closure, so one registry holds any number of
-unrelated command types.
+unrelated command types. The erased type is
+
+```rust
+type Handler = Box<dyn for<'w, 's> Fn(&mut Commands<'w, 's>, Entity, &str) + Send + Sync>;
+```
+
+The higher-ranked bound over `Commands<'w, 's>` is required and does work — verified
+by a spike (`crates/grim/examples/spike_handler.rs`). Two Bevy-0.19 details the
+signature must carry: `Event` has an associated `Trigger<'a>` type, and
+`Commands::trigger` requires `for<'a> E::Trigger<'a>: Default`, so `add_command`'s
+bound is `E: Event, for<'a> E::Trigger<'a>: Default`. A plain `#[derive(Event)]`
+satisfies it (its global trigger is `Default`), but the bound must be written or the
+erasure will not compile.
 
 **There is deliberately no generic `MudCommand`.** A shared command event would mean
 every plugin runs a reader every frame, discarding almost everything, with cost
@@ -512,12 +524,12 @@ Five crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-client`,
 | `CommandRegistry` is a `OnceLock` | frozen after first init, so plugin-time registration is impossible; must be a resource |
 | `Command` is a closed enum | downstream authors cannot add variants; replaced by per-plugin event types |
 | Two i18n systems | `rust_i18n` (2 keys) and a hand-rolled `tr!`; `tr()` bypasses `rust_i18n` entirely |
-| `convert_16color` runs twice | once inside `tr()`, once in the telnet output path |
+| `convert_16color` runs twice | once inside `tr()`, once in the telnet output path. The `tr()` pass is vestigial — it existed to dodge `rust_i18n`, which `tr()` does not use. Now merely wasteful rather than wrong: the escape is idempotent across passes. Collapses when `grim-text` lands |
 | `include_str!("../../../locales/en.json")` | reaches out of the crate into the workspace root; breaks on publish |
 | `ClientState` is a single closed enum | no stack, no third-party scenes |
 | "Client" means three things | session state machine, wire framing, and terminal impersonation |
 | Prefix collisions resolve by link order | `resolve()` takes `max(entry_idx)` with no way to reorder; installing a plugin silently changes what `n` does |
-| Colour codes are not escaped in interpolated values | `convert_16color` runs after interpolation in the telnet path, so `say {RHELLO` emits red |
+| ~~Colour codes are not escaped in interpolated values~~ | Fixed. `tr` escapes every argument via `escape_codes`, and `convert_16color` now forwards `{{` instead of resolving it so `ansi` is the escape's only consumer — without that, the second conversion pass undid the escaping. `format_yell`/`format_ooc` escape by hand because they bypass the catalog |
 
 ---
 
@@ -565,6 +577,8 @@ keeps `grim-color` free of Bevy. Making the palette author-configurable means a
 resource, a Bevy dependency, and probably a plugin. Deferring costs nothing; adding
 the dependency now is hard to walk back.
 
-**Colour-code escaping** — interpolated values currently reach `convert_16color`
-unescaped, so players can emit colour. Decide whether that is a feature per key or a
-bug to fix.
+**Author-coloured arguments** — `escape_codes` is applied to every interpolated
+value, so an argument can never carry markup. If a legitimate case appears (a
+coloured clan tag, say), it wants an explicit opt-in at the call site. Deferred until
+one exists, because the default has to stay "escape", and an opt-in added later is
+cheap while a hole closed later is not.
