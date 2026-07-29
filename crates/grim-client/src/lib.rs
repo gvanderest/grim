@@ -1133,7 +1133,7 @@ mod tests {
 
         // Check: client should now be in PasswordPrompt state
         let mut query = app.world_mut().query::<(Entity, &Client)>();
-        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let found = query.iter(app.world()).find(|(_, c)| c.connection == conn);
         assert!(found.is_some(), "Client should exist");
         let (_client_entity, client) = found.unwrap();
         assert_eq!(
@@ -1155,7 +1155,7 @@ mod tests {
 
         // Check: Linkdead should be removed, Player.connection should be Some
         let mut players = app.world_mut().query::<&Player>();
-        let player = players.get(&app.world(), char_entity);
+        let player = players.get(app.world(), char_entity);
         assert!(player.is_ok(), "Character should have Player component");
         assert!(
             player.unwrap().connection.is_some(),
@@ -1164,14 +1164,14 @@ mod tests {
 
         let mut linkdead = app.world_mut().query::<&Linkdead>();
         assert!(
-            linkdead.get(&app.world(), char_entity).is_err(),
+            linkdead.get(app.world(), char_entity).is_err(),
             "Linkdead should be removed after reconnect"
         );
 
         // Check: LinkdeadAnnounce was written with reconnecting: true
         let msg_resource = app.world().resource::<Messages<LinkdeadAnnounce>>();
         let mut cursor = msg_resource.get_cursor();
-        let announces: Vec<&LinkdeadAnnounce> = cursor.read(&msg_resource).collect();
+        let announces: Vec<&LinkdeadAnnounce> = cursor.read(msg_resource).collect();
         let has_reconnect = announces.iter().any(|a| a.reconnecting && a.name == "Test");
         assert!(
             has_reconnect,
@@ -1239,7 +1239,7 @@ mod tests {
 
         // Check: client should now be in PasswordPrompt state
         let mut query = app.world_mut().query::<(Entity, &Client)>();
-        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let found = query.iter(app.world()).find(|(_, c)| c.connection == conn);
         assert!(found.is_some(), "Client should exist");
         let (_client_entity, client) = found.unwrap();
         assert_eq!(
@@ -1261,7 +1261,7 @@ mod tests {
 
         // Check: client should now be in CharacterSelect state
         let mut query = app.world_mut().query::<(Entity, &Client)>();
-        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let found = query.iter(app.world()).find(|(_, c)| c.connection == conn);
         assert!(found.is_some(), "Client should exist");
         let (_client_entity, client) = found.unwrap();
         assert_eq!(
@@ -1279,7 +1279,7 @@ mod tests {
 
         // Check: Linkdead should be removed, Player.connection should be Some
         let mut players = app.world_mut().query::<&Player>();
-        let player = players.get(&app.world(), char_entity);
+        let player = players.get(app.world(), char_entity);
         assert!(player.is_ok(), "Character should have Player component");
         assert!(
             player.unwrap().connection.is_some(),
@@ -1288,13 +1288,13 @@ mod tests {
 
         let mut linkdead = app.world_mut().query::<&Linkdead>();
         assert!(
-            linkdead.get(&app.world(), char_entity).is_err(),
+            linkdead.get(app.world(), char_entity).is_err(),
             "Linkdead should be removed after reconnect"
         );
         // Check: LinkdeadAnnounce was written with reconnecting: true
         let msg_resource = app.world().resource::<Messages<LinkdeadAnnounce>>();
         let mut cursor = msg_resource.get_cursor();
-        let announces: Vec<&LinkdeadAnnounce> = cursor.read(&msg_resource).collect();
+        let announces: Vec<&LinkdeadAnnounce> = cursor.read(msg_resource).collect();
         let has_reconnect = announces.iter().any(|a| a.reconnecting && a.name == "Test");
         assert!(
             has_reconnect,
@@ -1375,7 +1375,7 @@ mod tests {
         app.update();
 
         let mut query = app.world_mut().query::<(Entity, &Client)>();
-        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let found = query.iter(app.world()).find(|(_, c)| c.connection == conn);
         assert!(found.is_some(), "Client should exist");
         let (_client_entity, client) = found.unwrap();
 
@@ -1469,7 +1469,7 @@ mod tests {
         app.update();
 
         let mut query = app.world_mut().query::<(Entity, &Client)>();
-        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let found = query.iter(app.world()).find(|(_, c)| c.connection == conn);
         assert!(found.is_some(), "Client should exist");
         let (_client_entity, client) = found.unwrap();
         assert_eq!(
@@ -1486,7 +1486,7 @@ mod tests {
         app.update();
 
         let mut players = app.world_mut().query::<&Player>();
-        let player = players.get(&app.world(), real_entity);
+        let player = players.get(app.world(), real_entity);
         assert!(player.is_ok(), "Character should have Player component");
         assert!(
             player.unwrap().connection.is_some(),
@@ -1495,7 +1495,7 @@ mod tests {
 
         let mut linkdead = app.world_mut().query::<&Linkdead>();
         assert!(
-            linkdead.get(&app.world(), real_entity).is_err(),
+            linkdead.get(app.world(), real_entity).is_err(),
             "Linkdead should be removed after reconnect"
         );
     }
@@ -1567,11 +1567,11 @@ mod tests {
         app.update();
 
         let mut client_query = app.world_mut().query::<&Client>();
-        let client_count = client_query.iter(&app.world()).len();
+        let client_count = client_query.iter(app.world()).len();
         assert_eq!(client_count, 1, "Client should have been spawned");
 
         let mut client_state_query = app.world_mut().query::<&Client>();
-        let client = client_state_query.iter(&app.world()).next().unwrap();
+        let client = client_state_query.iter(app.world()).next().unwrap();
         assert_eq!(
             client.state,
             ClientState::LoginPrompt,
@@ -1580,7 +1580,7 @@ mod tests {
 
         app.update();
         let mut client_state_query2 = app.world_mut().query::<&Client>();
-        let client2 = client_state_query2.iter(&app.world()).next().unwrap();
+        let client2 = client_state_query2.iter(app.world()).next().unwrap();
         assert_eq!(
             client2.state,
             ClientState::LoginPrompt,
@@ -1648,7 +1648,7 @@ mod tests {
 
         let msgs = app.world().resource::<Messages<ClientOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
 
         assert!(
             outputs
@@ -1695,7 +1695,7 @@ mod tests {
 
         let msgs = app.world().resource::<Messages<ClientOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -1735,7 +1735,7 @@ mod tests {
 
         let msgs = app.world().resource::<Messages<ClientOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -1776,7 +1776,7 @@ mod tests {
 
         let msgs = app.world().resource::<Messages<ClientOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -1819,7 +1819,7 @@ mod tests {
         app.update();
 
         let mut query = app.world_mut().query::<(Entity, &Client)>();
-        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let found = query.iter(app.world()).find(|(_, c)| c.connection == conn);
         let (_client_entity, client) = found.unwrap();
         assert_eq!(
             client.state,
@@ -1838,9 +1838,7 @@ mod tests {
         app.update();
 
         let mut query2 = app.world_mut().query::<(Entity, &Client)>();
-        let found2 = query2
-            .iter(&app.world())
-            .find(|(_, c)| c.connection == conn);
+        let found2 = query2.iter(app.world()).find(|(_, c)| c.connection == conn);
         let (_client_entity2, client2) = found2.unwrap();
         assert_eq!(
             client2.state,
@@ -1850,7 +1848,7 @@ mod tests {
 
         let msgs = app.world().resource::<Messages<ClientOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -1900,7 +1898,7 @@ mod tests {
         app.update();
 
         let mut query = app.world_mut().query::<(Entity, &Client)>();
-        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let found = query.iter(app.world()).find(|(_, c)| c.connection == conn);
         let (_client_entity, client) = found.unwrap();
         assert_eq!(
             client.state,
@@ -1914,7 +1912,7 @@ mod tests {
 
         let msgs = app.world().resource::<Messages<ClientOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -1948,7 +1946,7 @@ mod tests {
         app.update();
 
         let mut query = app.world_mut().query::<(Entity, &Client)>();
-        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let found = query.iter(app.world()).find(|(_, c)| c.connection == conn);
         let (_client_entity, client) = found.unwrap();
         assert_eq!(
             client.state,
@@ -1966,9 +1964,7 @@ mod tests {
         app.update();
 
         let mut query2 = app.world_mut().query::<(Entity, &Client)>();
-        let found2 = query2
-            .iter(&app.world())
-            .find(|(_, c)| c.connection == conn);
+        let found2 = query2.iter(app.world()).find(|(_, c)| c.connection == conn);
         let (_client_entity2, client2) = found2.unwrap();
         assert_eq!(
             client2.state,
@@ -1988,9 +1984,7 @@ mod tests {
         app.update();
 
         let mut query3 = app.world_mut().query::<(Entity, &Client)>();
-        let found3 = query3
-            .iter(&app.world())
-            .find(|(_, c)| c.connection == conn);
+        let found3 = query3.iter(app.world()).find(|(_, c)| c.connection == conn);
         let (_client_entity3, client3) = found3.unwrap();
         assert_eq!(
             client3.state,
@@ -2031,7 +2025,7 @@ mod tests {
         app.update();
 
         let mut query = app.world_mut().query::<(Entity, &Client)>();
-        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let found = query.iter(app.world()).find(|(_, c)| c.connection == conn);
         let (_client_entity, client) = found.unwrap();
         assert_eq!(
             client.state,
@@ -2099,7 +2093,7 @@ mod tests {
 
         // Verify in CharacterSelect
         let mut query = app.world_mut().query::<(Entity, &Client)>();
-        let found = query.iter(&app.world()).find(|(_, c)| c.connection == conn);
+        let found = query.iter(app.world()).find(|(_, c)| c.connection == conn);
         let (_client_entity, client) = found.unwrap();
         assert_eq!(client.state, ClientState::CharacterSelect);
 
@@ -2112,9 +2106,7 @@ mod tests {
 
         // Should transition to MotdPrompt (not linkdead)
         let mut query2 = app.world_mut().query::<(Entity, &Client)>();
-        let found2 = query2
-            .iter(&app.world())
-            .find(|(_, c)| c.connection == conn);
+        let found2 = query2.iter(app.world()).find(|(_, c)| c.connection == conn);
         let (_client_entity2, client2) = found2.unwrap();
         assert_eq!(
             client2.state,
@@ -2183,7 +2175,7 @@ mod tests {
 
         let msgs = app.world().resource::<Messages<ClientOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -2285,7 +2277,7 @@ mod tests {
 
         let msgs = app.world().resource::<Messages<ClientOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
         // Observer in from_room should see departure
         assert!(
             outputs
@@ -2335,7 +2327,7 @@ mod tests {
 
         let msgs = app.world().resource::<Messages<ClientOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -2384,7 +2376,7 @@ mod tests {
 
         let msgs = app.world().resource::<Messages<ClientOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -2417,7 +2409,7 @@ mod tests {
 
         let msgs = app.world().resource::<Messages<ClientOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(&msgs).collect();
+        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
         // Check that the banner (ASCII art) is in the output along with the login prompt
         assert!(
             outputs

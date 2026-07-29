@@ -233,11 +233,11 @@ mod tests {
         // No SayEvent should be emitted
         let messages = app.world().resource::<Messages<SayEvent>>();
         let mut cursor = messages.get_cursor();
-        assert_eq!(cursor.read(&messages).count(), 0, "No SayEvent expected");
+        assert_eq!(cursor.read(messages).count(), 0, "No SayEvent expected");
         // No InfoMessage either
         let info = app.world().resource::<Messages<InfoMessage>>();
         let mut cursor = info.get_cursor();
-        assert_eq!(cursor.read(&info).count(), 0, "No InfoMessage expected");
+        assert_eq!(cursor.read(info).count(), 0, "No InfoMessage expected");
     }
 
     #[test]
@@ -254,10 +254,10 @@ mod tests {
         // No YellEvent should be emitted
         let messages = app.world().resource::<Messages<YellEvent>>();
         let mut cursor = messages.get_cursor();
-        assert_eq!(cursor.read(&messages).count(), 0, "No YellEvent expected");
+        assert_eq!(cursor.read(messages).count(), 0, "No YellEvent expected");
         // No InfoMessage either
         let info = app.world().resource::<Messages<InfoMessage>>();
         let mut cursor = info.get_cursor();
-        assert_eq!(cursor.read(&info).count(), 0, "No InfoMessage expected");
+        assert_eq!(cursor.read(info).count(), 0, "No InfoMessage expected");
     }
 }
