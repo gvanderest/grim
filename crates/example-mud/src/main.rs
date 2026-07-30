@@ -19,7 +19,7 @@ fn main() {
     app.add_plugins(grim::plugins::ShutdownPlugin);
 
     // Client + Protocol
-    app.add_plugins(grim_client::ClientPlugin);
+    app.add_plugins(grim_scene::ScenePlugin);
     app.add_plugins(grim_networking_telnet::TelnetPlugin::new(4000));
 
     // Seed the world

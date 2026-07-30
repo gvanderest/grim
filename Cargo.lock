@@ -775,8 +775,8 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "grim",
- "grim-client",
  "grim-networking-telnet",
+ "grim-scene",
  "uuid",
 ]
 
@@ -906,17 +906,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "grim-client"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "chrono",
- "grim",
- "serde_json",
- "uuid",
-]
-
-[[package]]
 name = "grim-color"
 version = "0.1.0"
 
@@ -956,6 +945,17 @@ dependencies = [
  "grim-engine-types",
  "grim-networking",
  "tokio",
+]
+
+[[package]]
+name = "grim-scene"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "chrono",
+ "grim",
+ "serde_json",
+ "uuid",
 ]
 
 [[package]]
