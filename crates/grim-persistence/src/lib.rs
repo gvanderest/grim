@@ -2,4 +2,4 @@
 
 pub mod persistence;
 
-pub use persistence::PersistencePlugin;
+pub use persistence::{PersistenceConfig, PersistencePlugin};
