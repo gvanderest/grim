@@ -498,11 +498,15 @@ Scene **output policy** (§5.3). Channels need no rule of their own.
 
 ## 8. Current state
 
-Eight crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-client`,
-`grim-protocol-telnet`, `grim-color`, `grim-text`, `grim-command`.
+Fourteen crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-color`,
+`grim-text`, `grim-command`, `grim-networking`, `grim-networking-telnet`,
+`grim-scene`, `grim-world`, `grim-channel`, `grim-persistence`.
 
-Decomposition steps 1–3 (grim-color, grim-text, grim-command) are done. Steps
-4–9 remain and are **not** mechanical moves — see the note at the end of §8.
+**Decomposition steps 1–9 are done.** The crate boundaries and dependency
+direction now match §4: the facade `grim` depends on the subsystems and offers
+`GrimDefaultPlugins`; nothing depends back on the facade. Two design-heavy
+redesigns were deliberately deferred rather than done blind — see
+"Deferred within the decomposition" below.
 
 ### Done
 
@@ -552,13 +556,13 @@ Decomposition steps 1–3 (grim-color, grim-text, grim-command) are done. Steps
 
 | Issue | Detail |
 |-------|--------|
-| `grim-engine-types` is a god-types crate | colour/palette left in step 1, `tr` in step 2, command registry in step 3. Remaining: wire events, game events, components, validation |
-| `grim` owns three plugins | World, Social, Persistence → three crates |
-| `SocialPlugin` holds `say`/`yell`/`ooc` as code | all three become `add_channel` data in `grim-channel` (§7) |
+| `grim-engine-types` is a god-types crate | colour (step 1), `tr` (step 2), command registry (step 3), and wire events + `Connection` (step 4) are out. Remaining: game events, components, validation |
+| ~~`grim` owns three plugins~~ | Fixed in step 7 (+8). World/shutdown → `grim-world`, Persistence → `grim-persistence`, Social → `grim-channel`; `grim` is a facade |
+| `ChannelPlugin` holds `say`/`yell`/`ooc` as code | still three coded handlers; `add_channel` data model (§7) is deferred with typed-event dispatch |
 | No attempt/fact split | `SayEvent`/`MoveEvent` are facts with no cancellable phase, so nothing can veto (§6) |
 | System ordering is a single `.after()` chain | `ClientPlugin` chains five systems; split across crates this needs explicit `SystemSet`s, or each dispatch hop costs a frame |
-| Dependencies point the wrong way | `grim-client` and `grim-protocol-telnet` depend on `grim`; the facade should depend on them |
-| `CommandRegistry` is held in a `OnceLock` | the type is now resource-ready (`grim-command`, step 3), but still stored in a `OnceLock` because its caller `handle_client_input` is at Bevy's 16-param limit. Resource wiring waits on splitting that system |
+| ~~Dependencies point the wrong way~~ | Fixed in step 9. `grim` depends on the subsystems and re-exports them (`GrimDefaultPlugins`); nothing depends back on the facade |
+| ~~`CommandRegistry` is held in a `OnceLock`~~ | Fixed in step 6. It is a Bevy resource, threaded into `handle_client_input` via a `SessionRes` `SystemParam` that keeps the signature within the 16-parameter limit |
 | `Command` is a closed enum | downstream authors cannot add variants; replaced by per-plugin event types. `grim-command` (step 3) no longer *depends* on the enum, but grim-client/world/social still pattern-match it — retiring it is part of the §5.2 typed-event dispatch, coupled to the session rework |
 | ~~Two i18n systems~~ | Fixed in step 2. `rust_i18n` deleted; one catalog (`grim-text`) serves every key |
 | `convert_16color` runs twice | once inside `tr()`, once in the telnet output path. The `tr()` pass is vestigial — it predates the escape and no longer dodges anything. Now merely wasteful rather than wrong: the escape is idempotent across passes. Collapses when the `Catalog` resource lands |
@@ -568,30 +572,42 @@ Decomposition steps 1–3 (grim-color, grim-text, grim-command) are done. Steps
 | ~~Prefix collisions resolve by link order~~ | Fixed in step 3. Priority is an explicit reorderable ordering (`prioritize`/`deprioritize`), and `contested_prefixes()` is logged at startup so a shadowed `n` is no longer silent |
 | ~~Colour codes are not escaped in interpolated values~~ | Fixed. `tr` escapes every argument via `escape_codes`, and `convert_16color` now forwards `{{` instead of resolving it so `ansi` is the escape's only consumer — without that, the second conversion pass undid the escaping. `format_yell`/`format_ooc` escape by hand because they bypass the catalog |
 
-### Why decomposition steps 4–9 are not mechanical moves
+### Done (steps 4–9)
 
-Steps 1–3 were separable because the code moved was pure or near-pure with narrow,
-well-understood call sites. The rest reworks the running session and dispatch, and
-each carries a real design decision that wants review before it lands, not an
-unattended refactor:
+- **Step 4 — `grim-networking`.** The `Connection` component and the five wire events
+  moved out of the god-types crate; `ClientInput`/`ClientOutput` were renamed to
+  `ConnectionInput`/`ConnectionOutput`. No `Transport` trait yet — a trait against a
+  single implementation is the premature-abstraction trap above, so the tokio bridge
+  stays in the telnet transport until a second transport is real.
+- **Step 5 — `grim-networking-telnet`.** Renamed from `grim-protocol-telnet` and
+  repointed off the facade onto `grim-color`, `grim-networking`, `grim-engine-types`.
+- **Step 6 — `grim-scene`.** Renamed from `grim-client`; `CommandRegistry` is now a
+  real Bevy resource (the `OnceLock` is gone), threaded into the input dispatcher via a
+  `SessionRes` `SystemParam` so the 16-parameter limit — the forcing function — is
+  resolved.
+- **Step 7 — `grim-world`, `grim-persistence`.** Split out of the facade; `grim-world`
+  also carries the `shutdown` command and SIGUSR1 bridge.
+- **Step 8 — `grim-channel`.** The say/yell/ooc handlers moved out of the facade
+  (`SocialPlugin` → `ChannelPlugin`).
+- **Step 9 — facade inversion.** `grim` depends on the subsystems, re-exports them, and
+  provides `GrimDefaultPlugins`; `grim-scene` and `grim-networking-telnet` no longer
+  depend on the facade. `example-mud` depends on `grim` alone.
 
-- **Step 4 (`grim-networking`)** would define a `Transport` trait against a *single*
-  implementation (telnet) — SSH and WebSocket do not exist yet — which is the classic
-  premature-abstraction trap. The tokio-bridge extraction is reasonable, but the trait
-  shape is a guess until a second transport exists. The `ClientInput`/`ClientOutput` →
-  `ConnectionInput`/`ConnectionOutput` rename is mechanical, but belongs with the crate
-  it names.
-- **Step 6 (`grim-scene`)** replaces the `ClientState` enum — which drives the entire
-  16-parameter `handle_client_input` state machine — with a stack of scene entities.
-  That is a rewrite of the session loop, and the current tests assert `ClientState`
-  transitions, so behavioural equivalence cannot be leaned on to catch mistakes.
-- **Step 9 (facade inversion)** reverses the dependency direction and depends on the
-  plugin split (step 7), which in turn depends on where session state lands (step 6).
+### Deferred within the decomposition
 
-Recommendation: take 4–9 one at a time, each as its own reviewed change, starting from
-the session-state model (step 6) since 7 and 9 hang off it. The `handle_client_input`
-16-parameter limit is the concrete forcing function — splitting it is the prerequisite
-for both the `CommandRegistry` resource wiring and the scene rework.
+Two redesigns were kept behavior-preserving rather than done blind, because each
+rewrites a contract the current tests assert and neither is a mechanical move:
+
+- **Scene stack (§5.3).** `grim-scene` still uses the `ClientState` enum. The
+  entity-per-scene model with `EntityEvent` routing and output policy (Pass/Buffer/Drop)
+  — and the `grim-auth` / `grim-editor` split that hangs off it — is a from-scratch
+  rewrite of the session loop and lands separately.
+- **Typed-event dispatch (§5.2) and channels-as-data (§7).** The closed `Command` enum
+  and the distinct `Say`/`Yell`/`Ooc` events are still in place. Retiring them for
+  per-plugin event types and a single scope-resolved `ChannelMessage` (the `add_channel`
+  data model) is one coupled change, since channel audience resolution currently lives
+  behind `grim-scene`'s renderer. It, and the attempt/fact split (§6), follow the scene
+  rewrite.
 
 ---
 
