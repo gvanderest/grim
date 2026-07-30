@@ -5,8 +5,8 @@ use bevy::log::info;
 use bevy::prelude::*;
 use chrono::Utc;
 use grim_engine_types::components::{
-    Account, Character, Client, ClientState, Description, Exits, InRoom, Linkdead,
-    Name as GrimName, OutputHistory, Player, Room, StartingRoom,
+    Account, Area, Character, Client, ClientState, Description, Exits, InRoom, Linkdead,
+    Name as GrimName, OutputHistory, Player, Room, RoomLocation, StartingRoom,
 };
 use grim_engine_types::events::{
     Command, EngineCommand, InfoMessage, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce,
@@ -31,6 +31,41 @@ struct SessionRes<'w> {
     starting: Res<'w, StartingRoom>,
     registry: Res<'w, grim_command::CommandRegistry<Command>>,
     persistence: Res<'w, grim_persistence::PersistenceConfig>,
+}
+
+/// Rooms + areas bundled so placement code can resolve a persisted
+/// [`RoomLocation`] (stable area/room `friendly_id`s) to the *current* room
+/// entity. Bundled as one `SystemParam` to stay within Bevy's 16-parameter
+/// system limit, and it also serves the plain room lookups the dispatcher does.
+#[derive(bevy::ecs::system::SystemParam)]
+struct RoomResolver<'w, 's> {
+    rooms: Query<'w, 's, (Entity, &'static Room, &'static GrimName)>,
+    areas: Query<'w, 's, &'static Area>,
+}
+
+impl RoomResolver<'_, '_> {
+    /// The room entity matching this location's area + room `friendly_id`s, if
+    /// it exists in the currently-loaded world.
+    fn resolve(&self, loc: &RoomLocation) -> Option<Entity> {
+        self.rooms.iter().find_map(|(e, r, _)| {
+            let area_matches = self
+                .areas
+                .get(r.area)
+                .map(|a| a.friendly_id == loc.area)
+                .unwrap_or(false);
+            (r.friendly_id == loc.room && area_matches).then_some(e)
+        })
+    }
+
+    /// Where to place a character entering the world: their persisted
+    /// `last_room` if it still resolves, else the starting room. New characters
+    /// (no `last_room`) and characters whose room no longer exists both fall
+    /// back to `starting`.
+    fn placement(&self, last_room: Option<&RoomLocation>, starting: Entity) -> Entity {
+        last_room
+            .and_then(|loc| self.resolve(loc))
+            .unwrap_or(starting)
+    }
 }
 
 pub struct ScenePlugin;
@@ -94,7 +129,7 @@ fn handle_client_input(
     characters: Query<(Entity, &Character, &GrimName)>,
     player_chars: Query<(Entity, &GrimName, &InRoom, Option<&Character>)>,
     players: Query<&Player>,
-    rooms: Query<(&Room, &GrimName)>,
+    rooms: RoomResolver,
     res: SessionRes,
     mut commands: Commands,
     mut outputs: MessageWriter<ConnectionOutput>,
@@ -328,12 +363,17 @@ fn handle_client_input(
                                                 });
                                             }
                                         }
+                                        let last = characters
+                                            .get(char_entity)
+                                            .ok()
+                                            .and_then(|(_, c, _)| c.last_room.clone());
                                         commands.entity(char_entity).insert((
                                             Player {
                                                 connection: Some(conn),
                                             },
                                             InRoom {
-                                                room: res.starting.0,
+                                                room: rooms
+                                                    .placement(last.as_ref(), res.starting.0),
                                             },
                                         ));
                                         client.character = Some(char_entity);
@@ -486,12 +526,16 @@ fn handle_client_input(
                             });
                         }
                     }
+                    let last = characters
+                        .get(char_entity)
+                        .ok()
+                        .and_then(|(_, c, _)| c.last_room.clone());
                     commands.entity(char_entity).insert((
                         Player {
                             connection: Some(conn),
                         },
                         InRoom {
-                            room: res.starting.0,
+                            room: rooms.placement(last.as_ref(), res.starting.0),
                         },
                     ));
                     client.character = Some(char_entity);
@@ -645,7 +689,7 @@ fn handle_client_input(
                                     .get(char_entity)
                                     .ok()
                                     .and_then(|(_, _, ir, _)| {
-                                        rooms.get(ir.room).ok().map(|(r, _)| r.area)
+                                        rooms.rooms.get(ir.room).ok().map(|(_, r, _)| r.area)
                                     });
                             let mut entries: Vec<(String, String)> = Vec::new();
                             if let Some(area) = actor_area {
@@ -653,7 +697,7 @@ fn handle_client_input(
                                     if e == char_entity {
                                         continue;
                                     }
-                                    if let Ok((r, rn)) = rooms.get(ir.room) {
+                                    if let Ok((_, r, rn)) = rooms.rooms.get(ir.room) {
                                         if r.area == area {
                                             entries.push((n.0.clone(), rn.0.clone()));
                                         }

@@ -1,5 +1,7 @@
 use bevy::prelude::*;
-use grim_engine_types::components::{Exits, InRoom, Name, Player};
+use grim_engine_types::components::{
+    Area, Character, Exits, InRoom, Name, Player, Room, RoomLocation,
+};
 use grim_engine_types::events::{
     Command, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent,
 };
@@ -71,12 +73,33 @@ fn handle_look(
     }
 }
 
+/// Resolve a room entity to its stable, entity-independent storage location
+/// (area + room `friendly_id`s). These survive a world reseed, so persisting
+/// them lets a character be placed back into the *new* instance of the same room
+/// after a restart or copyover — see `grim-scene`'s placement resolver.
+pub fn room_location(
+    room: Entity,
+    rooms: &Query<&Room>,
+    areas: &Query<&Area>,
+) -> Option<RoomLocation> {
+    let r = rooms.get(room).ok()?;
+    let area = areas.get(r.area).ok()?;
+    Some(RoomLocation {
+        area: area.friendly_id.clone(),
+        room: r.friendly_id.clone(),
+    })
+}
+
 /// `move <direction>`: traverse an exit, emitting a movement event and an
-/// automatic look at the destination.
+/// automatic look at the destination. Also refreshes the character's persisted
+/// `last_room` so a restart/copyover resumes them where they walked to.
 fn handle_move(
     mut engine: MessageReader<EngineCommand>,
     mut inroom: Query<&mut InRoom>,
     exits: Query<&Exits>,
+    rooms: Query<&Room>,
+    areas: Query<&Area>,
+    mut characters: Query<&mut Character>,
     mut move_ev: MessageWriter<MoveEvent>,
     mut look_room: MessageWriter<LookRoom>,
     mut info: MessageWriter<InfoMessage>,
@@ -95,6 +118,14 @@ fn handle_move(
                 Some(to) => {
                     if let Ok(mut ir) = inroom.get_mut(actor) {
                         ir.room = to;
+                    }
+                    // Keep the persisted location current on every step so an
+                    // unexpected restart or copyover resumes the character in the
+                    // room they actually walked to, not a stale one.
+                    if let Ok(mut character) = characters.get_mut(actor) {
+                        if let Some(loc) = room_location(to, &rooms, &areas) {
+                            character.last_room = Some(loc);
+                        }
                     }
                     move_ev.write(MoveEvent {
                         actor,
@@ -296,5 +327,93 @@ mod tests {
             assert_eq!(ev.text, "You can't go that way.\n");
             assert!(iter.next().is_none(), "expected exactly one InfoMessage");
         }
+    }
+
+    /// Spawn an area + a room in it, returning the room entity. `friendly_id`s
+    /// are the stable storage keys `last_room` records.
+    fn spawn_room(app: &mut App, area_fid: &str, room_fid: &str, exits: Exits) -> Entity {
+        use grim_engine_types::components::{Area, Room};
+        use uuid::Uuid;
+        let area = app
+            .world_mut()
+            .spawn(Area {
+                id: Uuid::new_v4(),
+                friendly_id: area_fid.into(),
+                name: area_fid.into(),
+            })
+            .id();
+        app.world_mut()
+            .spawn((
+                Room {
+                    id: Uuid::new_v4(),
+                    friendly_id: room_fid.into(),
+                    name: room_fid.into(),
+                    description: String::new(),
+                    area,
+                },
+                exits,
+            ))
+            .id()
+    }
+
+    #[test]
+    fn move_updates_character_last_room_to_destination_friendly_ids() {
+        use grim_engine_types::components::Character;
+        use uuid::Uuid;
+        let mut app = test_app();
+        let room2 = spawn_room(&mut app, "town", "market", Exits::default());
+        let mut exits = Exits::default();
+        exits.exits.insert(Cardinal::North, room2);
+        let room1 = spawn_room(&mut app, "town", "square", exits);
+        let actor = app
+            .world_mut()
+            .spawn((
+                InRoom { room: room1 },
+                Character {
+                    id: Uuid::new_v4(),
+                    name: "Walker".into(),
+                    account_id: Uuid::new_v4(),
+                    created_at: chrono::Utc::now(),
+                    last_room: None,
+                    roles: Vec::new(),
+                },
+            ))
+            .id();
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Move {
+                direction: Cardinal::North,
+            },
+        });
+        app.update();
+        let loc = app
+            .world()
+            .get::<Character>(actor)
+            .unwrap()
+            .last_room
+            .clone()
+            .expect("last_room should be set after moving");
+        assert_eq!(loc.area, "town");
+        assert_eq!(loc.room, "market");
+    }
+
+    #[test]
+    fn move_without_character_component_does_not_panic() {
+        // A non-character actor (e.g. an NPC) can move; the last_room update is
+        // simply skipped rather than erroring.
+        let mut app = test_app();
+        let room2 = spawn_room(&mut app, "town", "market", Exits::default());
+        let mut exits = Exits::default();
+        exits.exits.insert(Cardinal::North, room2);
+        let room1 = spawn_room(&mut app, "town", "square", exits);
+        let actor = app.world_mut().spawn(InRoom { room: room1 }).id();
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Move {
+                direction: Cardinal::North,
+            },
+        });
+        app.update();
+        assert_eq!(app.world().get::<InRoom>(actor).unwrap().room, room2);
     }
 }

@@ -67,11 +67,21 @@ extend.
 
 ## Architecture Decisions
 
+**Prefer existing crates over rolling your own.** Before writing non-trivial
+infrastructure (protocol handling, OS/syscall glue, serialization, async
+primitives, anything with a well-known name), research crates.io first: is there
+a mature, maintained crate that does this? Check download count and last-updated
+date. Default to gluing a proven crate over hand-rolling — hand-rolled infra is a
+maintenance and correctness liability. Only reimplement when no crate fits, the
+fit is poor, or the dependency cost is clearly not worth it — and say why. Do this
+research at the *start* of a feature, before designing the bespoke version.
+
 When developing new features, start by asking:
 
-1. **Does this already fit into the architecture?** → Implement as a plugin
-2. **Does this require a change to the architecture?** → Document in `docs/ARCHITECTURE.md`
-3. **Does this add new functionality needing API-level discussion?** → Open an issue
+1. **Is there a crate for this?** → Research crates.io before building infra (see above)
+2. **Does this already fit into the architecture?** → Implement as a plugin
+3. **Does this require a change to the architecture?** → Document in `docs/ARCHITECTURE.md`
+4. **Does this add new functionality needing API-level discussion?** → Open an issue
 
 **Reference:** `docs/ARCHITECTURE.md` for current architecture decisions.
 
