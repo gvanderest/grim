@@ -4,7 +4,7 @@ use grim_engine_types::components::{
     Account, Area, Character, Client, Description, InRoom, Linkdead, Name, OutputHistory, Player,
     Room, RoomLocation,
 };
-use grim_engine_types::events::LinkdeadAnnounce;
+use grim_engine_types::events::{LinkdeadAnnounce, MoveEvent};
 use grim_networking::{Connection, ConnectionClosed};
 use std::fs;
 use std::path::PathBuf;
@@ -40,8 +40,9 @@ impl Plugin for PersistencePlugin {
         // Only inserts the default when the author/harness hasn't set one.
         app.init_resource::<PersistenceConfig>()
             .add_message::<ConnectionClosed>()
+            .add_message::<MoveEvent>()
             .add_systems(Startup, load_persisted_data)
-            .add_systems(Update, save_on_disconnect);
+            .add_systems(Update, (save_on_disconnect, save_on_move));
     }
 }
 
@@ -181,6 +182,32 @@ fn save_on_disconnect(
         }
         commands.entity(client_e).despawn();
         commands.entity(conn).despawn();
+    }
+}
+
+/// Persist a character to disk each time it walks to a new room. `grim-world`
+/// keeps the in-memory `Character.last_room` current on every move; this mirrors
+/// that to disk immediately, so the on-disk `last_room` is always up to date.
+/// That is what lets a copyover successor (which reloads the world from scratch
+/// and reads characters from disk) restore each player exactly where they were —
+/// no copyover-time flush needed. (A future WAL/autosave pass will generalise
+/// this; see the durable-persistence follow-up.)
+fn save_on_move(
+    mut moves: MessageReader<MoveEvent>,
+    characters: Query<&Character>,
+    config: Res<PersistenceConfig>,
+) {
+    for ev in moves.read() {
+        // Only character entities persist; NPCs and other movers are ignored.
+        let Ok(character) = characters.get(ev.actor) else {
+            continue;
+        };
+        let dir = config.characters_dir();
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join(format!("{}.json", character.name));
+        if let Ok(json) = serde_json::to_string_pretty(character) {
+            let _ = fs::write(path, json);
+        }
     }
 }
 
@@ -859,6 +886,70 @@ mod tests {
             !std::path::Path::new(&format!("data/accounts/{acct_id}.json")).exists(),
             "nothing may leak to the default data/ root"
         );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Walking to a new room writes the character to disk with its updated
+    /// `last_room`, so an unexpected restart / copyover resumes it there. Unique
+    /// temp root → no `FS_LOCK` needed.
+    #[test]
+    fn save_on_move_persists_updated_last_room() {
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("grim-pers-move-{}-{}", std::process::id(), n));
+        let _ = fs::remove_dir_all(&dir);
+
+        let mut app = App::new();
+        app.insert_resource(PersistenceConfig { dir: dir.clone() });
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(PersistencePlugin);
+        app.add_message::<LinkdeadAnnounce>();
+        app.update(); // Startup load (empty)
+
+        // A character standing in a room, with last_room already refreshed by
+        // grim-world's move handler (simulated here by setting it directly).
+        let room = app.world_mut().spawn(()).id();
+        let character = Character {
+            id: Uuid::new_v4(),
+            name: "Rover".into(),
+            account_id: Uuid::new_v4(),
+            created_at: Utc::now(),
+            last_room: Some(RoomLocation {
+                area: "haven".into(),
+                room: "square".into(),
+            }),
+            roles: Vec::new(),
+        };
+        let actor = app.world_mut().spawn((character, InRoom { room })).id();
+
+        // Emit the move; save_on_move should write the character to disk.
+        app.world_mut().write_message(MoveEvent {
+            actor,
+            from: room,
+            to: room,
+            direction: grim_engine_types::cardinal::Cardinal::North,
+        });
+        app.update();
+
+        let path = dir.join("characters").join("Rover.json");
+        assert!(path.exists(), "move must persist the character to disk");
+        let saved: Character = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let loc = saved
+            .last_room
+            .expect("persisted character keeps last_room");
+        assert_eq!(loc.area, "haven");
+        assert_eq!(loc.room, "square");
+
+        // A non-character mover (no Character component) is ignored, not an error.
+        let npc = app.world_mut().spawn(InRoom { room }).id();
+        app.world_mut().write_message(MoveEvent {
+            actor: npc,
+            from: room,
+            to: room,
+            direction: grim_engine_types::cardinal::Cardinal::South,
+        });
+        app.update();
 
         let _ = fs::remove_dir_all(&dir);
     }

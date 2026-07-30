@@ -132,31 +132,55 @@ fn handle_connection_resumed(
     mut commands: Commands,
     characters: Query<(Entity, &Character, &GrimName)>,
     accounts: Query<(Entity, &Account)>,
+    players: Query<&Player>,
     rooms: RoomResolver,
     starting: Res<StartingRoom>,
     mut outputs: MessageWriter<ConnectionOutput>,
     mut look_room: MessageWriter<LookRoom>,
+    mut disconnect: MessageWriter<DisconnectRequest>,
 ) {
     for ev in resumed.read() {
         let conn = ev.connection;
+
+        // Fail closed: if anything about the character is missing or in an
+        // unexpected state, drop the socket rather than log in a half-built or
+        // corrupt session. The player can reconnect through the normal flow.
+        let abort = |outputs: &mut MessageWriter<ConnectionOutput>,
+                     disconnect: &mut MessageWriter<DisconnectRequest>,
+                     reason: &str| {
+            warn!("copyover resume aborted for '{}': {reason}", ev.character);
+            outputs.write(ConnectionOutput::new(
+                conn,
+                "Your session could not be restored. Please reconnect.\n",
+            ));
+            disconnect.write(DisconnectRequest { connection: conn });
+        };
+
         // Match the persisted character entity (loaded at startup) by name.
         let Some((char_entity, character, _)) =
             characters.iter().find(|(_, c, _)| c.name == ev.character)
         else {
-            warn!(
-                "copyover resume: character '{}' not found; disconnecting",
-                ev.character
-            );
-            outputs.write(ConnectionOutput::new(
-                conn,
-                "Your character could not be restored. Please reconnect.\n",
-            ));
+            abort(&mut outputs, &mut disconnect, "character not found");
             continue;
         };
-        let account = accounts
-            .iter()
-            .find(|(_, a)| a.id == character.account_id)
-            .map(|(e, _)| e);
+        // A resumed character must not already be live (would mean a duplicate
+        // handoff or a name collision) — unexpected state, so refuse.
+        if players
+            .get(char_entity)
+            .ok()
+            .and_then(|p| p.connection)
+            .is_some()
+        {
+            abort(&mut outputs, &mut disconnect, "character already connected");
+            continue;
+        }
+        // A character with no matching account is corrupt; refuse.
+        let Some((account_entity, _)) = accounts.iter().find(|(_, a)| a.id == character.account_id)
+        else {
+            abort(&mut outputs, &mut disconnect, "account not found");
+            continue;
+        };
+
         let room = rooms.placement(character.last_room.as_ref(), starting.0);
 
         commands.entity(char_entity).insert((
@@ -168,7 +192,7 @@ fn handle_connection_resumed(
 
         let mut client = Client::new(conn);
         client.state = ClientState::InGame;
-        client.account = account;
+        client.account = Some(account_entity);
         client.character = Some(char_entity);
         commands.spawn(client);
 
