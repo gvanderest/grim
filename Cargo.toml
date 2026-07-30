@@ -4,7 +4,7 @@ members = [
     "crates/example-mud",
     "crates/grim",
     "crates/grim-networking-telnet",
-    "crates/grim-client",
+    "crates/grim-scene",
     "crates/grim-engine-types",
     "crates/grim-color",
     "crates/grim-text",

@@ -1,63 +1,35 @@
-use std::sync::OnceLock;
-
 use bevy::log::warn;
 use grim::events::Command;
 use grim::CommandRegistry;
 
-/// Global command registry, initialized once at plugin startup.
+/// Parse a raw input line into a Command using `registry`.
 ///
-/// This remains a process-global `OnceLock` rather than a Bevy resource for now:
-/// the sole caller, [`handle_client_input`](crate::handle_client_input), is
-/// already at Bevy's 16-parameter system limit, so threading the registry
-/// through as a `Res` needs that system broken up first. `CommandRegistry` is a
-/// resource-ready type (see `grim-command`); wiring it in belongs with the
-/// session-dispatch rework.
-static REGISTRY: OnceLock<CommandRegistry<Command>> = OnceLock::new();
-
-/// Parse user input into a Command using the global command registry.
-///
-/// The registry handles prefix matching with "last registered wins" priority,
-/// so single-letter direction shortcuts (n/e/s/w/u/d) work naturally when
-/// "north"/"east"/etc. are registered.
-///
-/// # Panics
-///
-/// Panics if called before [`init_registry`] has been invoked.
-pub fn parse_command(input: &str) -> Option<Command> {
-    let registry = REGISTRY
-        .get()
-        .expect("CommandRegistry not initialized — call init_registry() before parse_command()");
-
+/// Prefix matching resolves by priority (see `grim-command`), so single-letter
+/// direction shortcuts (n/e/s/w/u/d) work when north/east/... are registered.
+pub fn parse_command(registry: &CommandRegistry<Command>, input: &str) -> Option<Command> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
         return None;
     }
 
     let (word, rest) = trimmed.split_once(' ').unwrap_or((trimmed, ""));
-    let rest = rest.trim();
-
-    registry.resolve(word, rest)
+    registry.resolve(word, rest.trim())
 }
 
-/// Initialize the global command registry with all game commands.
-///
-/// Safe to call multiple times — only the first call takes effect. On the first
-/// call, any prefix answered by more than one command is logged, so an
-/// abbreviation silently shadowed by another command surfaces at startup rather
-/// than as a confused player.
-pub fn init_registry() -> &'static CommandRegistry<Command> {
-    REGISTRY.get_or_init(|| {
-        let r = build_registry();
-        for contest in r.contested_prefixes() {
-            warn!(
-                "command prefix '{}' resolves to '{}', shadowing {}",
-                contest.prefix,
-                contest.winner,
-                contest.shadowed.join(", ")
-            );
-        }
-        r
-    })
+/// Build the command registry and log any contested prefixes once, so a
+/// silently-shadowed abbreviation surfaces at startup rather than as a confused
+/// player. The scene plugin inserts the result as a Bevy resource.
+pub fn command_registry() -> CommandRegistry<Command> {
+    let r = build_registry();
+    for contest in r.contested_prefixes() {
+        warn!(
+            "command prefix '{}' resolves to '{}', shadowing {}",
+            contest.prefix,
+            contest.winner,
+            contest.shadowed.join(", ")
+        );
+    }
+    r
 }
 
 fn build_registry() -> CommandRegistry<Command> {
@@ -177,24 +149,24 @@ mod tests {
     use grim::events::Command;
     use grim::CommandRegistry;
 
-    use super::{init_registry, parse_command};
+    use super::{command_registry, parse_command};
 
-    fn setup() {
-        init_registry();
+    /// Parse against a freshly-built default registry.
+    fn parse(input: &str) -> Option<Command> {
+        parse_command(&command_registry(), input)
     }
 
     // ── Cardinal directions ──────────────────────────────────────
     #[test]
     fn test_north() {
-        setup();
         assert_eq!(
-            parse_command("n"),
+            parse("n"),
             Some(Command::Move {
                 direction: Cardinal::North
             })
         );
         assert_eq!(
-            parse_command("north"),
+            parse("north"),
             Some(Command::Move {
                 direction: Cardinal::North
             })
@@ -203,15 +175,14 @@ mod tests {
 
     #[test]
     fn test_east() {
-        setup();
         assert_eq!(
-            parse_command("e"),
+            parse("e"),
             Some(Command::Move {
                 direction: Cardinal::East
             })
         );
         assert_eq!(
-            parse_command("east"),
+            parse("east"),
             Some(Command::Move {
                 direction: Cardinal::East
             })
@@ -220,15 +191,14 @@ mod tests {
 
     #[test]
     fn test_south() {
-        setup();
         assert_eq!(
-            parse_command("s"),
+            parse("s"),
             Some(Command::Move {
                 direction: Cardinal::South
             })
         );
         assert_eq!(
-            parse_command("south"),
+            parse("south"),
             Some(Command::Move {
                 direction: Cardinal::South
             })
@@ -237,15 +207,14 @@ mod tests {
 
     #[test]
     fn test_west() {
-        setup();
         assert_eq!(
-            parse_command("w"),
+            parse("w"),
             Some(Command::Move {
                 direction: Cardinal::West
             })
         );
         assert_eq!(
-            parse_command("west"),
+            parse("west"),
             Some(Command::Move {
                 direction: Cardinal::West
             })
@@ -254,15 +223,14 @@ mod tests {
 
     #[test]
     fn test_up() {
-        setup();
         assert_eq!(
-            parse_command("u"),
+            parse("u"),
             Some(Command::Move {
                 direction: Cardinal::Up
             })
         );
         assert_eq!(
-            parse_command("up"),
+            parse("up"),
             Some(Command::Move {
                 direction: Cardinal::Up
             })
@@ -271,15 +239,14 @@ mod tests {
 
     #[test]
     fn test_down() {
-        setup();
         assert_eq!(
-            parse_command("d"),
+            parse("d"),
             Some(Command::Move {
                 direction: Cardinal::Down
             })
         );
         assert_eq!(
-            parse_command("down"),
+            parse("down"),
             Some(Command::Move {
                 direction: Cardinal::Down
             })
@@ -289,9 +256,8 @@ mod tests {
     // ── Social commands ──────────────────────────────────────────
     #[test]
     fn test_say_with_text() {
-        setup();
         assert_eq!(
-            parse_command("say hello there"),
+            parse("say hello there"),
             Some(Command::Say {
                 text: "hello there".to_string()
             })
@@ -300,28 +266,25 @@ mod tests {
 
     #[test]
     fn test_say_empty_is_none() {
-        setup();
-        assert_eq!(parse_command("say"), None);
-        assert_eq!(parse_command("say "), None);
+        assert_eq!(parse("say"), None);
+        assert_eq!(parse("say "), None);
     }
 
     #[test]
     fn test_say_shorthand() {
-        setup();
         assert_eq!(
-            parse_command("' hello"),
+            parse("' hello"),
             Some(Command::Say {
                 text: "hello".to_string()
             })
         );
-        assert_eq!(parse_command("'"), None);
+        assert_eq!(parse("'"), None);
     }
 
     #[test]
     fn test_yell_with_text() {
-        setup();
         assert_eq!(
-            parse_command("yell fire"),
+            parse("yell fire"),
             Some(Command::Yell {
                 text: "fire".to_string()
             })
@@ -330,15 +293,13 @@ mod tests {
 
     #[test]
     fn test_yell_empty_is_none() {
-        setup();
-        assert_eq!(parse_command("yell"), None);
+        assert_eq!(parse("yell"), None);
     }
 
     #[test]
     fn test_ooc_with_text() {
-        setup();
         assert_eq!(
-            parse_command("ooc anyone here?"),
+            parse("ooc anyone here?"),
             Some(Command::Ooc {
                 text: "anyone here?".to_string()
             })
@@ -347,29 +308,26 @@ mod tests {
 
     #[test]
     fn test_ooc_empty_is_none() {
-        setup();
-        assert_eq!(parse_command("ooc"), None);
+        assert_eq!(parse("ooc"), None);
     }
 
     // ── Look ──────────────────────────────────────────────────────
     #[test]
     fn test_look_without_target() {
-        setup();
-        assert_eq!(parse_command("look"), Some(Command::Look { target: None }));
-        assert_eq!(parse_command("l"), Some(Command::Look { target: None }));
+        assert_eq!(parse("look"), Some(Command::Look { target: None }));
+        assert_eq!(parse("l"), Some(Command::Look { target: None }));
     }
 
     #[test]
     fn test_look_with_target() {
-        setup();
         assert_eq!(
-            parse_command("look statue"),
+            parse("look statue"),
             Some(Command::Look {
                 target: Some("statue".to_string())
             })
         );
         assert_eq!(
-            parse_command("l statue"),
+            parse("l statue"),
             Some(Command::Look {
                 target: Some("statue".to_string())
             })
@@ -379,50 +337,41 @@ mod tests {
     // ── Informational ─────────────────────────────────────────────
     #[test]
     fn test_who() {
-        setup();
-        assert_eq!(parse_command("who"), Some(Command::Who));
+        assert_eq!(parse("who"), Some(Command::Who));
     }
 
     #[test]
     fn test_where_cmd() {
-        setup();
-        assert_eq!(parse_command("where"), Some(Command::Where));
+        assert_eq!(parse("where"), Some(Command::Where));
     }
 
     #[test]
     fn test_commands_and_help() {
-        setup();
-        assert_eq!(parse_command("commands"), Some(Command::Commands));
-        assert_eq!(parse_command("help"), Some(Command::Commands));
+        assert_eq!(parse("commands"), Some(Command::Commands));
+        assert_eq!(parse("help"), Some(Command::Commands));
     }
 
     // ── Quit ──────────────────────────────────────────────────────
     #[test]
     fn test_quit_and_exit() {
-        setup();
-        assert_eq!(parse_command("quit"), Some(Command::Quit));
-        assert_eq!(parse_command("exit"), Some(Command::Quit));
+        assert_eq!(parse("quit"), Some(Command::Quit));
+        assert_eq!(parse("exit"), Some(Command::Quit));
     }
 
     // ── Shutdown (admin; gating happens at dispatch) ───────────────
     #[test]
     fn test_shutdown_with_count() {
-        setup();
         assert_eq!(
-            parse_command("shutdown 30"),
+            parse("shutdown 30"),
             Some(Command::Shutdown { seconds: 30 })
         );
     }
 
     #[test]
     fn test_shutdown_defaults_to_30() {
-        setup();
+        assert_eq!(parse("shutdown"), Some(Command::Shutdown { seconds: 30 }));
         assert_eq!(
-            parse_command("shutdown"),
-            Some(Command::Shutdown { seconds: 30 })
-        );
-        assert_eq!(
-            parse_command("shutdown abc"),
+            parse("shutdown abc"),
             Some(Command::Shutdown { seconds: 30 })
         );
     }
@@ -430,38 +379,34 @@ mod tests {
     // ── Edge cases ────────────────────────────────────────────────
     #[test]
     fn test_empty_input() {
-        setup();
-        assert_eq!(parse_command(""), None);
+        assert_eq!(parse(""), None);
     }
 
     #[test]
     fn test_whitespace_only() {
-        setup();
-        assert_eq!(parse_command("   "), None);
-        assert_eq!(parse_command("\t"), None);
-        assert_eq!(parse_command(" \t "), None);
+        assert_eq!(parse("   "), None);
+        assert_eq!(parse("\t"), None);
+        assert_eq!(parse(" \t "), None);
     }
 
     #[test]
     fn test_unknown_command() {
-        setup();
-        assert_eq!(parse_command("foobar"), None);
-        assert_eq!(parse_command("xyzzy"), None);
-        assert_eq!(parse_command("123"), None);
+        assert_eq!(parse("foobar"), None);
+        assert_eq!(parse("xyzzy"), None);
+        assert_eq!(parse("123"), None);
     }
 
     #[test]
     fn test_direction_wins_over_social() {
-        setup();
         // "n" is a prefix of "north", which is registered — direction wins
         assert_eq!(
-            parse_command("n hello"),
+            parse("n hello"),
             Some(Command::Move {
                 direction: Cardinal::North
             })
         );
         assert_eq!(
-            parse_command("s"),
+            parse("s"),
             Some(Command::Move {
                 direction: Cardinal::South
             })
@@ -472,38 +417,37 @@ mod tests {
 
     #[test]
     fn test_prefix_match_partial() {
-        setup();
         // "no" is prefix of "north" (default registry doesn't include "note")
         assert_eq!(
-            parse_command("no"),
+            parse("no"),
             Some(Command::Move {
                 direction: Cardinal::North
             })
         );
         // "so" is prefix of "south"
         assert_eq!(
-            parse_command("so"),
+            parse("so"),
             Some(Command::Move {
                 direction: Cardinal::South
             })
         );
         // "ea" is prefix of "east"
         assert_eq!(
-            parse_command("ea"),
+            parse("ea"),
             Some(Command::Move {
                 direction: Cardinal::East
             })
         );
         // "we" is prefix of "west"
         assert_eq!(
-            parse_command("we"),
+            parse("we"),
             Some(Command::Move {
                 direction: Cardinal::West
             })
         );
         // "do" is prefix of "down"
         assert_eq!(
-            parse_command("do"),
+            parse("do"),
             Some(Command::Move {
                 direction: Cardinal::Down
             })
@@ -512,32 +456,31 @@ mod tests {
 
     #[test]
     fn test_case_insensitivity() {
-        setup();
         assert_eq!(
-            parse_command("NORTH"),
+            parse("NORTH"),
             Some(Command::Move {
                 direction: Cardinal::North
             })
         );
         assert_eq!(
-            parse_command("N"),
+            parse("N"),
             Some(Command::Move {
                 direction: Cardinal::North
             })
         );
         assert_eq!(
-            parse_command("NoRtH"),
+            parse("NoRtH"),
             Some(Command::Move {
                 direction: Cardinal::North
             })
         );
         assert_eq!(
-            parse_command("SAY Hello"),
+            parse("SAY Hello"),
             Some(Command::Say {
                 text: "Hello".to_string()
             })
         );
-        assert_eq!(parse_command("LOOK"), Some(Command::Look { target: None }));
+        assert_eq!(parse("LOOK"), Some(Command::Look { target: None }));
     }
 
     /// Test custom registry with registration-order priority.

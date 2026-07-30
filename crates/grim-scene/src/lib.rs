@@ -21,10 +21,19 @@ use uuid::Uuid;
 
 mod formatter;
 mod parser;
-pub struct ClientPlugin;
-impl Plugin for ClientPlugin {
+/// Session-scoped resources bundled into one `SystemParam` so the input
+/// dispatcher can take the command registry as a real `Res` without exceeding
+/// Bevy's 16-parameter system limit.
+#[derive(bevy::ecs::system::SystemParam)]
+struct SessionRes<'w> {
+    starting: Res<'w, StartingRoom>,
+    registry: Res<'w, grim::CommandRegistry<Command>>,
+}
+
+pub struct ScenePlugin;
+impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
-        parser::init_registry();
+        app.insert_resource(parser::command_registry());
         app.add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>()
             .add_message::<EngineCommand>()
@@ -79,7 +88,7 @@ fn handle_client_input(
     player_chars: Query<(Entity, &GrimName, &InRoom, Option<&Character>)>,
     players: Query<&Player>,
     rooms: Query<(&Room, &GrimName)>,
-    starting: Res<StartingRoom>,
+    res: SessionRes,
     mut commands: Commands,
     mut outputs: MessageWriter<ConnectionOutput>,
     mut look_room: MessageWriter<LookRoom>,
@@ -312,7 +321,9 @@ fn handle_client_input(
                                             Player {
                                                 connection: Some(conn),
                                             },
-                                            InRoom { room: starting.0 },
+                                            InRoom {
+                                                room: res.starting.0,
+                                            },
                                         ));
                                         client.character = Some(char_entity);
                                         client.state = ClientState::MotdPrompt;
@@ -468,7 +479,9 @@ fn handle_client_input(
                         Player {
                             connection: Some(conn),
                         },
-                        InRoom { room: starting.0 },
+                        InRoom {
+                            room: res.starting.0,
+                        },
                     ));
                     client.character = Some(char_entity);
                     client.state = ClientState::MotdPrompt;
@@ -510,7 +523,9 @@ fn handle_client_input(
                                 Player {
                                     connection: Some(conn),
                                 },
-                                InRoom { room: starting.0 },
+                                InRoom {
+                                    room: res.starting.0,
+                                },
                             ))
                             .id();
                         account.characters.push(char_id);
@@ -582,7 +597,7 @@ fn handle_client_input(
                     text
                 };
 
-                if let Some(cmd) = parser::parse_command(text_to_parse) {
+                if let Some(cmd) = parser::parse_command(&res.registry, text_to_parse) {
                     // Update last_input for future "!" repeats (store only non-"!" input)
                     client.last_input = Some(text_to_parse.to_string());
                     // Handle special commands immediately
@@ -1095,7 +1110,7 @@ mod tests {
         app.add_plugins(WorldPlugin);
         app.add_plugins(SocialPlugin);
         app.add_plugins(PersistencePlugin);
-        app.add_plugins(ClientPlugin);
+        app.add_plugins(ScenePlugin);
         // Telnet protocol messages not registered by the above plugins
         app.add_message::<ConnectionEstablished>()
             .add_message::<ConnectionInput>();
@@ -1580,6 +1595,7 @@ mod tests {
             .add_message::<ConnectionInput>()
             .add_systems(Update, handle_connection_established)
             .add_systems(Update, handle_client_input);
+        app.insert_resource(parser::command_registry());
 
         let room = app
             .world_mut()

@@ -1,5 +1,5 @@
 [package]
-name = "grim-client"
+name = "grim-scene"
 version = "0.1.0"
 edition = "2021"
 
