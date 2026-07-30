@@ -686,9 +686,9 @@ see is interaction: a unit test of `grim-command` never learns that
 drives it from the outside. The harness (`tests/harness`) is deliberately
 **message-level, not socket-level**: it adds `GrimHeadlessPlugins` — the exact
 plugin set `GrimDefaultPlugins` ships, minus the transport — injects
-`ConnectionInput`, and records every `ConnectionOutput` per connection. No TCP,
-a manually-advanced clock, so runs are deterministic and free of ports and
-sleeps. State is isolated per test via `PersistenceConfig` pointed at a temp dir,
+`ConnectionInput`, and records every `ConnectionOutput` per connection. It uses
+no TCP and advances the clock manually, so runs are deterministic and free of
+ports and sleeps. State is isolated per test via `PersistenceConfig` pointed at a temp dir,
 so every test starts from a clean world.
 
 Two properties make this the plugin-conflict harness:
