@@ -8,6 +8,12 @@
 pub use bevy::prelude::*;
 pub use grim_engine_types::*;
 
+// Transport-agnostic networking primitives (Connection + wire events) live in
+// grim-networking. Re-exported at the root so `grim::Connection`,
+// `grim::ConnectionInput`, `grim::ConnectionOutput`, etc. resolve.
+pub use grim_networking::*;
+pub use grim_networking::{self as networking};
+
 // The text catalog. `tr` is re-exported at the crate root so `grim::tr` (the
 // function) and `grim::tr!` (the macro, via #[macro_export]) both resolve, as
 // the old `tr!` in grim-engine-types did.

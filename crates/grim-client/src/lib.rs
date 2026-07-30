@@ -9,13 +9,13 @@ use grim::components::{
     Name as GrimName, OutputHistory, Player, Room, StartingRoom,
 };
 use grim::events::{
-    ClientInput, ClientOutput, Command, ConnectionEstablished, DisconnectRequest, EngineCommand,
-    InfoMessage, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce, LookEntity, LookRoom, MoveEvent,
-    OocEvent, SayEvent, ServerBroadcast, YellEvent,
+    Command, EngineCommand, InfoMessage, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce,
+    LookEntity, LookRoom, MoveEvent, OocEvent, SayEvent, ServerBroadcast, YellEvent,
 };
 use grim::validation::{
     hash_password, validate_character_name, validate_identifier, validate_password, verify_password,
 };
+use grim::{ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest};
 use std::collections::VecDeque;
 use uuid::Uuid;
 
@@ -25,7 +25,7 @@ pub struct ClientPlugin;
 impl Plugin for ClientPlugin {
     fn build(&self, app: &mut App) {
         parser::init_registry();
-        app.add_message::<ClientOutput>()
+        app.add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>()
             .add_message::<EngineCommand>()
             .add_message::<LookRoom>()
@@ -56,15 +56,15 @@ impl Plugin for ClientPlugin {
 fn handle_connection_established(
     mut established: MessageReader<ConnectionEstablished>,
     mut commands: Commands,
-    mut outputs: MessageWriter<ClientOutput>,
+    mut outputs: MessageWriter<ConnectionOutput>,
 ) {
     for ev in established.read() {
         commands.spawn(Client::new(ev.connection));
         let banner = grim::color::ansi(include_str!("../../../assets/login-banner.txt"));
         let text = format!("{}\n\n{}", banner, tr!("login.prompt"));
-        outputs.write(ClientOutput {
+        outputs.write(ConnectionOutput {
             echo: None,
-            ..ClientOutput::new(ev.connection, text)
+            ..ConnectionOutput::new(ev.connection, text)
         });
     }
 }
@@ -72,7 +72,7 @@ fn handle_connection_established(
 // ─── Client input dispatch ───────────────────────────────────────────
 #[allow(clippy::too_many_arguments)]
 fn handle_client_input(
-    mut inputs: MessageReader<ClientInput>,
+    mut inputs: MessageReader<ConnectionInput>,
     mut clients: Query<(Entity, &mut Client)>,
     mut accounts: Query<(Entity, &mut Account)>,
     characters: Query<(Entity, &Character, &GrimName)>,
@@ -81,7 +81,7 @@ fn handle_client_input(
     rooms: Query<(&Room, &GrimName)>,
     starting: Res<StartingRoom>,
     mut commands: Commands,
-    mut outputs: MessageWriter<ClientOutput>,
+    mut outputs: MessageWriter<ConnectionOutput>,
     mut look_room: MessageWriter<LookRoom>,
     mut announce_login: MessageWriter<LoginAnnounce>,
     mut announce_linkdead: MessageWriter<LinkdeadAnnounce>,
@@ -102,9 +102,9 @@ fn handle_client_input(
         match &mut client.state {
             ClientState::LoginPrompt => {
                 if text.trim().is_empty() {
-                    outputs.write(ClientOutput {
+                    outputs.write(ConnectionOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, tr!("login.prompt"))
+                        ..ConnectionOutput::new(conn, tr!("login.prompt"))
                     });
                     continue;
                 }
@@ -131,9 +131,9 @@ fn handle_client_input(
                             is_new: false,
                             character: Some(char_entity),
                         };
-                        outputs.write(ClientOutput {
+                        outputs.write(ConnectionOutput {
                             echo: Some(false),
-                            ..ClientOutput::new(conn, "Password: ")
+                            ..ConnectionOutput::new(conn, "Password: ")
                         });
                         continue;
                     }
@@ -148,19 +148,19 @@ fn handle_client_input(
                                 is_new: false,
                                 character: None,
                             };
-                            outputs.write(ClientOutput {
+                            outputs.write(ConnectionOutput {
                                 echo: Some(false),
-                                ..ClientOutput::new(conn, "Password: ")
+                                ..ConnectionOutput::new(conn, "Password: ")
                             });
                         } else {
                             client.state = ClientState::ConfirmCreate {
                                 identifier: identifier.clone(),
                             };
-                            outputs.write(ClientOutput { echo: None, ..ClientOutput::new(conn, "Did not find that email address, do you want to create an account? [Y/n] ") });
+                            outputs.write(ConnectionOutput { echo: None, ..ConnectionOutput::new(conn, "Did not find that email address, do you want to create an account? [Y/n] ") });
                         }
                     }
                     Err(e) => {
-                        outputs.write(ClientOutput { echo: None, ..ClientOutput::new(conn, format!(
+                        outputs.write(ConnectionOutput { echo: None, ..ConnectionOutput::new(conn, format!(
                                 "Invalid identifier: {}\nEnter your character name or email address: ",
                                 e
                             )) });
@@ -178,15 +178,15 @@ fn handle_client_input(
                         is_new: true,
                         character: None,
                     };
-                    outputs.write(ClientOutput {
+                    outputs.write(ConnectionOutput {
                         echo: Some(false),
-                        ..ClientOutput::new(conn, "Choose a password: ")
+                        ..ConnectionOutput::new(conn, "Choose a password: ")
                     });
                 } else {
                     client.state = ClientState::LoginPrompt;
-                    outputs.write(ClientOutput {
+                    outputs.write(ConnectionOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, tr!("login.prompt"))
+                        ..ConnectionOutput::new(conn, tr!("login.prompt"))
                     });
                 }
             }
@@ -199,9 +199,9 @@ fn handle_client_input(
                 let auto_select = *character;
                 if text.trim().is_empty() {
                     client.state = ClientState::LoginPrompt;
-                    outputs.write(ClientOutput {
+                    outputs.write(ConnectionOutput {
                         echo: Some(true),
-                        ..ClientOutput::new(conn, tr!("login.wrong_password"))
+                        ..ConnectionOutput::new(conn, tr!("login.wrong_password"))
                     });
                     continue;
                 }
@@ -224,9 +224,9 @@ fn handle_client_input(
                             client.account = Some(account_entity);
                             client.state = ClientState::CharacterSelect;
                             // Restore echo before showing menu
-                            outputs.write(ClientOutput {
+                            outputs.write(ConnectionOutput {
                                 echo: Some(true),
-                                ..ClientOutput::new(conn, "")
+                                ..ConnectionOutput::new(conn, "")
                             });
                             show_character_menu(
                                 client_entity,
@@ -239,9 +239,9 @@ fn handle_client_input(
                             );
                         }
                         Err(e) => {
-                            outputs.write(ClientOutput {
+                            outputs.write(ConnectionOutput {
                                 echo: None,
-                                ..ClientOutput::new(
+                                ..ConnectionOutput::new(
                                     conn,
                                     format!("Invalid password: {}\nChoose a password: ", e),
                                 )
@@ -269,16 +269,16 @@ fn handle_client_input(
                                         client.input_queue = VecDeque::new();
                                         client.command_cooldown =
                                             Timer::from_seconds(0.5, TimerMode::Once);
-                                        outputs.write(ClientOutput {
+                                        outputs.write(ConnectionOutput {
                                             echo: None,
-                                            ..ClientOutput::new(conn, "Reconnecting...\n")
+                                            ..ConnectionOutput::new(conn, "Reconnecting...\n")
                                         });
                                         // Replay buffered output from before disconnect
                                         if let Ok(mut history) = histories.get_mut(char_entity) {
                                             for line in history.drain() {
-                                                outputs.write(ClientOutput {
+                                                outputs.write(ConnectionOutput {
                                                     echo: None,
-                                                    ..ClientOutput::new(conn, line)
+                                                    ..ConnectionOutput::new(conn, line)
                                                 });
                                             }
                                         }
@@ -302,7 +302,7 @@ fn handle_client_input(
                                         // Check if character is already online — disconnect old session
                                         if let Ok(player) = players.get(char_entity) {
                                             if let Some(old_conn) = player.connection {
-                                                outputs.write(ClientOutput::new(old_conn, "Someone else has logged into this character.\n"));
+                                                outputs.write(ConnectionOutput::new(old_conn, "Someone else has logged into this character.\n"));
                                                 disconnect.write(DisconnectRequest {
                                                     connection: old_conn,
                                                 });
@@ -316,9 +316,9 @@ fn handle_client_input(
                                         ));
                                         client.character = Some(char_entity);
                                         client.state = ClientState::MotdPrompt;
-                                        outputs.write(ClientOutput {
+                                        outputs.write(ConnectionOutput {
                                             echo: Some(true),
-                                            ..ClientOutput::new(conn, formatter::format_motd())
+                                            ..ConnectionOutput::new(conn, formatter::format_motd())
                                         });
                                     }
                                 } else {
@@ -334,17 +334,17 @@ fn handle_client_input(
                                     );
                                 }
                             } else {
-                                outputs.write(ClientOutput {
+                                outputs.write(ConnectionOutput {
                                     echo: None,
-                                    ..ClientOutput::new(conn, "Invalid password.\nPassword: ")
+                                    ..ConnectionOutput::new(conn, "Invalid password.\nPassword: ")
                                 });
                             }
                         }
                         None => {
                             client.state = ClientState::LoginPrompt;
-                            outputs.write(ClientOutput {
+                            outputs.write(ConnectionOutput {
                                 echo: Some(true),
-                                ..ClientOutput::new(
+                                ..ConnectionOutput::new(
                                     conn,
                                     "Account not found.\nEnter your email address: ",
                                 )
@@ -358,9 +358,9 @@ fn handle_client_input(
                 let lower = text.to_lowercase();
                 if lower == "create" || lower == "c" {
                     client.state = ClientState::CreateCharacter;
-                    outputs.write(ClientOutput {
+                    outputs.write(ConnectionOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, "Enter a name for your new character: ")
+                        ..ConnectionOutput::new(conn, "Enter a name for your new character: ")
                     });
                     continue;
                 }
@@ -422,16 +422,16 @@ fn handle_client_input(
                     client.state = ClientState::InGame;
                     client.input_queue = VecDeque::new();
                     client.command_cooldown = Timer::from_seconds(0.5, TimerMode::Once);
-                    outputs.write(ClientOutput {
+                    outputs.write(ConnectionOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, "Reconnecting...\n")
+                        ..ConnectionOutput::new(conn, "Reconnecting...\n")
                     });
                     // Replay buffered output from before disconnect
                     if let Ok(mut history) = histories.get_mut(char_entity) {
                         for line in history.drain() {
-                            outputs.write(ClientOutput {
+                            outputs.write(ConnectionOutput {
                                 echo: None,
-                                ..ClientOutput::new(conn, line)
+                                ..ConnectionOutput::new(conn, line)
                             });
                         }
                     }
@@ -455,7 +455,7 @@ fn handle_client_input(
                     // Check if character is already online — disconnect old session
                     if let Ok(player) = players.get(char_entity) {
                         if let Some(old_conn) = player.connection {
-                            outputs.write(ClientOutput::new(
+                            outputs.write(ConnectionOutput::new(
                                 old_conn,
                                 "Someone else has logged into this character.\n",
                             ));
@@ -472,9 +472,9 @@ fn handle_client_input(
                     ));
                     client.character = Some(char_entity);
                     client.state = ClientState::MotdPrompt;
-                    outputs.write(ClientOutput {
+                    outputs.write(ConnectionOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, formatter::format_motd())
+                        ..ConnectionOutput::new(conn, formatter::format_motd())
                     });
                 }
             }
@@ -521,15 +521,15 @@ fn handle_client_input(
                         }
                         client.character = Some(char_entity);
                         client.state = ClientState::MotdPrompt;
-                        outputs.write(ClientOutput {
+                        outputs.write(ConnectionOutput {
                             echo: None,
-                            ..ClientOutput::new(conn, formatter::format_motd())
+                            ..ConnectionOutput::new(conn, formatter::format_motd())
                         });
                     }
                     Err(e) => {
-                        outputs.write(ClientOutput {
+                        outputs.write(ConnectionOutput {
                             echo: None,
-                            ..ClientOutput::new(
+                            ..ConnectionOutput::new(
                                 conn,
                                 format!("Invalid name: {}\nEnter a name for your character: ", e),
                             )
@@ -572,9 +572,9 @@ fn handle_client_input(
                     if let Some(ref last_input) = client.last_input {
                         last_input.as_str()
                     } else {
-                        outputs.write(ClientOutput {
+                        outputs.write(ConnectionOutput {
                             echo: None,
-                            ..ClientOutput::new(conn, "No previous command to repeat.\n")
+                            ..ConnectionOutput::new(conn, "No previous command to repeat.\n")
                         });
                         continue;
                     }
@@ -600,9 +600,9 @@ fn handle_client_input(
                                 })
                                 .collect();
                             entries.sort();
-                            outputs.write(ClientOutput {
+                            outputs.write(ConnectionOutput {
                                 echo: None,
-                                ..ClientOutput::new(conn, formatter::format_who_list(&entries))
+                                ..ConnectionOutput::new(conn, formatter::format_who_list(&entries))
                             });
                         }
                         Command::Where => {
@@ -627,22 +627,25 @@ fn handle_client_input(
                                 }
                                 entries.sort_by(|a, b| a.1.cmp(&b.1));
                             }
-                            outputs.write(ClientOutput {
+                            outputs.write(ConnectionOutput {
                                 echo: None,
-                                ..ClientOutput::new(conn, formatter::format_where_list(&entries))
+                                ..ConnectionOutput::new(
+                                    conn,
+                                    formatter::format_where_list(&entries),
+                                )
                             });
                         }
                         Command::Commands => {
-                            outputs.write(ClientOutput {
+                            outputs.write(ConnectionOutput {
                                 echo: None,
-                                ..ClientOutput::new(conn, formatter::format_commands())
+                                ..ConnectionOutput::new(conn, formatter::format_commands())
                             });
                         }
                         Command::Shutdown { .. } => {
                             // Admin-gated. A non-admin must not be able to tell
                             // the command exists, so respond exactly as for an
                             // unknown command — same text, same framing (a
-                            // direct ClientOutput, no prepended newline). Routing
+                            // direct ConnectionOutput, no prepended newline). Routing
                             // this through the engine's InfoMessage path would
                             // add a leading newline and leak the difference.
                             let is_admin = characters
@@ -652,9 +655,9 @@ fn handle_client_input(
                             if is_admin {
                                 client.input_queue.push_back(cmd);
                             } else {
-                                outputs.write(ClientOutput {
+                                outputs.write(ConnectionOutput {
                                     echo: None,
-                                    ..ClientOutput::new(conn, tr!("error.unknown_command"))
+                                    ..ConnectionOutput::new(conn, tr!("error.unknown_command"))
                                 });
                             }
                         }
@@ -665,14 +668,14 @@ fn handle_client_input(
                     }
                 } else if text.trim().is_empty() {
                     // Blank line — write a newline to trigger prompt on flush
-                    outputs.write(ClientOutput {
+                    outputs.write(ConnectionOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, " ")
+                        ..ConnectionOutput::new(conn, " ")
                     });
                 } else {
-                    outputs.write(ClientOutput {
+                    outputs.write(ConnectionOutput {
                         echo: None,
-                        ..ClientOutput::new(conn, tr!("error.unknown_command"))
+                        ..ConnectionOutput::new(conn, tr!("error.unknown_command"))
                     });
                 }
             }
@@ -686,7 +689,7 @@ fn show_character_menu(
     client: &Client,
     characters: &Query<(Entity, &Character, &GrimName)>,
     accounts: &Query<(Entity, &mut Account)>,
-    outputs: &mut MessageWriter<ClientOutput>,
+    outputs: &mut MessageWriter<ConnectionOutput>,
     linkdead: &Query<&Linkdead>,
     players: &Query<&Player>,
 ) {
@@ -736,7 +739,7 @@ fn show_character_menu(
         menu.push_str("You have no characters created yet.\n");
     }
     menu.push_str("\nc: Create a new character\n\nWhat would you like to do? ");
-    outputs.write(ClientOutput::new(conn, menu));
+    outputs.write(ConnectionOutput::new(conn, menu));
 }
 
 // ─── Command queue dispatch ─────────────────────────────────────────
@@ -815,7 +818,7 @@ fn format_output(
     room_exits: Query<&Exits>,
     names: Query<&GrimName>,
     descriptions: Query<&Description>,
-    mut outputs: MessageWriter<ClientOutput>,
+    mut outputs: MessageWriter<ConnectionOutput>,
 ) {
     // Helper to find connection from room_occupants
     let find_conn = |target: Entity| -> Entity {
@@ -868,9 +871,9 @@ fn format_output(
             }
         }
         let conn = find_conn(ev.target);
-        outputs.write(ClientOutput {
+        outputs.write(ConnectionOutput {
             echo: None,
-            ..ClientOutput::new(
+            ..ConnectionOutput::new(
                 conn,
                 formatter::format_room(&name.0, &room.description, &exits, &occupant_names),
             )
@@ -887,9 +890,9 @@ fn format_output(
             .map(|d| d.0.clone())
             .unwrap_or_default();
         let conn = find_conn(ev.target);
-        outputs.write(ClientOutput {
+        outputs.write(ConnectionOutput {
             echo: None,
-            ..ClientOutput::new(conn, formatter::format_entity(&subj_name.0, &desc))
+            ..ConnectionOutput::new(conn, formatter::format_entity(&subj_name.0, &desc))
         });
     }
 
@@ -928,9 +931,9 @@ fn format_output(
             }
             if let Some(p) = player {
                 if let Some(conn) = p.connection {
-                    outputs.write(ClientOutput {
+                    outputs.write(ConnectionOutput {
                         prepend_newline: true,
-                        ..ClientOutput::new(conn, formatted.clone())
+                        ..ConnectionOutput::new(conn, formatted.clone())
                     });
                 }
             }
@@ -949,9 +952,9 @@ fn format_output(
             }
             if let Some(p) = player {
                 if let Some(conn) = p.connection {
-                    outputs.write(ClientOutput {
+                    outputs.write(ConnectionOutput {
                         prepend_newline: true,
-                        ..ClientOutput::new(conn, formatted.clone())
+                        ..ConnectionOutput::new(conn, formatted.clone())
                     });
                 }
             }
@@ -985,17 +988,17 @@ fn format_output(
     // ── InfoMessage ──
     for ev in info_events.read() {
         let conn = find_conn(ev.target);
-        outputs.write(ClientOutput {
+        outputs.write(ConnectionOutput {
             prepend_newline: true,
-            ..ClientOutput::new(conn, ev.text.clone())
+            ..ConnectionOutput::new(conn, ev.text.clone())
         });
     }
 }
 
-/// Capture every `ClientOutput` into the connection's `OutputHistory` for
+/// Capture every `ConnectionOutput` into the connection's `OutputHistory` for
 /// linkdead replay on reconnect.
 fn capture_output(
-    mut output: MessageReader<ClientOutput>,
+    mut output: MessageReader<ConnectionOutput>,
     mut histories: Query<&mut OutputHistory>,
 ) {
     for ev in output.read() {
@@ -1022,7 +1025,7 @@ fn broadcast_to_room(
     exclude: Option<Entity>,
     text: &str,
     occupants: &Query<(Entity, &InRoom, Option<&Player>, &GrimName)>,
-    outputs: &mut MessageWriter<ClientOutput>,
+    outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
     for (entity, ir, player, _) in occupants.iter() {
         if ir.room != room {
@@ -1033,9 +1036,9 @@ fn broadcast_to_room(
         }
         if let Some(p) = player {
             if let Some(conn) = p.connection {
-                outputs.write(ClientOutput {
+                outputs.write(ConnectionOutput {
                     prepend_newline: true,
-                    ..ClientOutput::new(conn, text.to_string())
+                    ..ConnectionOutput::new(conn, text.to_string())
                 });
             }
         }
@@ -1049,7 +1052,7 @@ fn broadcast_to_room(
 fn format_server_broadcast(
     mut broadcasts: MessageReader<ServerBroadcast>,
     occupants: Query<(Entity, &InRoom, Option<&Player>, &GrimName)>,
-    mut outputs: MessageWriter<ClientOutput>,
+    mut outputs: MessageWriter<ConnectionOutput>,
 ) {
     for ev in broadcasts.read() {
         broadcast_global(&ev.text, &occupants, &mut outputs);
@@ -1059,14 +1062,14 @@ fn format_server_broadcast(
 fn broadcast_global(
     text: &str,
     occupants: &Query<(Entity, &InRoom, Option<&Player>, &GrimName)>,
-    outputs: &mut MessageWriter<ClientOutput>,
+    outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
     for (_, _, player, _) in occupants.iter() {
         if let Some(p) = player {
             if let Some(conn) = p.connection {
-                outputs.write(ClientOutput {
+                outputs.write(ConnectionOutput {
                     prepend_newline: true,
-                    ..ClientOutput::new(conn, text.to_string())
+                    ..ConnectionOutput::new(conn, text.to_string())
                 });
             }
         }
@@ -1079,6 +1082,7 @@ mod tests {
     use chrono::Utc;
     use grim::components::*;
     use grim::plugins::*;
+    use grim::Connection;
     use std::net::SocketAddr;
     use uuid::Uuid;
 
@@ -1094,7 +1098,7 @@ mod tests {
         app.add_plugins(ClientPlugin);
         // Telnet protocol messages not registered by the above plugins
         app.add_message::<ConnectionEstablished>()
-            .add_message::<ClientInput>();
+            .add_message::<ConnectionInput>();
         app
     }
 
@@ -1166,7 +1170,7 @@ mod tests {
             .id();
 
         // Step 1: Send character name at login prompt
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "Test".into(),
         });
@@ -1188,7 +1192,7 @@ mod tests {
         );
 
         // Step 2: Send password
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "password".into(),
         });
@@ -1273,7 +1277,7 @@ mod tests {
             .id();
 
         // Step 1: Send email at login prompt
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "test@example.com".into(),
         });
@@ -1295,7 +1299,7 @@ mod tests {
         );
 
         // Step 2: Send password
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "password".into(),
         });
@@ -1313,7 +1317,7 @@ mod tests {
         );
 
         // Step 3: Select character by number
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "1".into(),
         });
@@ -1412,7 +1416,7 @@ mod tests {
             .id();
 
         // Send character name at login prompt
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "Test".into(),
         });
@@ -1501,14 +1505,14 @@ mod tests {
             .id();
 
         // Step 1: Send email
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "test@example.com".into(),
         });
         app.update();
 
         // Step 2: Send password
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "password".into(),
         });
@@ -1525,7 +1529,7 @@ mod tests {
         );
 
         // Step 3: Select character "1"
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "1".into(),
         });
@@ -1559,7 +1563,7 @@ mod tests {
         app.add_plugins(WorldPlugin);
         app.add_plugins(SocialPlugin);
         app.add_plugins(PersistencePlugin);
-        app.add_message::<ClientOutput>()
+        app.add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>()
             .add_message::<EngineCommand>()
             .add_message::<LookRoom>()
@@ -1573,7 +1577,7 @@ mod tests {
             .add_message::<LogoutAnnounce>()
             .add_message::<LinkdeadAnnounce>()
             .add_message::<ConnectionEstablished>()
-            .add_message::<ClientInput>()
+            .add_message::<ConnectionInput>()
             .add_systems(Update, handle_connection_established)
             .add_systems(Update, handle_client_input);
 
@@ -1605,7 +1609,7 @@ mod tests {
             connection: conn,
             addr: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
         });
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "Test".into(),
         });
@@ -1692,9 +1696,9 @@ mod tests {
         });
         app.update();
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
 
         assert!(
             outputs
@@ -1739,9 +1743,9 @@ mod tests {
         });
         app.update();
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -1779,9 +1783,9 @@ mod tests {
         });
         app.update();
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -1819,9 +1823,9 @@ mod tests {
         });
         app.update();
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -1860,9 +1864,9 @@ mod tests {
         });
         app.update();
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -1898,7 +1902,7 @@ mod tests {
         app.world_mut().spawn(account);
 
         // Step 1: Type email at login prompt → PasswordPrompt
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "test@example.com".into(),
         });
@@ -1917,7 +1921,7 @@ mod tests {
         );
 
         // Step 2: Empty password → should fall back to LoginPrompt with wrong_password msg
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "".into(),
         });
@@ -1932,9 +1936,9 @@ mod tests {
             "Empty password should revert to LoginPrompt"
         );
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -1970,14 +1974,14 @@ mod tests {
         app.world_mut().spawn(account);
 
         // Step 1: Type email → PasswordPrompt
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "test@example.com".into(),
         });
         app.update();
 
         // Step 2: Wrong password → stays in PasswordPrompt, shows error
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "wrongpassword".into(),
         });
@@ -1996,9 +2000,9 @@ mod tests {
             "Should remain in PasswordPrompt after wrong password"
         );
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -2025,7 +2029,7 @@ mod tests {
         app.world_mut().spawn(Client::new(conn));
 
         // Step 1: Type new (unused) email → ConfirmCreate
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "newuser@example.com".into(),
         });
@@ -2043,7 +2047,7 @@ mod tests {
         );
 
         // Step 2: Confirm → PasswordPrompt with is_new=true
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "yes".into(),
         });
@@ -2063,7 +2067,7 @@ mod tests {
         );
 
         // Step 3: Valid password → creates account, moves to CharacterSelect
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "securepass1".into(),
         });
@@ -2097,14 +2101,14 @@ mod tests {
         app.world_mut().spawn(Client::new(conn));
 
         // Step 1: Type new email → ConfirmCreate
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "newuser@example.com".into(),
         });
         app.update();
 
         // Step 2: "no" → back to LoginPrompt
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "no".into(),
         });
@@ -2166,13 +2170,13 @@ mod tests {
         }
 
         // Login
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "test@example.com".into(),
         });
         app.update();
 
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "password".into(),
         });
@@ -2185,7 +2189,7 @@ mod tests {
         assert_eq!(client.state, ClientState::CharacterSelect);
 
         // Select character 3
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "3".into(),
         });
@@ -2249,21 +2253,21 @@ mod tests {
         ));
 
         // Login → CharacterSelect should show linkdead suffix
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "test@example.com".into(),
         });
         app.update();
 
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "password".into(),
         });
         app.update();
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -2323,14 +2327,14 @@ mod tests {
         app.world_mut().spawn(Client::new(conn));
 
         for line in ["b@example.com", "y", "password"] {
-            app.world_mut().write_message(ClientInput {
+            app.world_mut().write_message(ConnectionInput {
                 connection: conn,
                 text: line.into(),
             });
             app.update();
         }
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
         let text: String = cursor
             .read(msgs)
@@ -2439,9 +2443,9 @@ mod tests {
         });
         app.update();
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
         // Observer in from_room should see departure
         assert!(
             outputs
@@ -2483,15 +2487,15 @@ mod tests {
         client.character = Some(char_entity);
         app.world_mut().spawn(client);
 
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "blargh".into(),
         });
         app.update();
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -2551,13 +2555,13 @@ mod tests {
             .id();
         spawn_ingame(&mut app, conn, make_character(Vec::new()));
 
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "shutdown 30".into(),
         });
         app.update();
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
         let out = cursor
             .read(msgs)
@@ -2587,13 +2591,13 @@ mod tests {
             .id();
         spawn_ingame(&mut app, conn, make_character(vec![Role::Admin]));
 
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "shutdown 30".into(),
         });
         app.update();
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
         assert!(
             !cursor
@@ -2659,15 +2663,15 @@ mod tests {
         client.character = Some(char_entity);
         app.world_mut().spawn(client);
 
-        app.world_mut().write_message(ClientInput {
+        app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "".into(),
         });
         app.update();
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
         assert!(
             outputs
                 .iter()
@@ -2698,9 +2702,9 @@ mod tests {
         });
         app.update();
 
-        let msgs = app.world().resource::<Messages<ClientOutput>>();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ClientOutput> = cursor.read(msgs).collect();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
         // Check that the banner (ASCII art) is in the output along with the login prompt
         assert!(
             outputs

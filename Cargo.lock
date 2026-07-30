@@ -896,6 +896,7 @@ dependencies = [
  "chrono",
  "grim-command",
  "grim-engine-types",
+ "grim-networking",
  "grim-text",
  "serde",
  "serde_json",
@@ -937,6 +938,13 @@ dependencies = [
  "serde_json",
  "sha2",
  "uuid",
+]
+
+[[package]]
+name = "grim-networking"
+version = "0.1.0"
+dependencies = [
+ "bevy",
 ]
 
 [[package]]

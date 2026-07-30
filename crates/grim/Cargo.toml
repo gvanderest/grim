@@ -7,6 +7,7 @@ edition = "2021"
 grim-engine-types = { path = "../grim-engine-types" }
 grim-text = { path = "../grim-text" }
 grim-command = { path = "../grim-command" }
+grim-networking = { path = "../grim-networking" }
 bevy = { workspace = true, default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }

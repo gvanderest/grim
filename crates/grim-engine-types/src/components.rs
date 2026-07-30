@@ -1,5 +1,4 @@
 use std::collections::{HashMap, VecDeque};
-use std::net::SocketAddr;
 
 use bevy::prelude::*;
 use chrono::{DateTime, Utc};
@@ -9,18 +8,7 @@ use uuid::Uuid;
 use crate::cardinal::Cardinal;
 use crate::events::Command;
 
-// ─── Network / Session ──────────────────────────────────────────────
-
-/// A raw network connection. Spawned by the protocol layer.
-/// The `id` maps to the tokio-side connection identifier.
-#[derive(Component, Debug)]
-pub struct Connection {
-    pub id: usize,
-    pub addr: SocketAddr,
-    /// Whether the server has sent IAC WILL ECHO (hidden input) for this connection.
-    /// Reset to false when the user sends their next input.
-    pub echo_hidden: bool,
-}
+// ─── Session ────────────────────────────────────────────────────────
 
 /// The client session state machine — one per connection, on a separate
 /// entity from `Connection` so the engine never touches socket types.

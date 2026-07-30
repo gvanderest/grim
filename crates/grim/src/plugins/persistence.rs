@@ -1,8 +1,9 @@
 use crate::components::{
-    Account, Area, Character, Client, Connection, Description, InRoom, Linkdead, Name,
-    OutputHistory, Player, Room, RoomLocation,
+    Account, Area, Character, Client, Description, InRoom, Linkdead, Name, OutputHistory, Player,
+    Room, RoomLocation,
 };
-use crate::events::{ConnectionClosed, LinkdeadAnnounce};
+use crate::events::LinkdeadAnnounce;
+use crate::{Connection, ConnectionClosed};
 use bevy::log::info;
 use bevy::prelude::*;
 use std::fs;
