@@ -586,7 +586,7 @@ redesigns were deliberately deferred rather than done blind — see
   `SessionRes` `SystemParam` so the 16-parameter limit — the forcing function — is
   resolved.
 - **Step 7 — `grim-world`, `grim-persistence`.** Split out of the facade; `grim-world`
-  also carries the `shutdown` command and SIGUSR1 bridge.
+  also carries the `shutdown` command and SIGTERM bridge.
 - **Step 8 — `grim-channel`.** The say/yell/ooc handlers moved out of the facade
   (`SocialPlugin` → `ChannelPlugin`).
 - **Step 9 — facade inversion.** `grim` depends on the subsystems, re-exports them, and
@@ -721,3 +721,42 @@ this is the layer that proves they coexist. When a subsystem grows (combat,
 items), it adds scenarios here rather than only unit tests, and the harness gains
 an admin/immortal session helper to set a scene up (spawn a mob into a room)
 before driving a player through it.
+
+### Real-network tests — when message-level cannot reach
+
+A few behaviours are *inherently* socket- and process-level and cannot be
+exercised by the headless harness. **Copyover** (below) is the current example:
+it forks + execs the compiled binary and passes live socket fds over a unix
+socket. `crates/example-mud/tests/copyover.rs` therefore spawns the real
+`copyover_fixture` binary, connects a real `TcpStream`, and asserts the same
+socket survives a `SIGUSR2` restart. This tier is Unix-only and slower; reach for
+it only when a feature genuinely crosses the process/socket boundary — otherwise
+the deterministic message-level harness is preferred.
+
+## 11. Copyover (hot restart)
+
+A copyover swaps the server binary **without disconnecting players**. `SIGUSR2`
+makes the running process exec the freshly-deployed binary and hand its live
+listener + in-game client sockets to the successor over a unix socket
+(`SCM_RIGHTS`, via the `sendfd` crate). The successor reloads the world from
+scratch, then re-adopts each socket and drops its character straight back into
+the world — no login — at the room it was standing in.
+
+- **World is scratch, persistent data carries.** Only accounts/characters survive
+  (reloaded from disk). A character's room is persistent: `grim-world` keeps
+  `Character.last_room` current on every move and `grim-persistence` writes it to
+  disk each step, so the successor's disk load already has the right room.
+- **Who migrates.** Only actively-playing sessions (in-game, not linkdead).
+  Login-limbo sockets are dropped and reconnect fresh. On the far side, any
+  character that cannot be cleanly rehydrated has its socket dropped rather than
+  logged into a corrupt state (fail closed).
+- **systemd.** The unit is `Type=notify`/`NotifyAccess=all`; the successor sends
+  `MAINPID` before the predecessor exits, so systemd follows the handoff instead
+  of treating it as a crash. `SIGTERM` is the *graceful shutdown* trigger (warned
+  countdown), distinct from `SIGUSR2`.
+- **Boundaries.** `grim-networking` gained only game-agnostic wire types
+  (`HandoverManifest`, `ConnectionResumed`); the fd plumbing + process handoff
+  live in the telnet transport, and the resume placement lives in `grim-scene`.
+- **Deferred.** Durable persistence (WAL + dirty-flag/timer autosave) so an
+  *unexpected* crash loses little; today the flush points are disconnect, quit,
+  and move. See `docs/DEPLOY.md`.
