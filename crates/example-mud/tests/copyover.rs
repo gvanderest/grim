@@ -87,7 +87,17 @@ fn copyover_keeps_player_connected_and_resumes_last_room() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
 
-    let mut child: Child = Command::new(env!("CARGO_BIN_EXE_copyover_fixture"))
+    // Run from a *copy* of the binary so we can replace it before the copyover,
+    // reproducing a real deploy: the swap unlinks the running image, so the
+    // successor's exec path must survive the `(deleted)` marker Linux reports.
+    let bin = dir.join("grim-server");
+    std::fs::copy(env!("CARGO_BIN_EXE_copyover_fixture"), &bin).unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let mut child: Child = Command::new(&bin)
         .env("GRIM_TEST_PORT", port.to_string())
         .env("GRIM_TEST_DATA", &dir)
         .stdout(Stdio::null())
@@ -139,7 +149,17 @@ fn copyover_keeps_player_connected_and_resumes_last_room() {
     send(&mut stream, "north");
     expect(&mut stream, "Town Square", Duration::from_secs(5));
 
-    // ── Trigger the copyover ──
+    // ── Swap the binary on disk (as a deploy would), then trigger copyover ──
+    // Overwrite via a temp file + rename so the running image's inode is unlinked
+    // — this is what makes `current_exe()` report a `(deleted)` path.
+    let staged = dir.join("grim-server.new");
+    std::fs::copy(env!("CARGO_BIN_EXE_copyover_fixture"), &staged).unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    std::fs::rename(&staged, &bin).unwrap();
+
     let status = Command::new("kill")
         .arg("-USR2")
         .arg(pgid.to_string())

@@ -336,6 +336,11 @@ fn start_telnet_server(port: Res<TelnetPort>, done: Res<CopyoverDone>, mut comma
                                 }
                             }
                         }
+                        // All senders dropped (the app is exiting, e.g. right
+                        // after a copyover handoff) and we've stopped accepting —
+                        // end the loop cleanly instead of panicking on an
+                        // all-branches-disabled select.
+                        else => break,
                     }
                 }
             });
@@ -444,6 +449,23 @@ fn invalid_data(e: impl std::error::Error + Send + Sync + 'static) -> std::io::E
     std::io::Error::new(std::io::ErrorKind::InvalidData, e)
 }
 
+/// Path to exec for the copyover successor. Copyover exists to swap *to a new
+/// binary*, so by the time it runs the old binary file has been replaced (the
+/// deploy `mv`s it; a local `cargo build` relinks it). On Linux that unlinks the
+/// running image's inode, and `current_exe()` then reports the path with a
+/// trailing " (deleted)" — which does not exist, so spawning it fails. Strip that
+/// marker to get the path now holding the *new* binary, which is exactly what we
+/// want to exec.
+fn current_exe_path() -> std::io::Result<std::path::PathBuf> {
+    let exe = std::env::current_exe()?;
+    if let Some(s) = exe.to_str() {
+        if let Some(stripped) = s.strip_suffix(" (deleted)") {
+            return Ok(std::path::PathBuf::from(stripped));
+        }
+    }
+    Ok(exe)
+}
+
 /// Serialize `manifest` and send it together with `fds` (listener first) over a
 /// unix socket via SCM_RIGHTS. The framing half of the predecessor handoff, split
 /// out so it can be unit-tested without spawning a process.
@@ -484,7 +506,7 @@ fn perform_handoff(manifest: &HandoverManifest, fds: &[RawFd]) -> std::io::Resul
     let _ = std::fs::remove_file(&sock_path);
     let listener = UnixListener::bind(&sock_path)?;
 
-    let exe = std::env::current_exe()?;
+    let exe = current_exe_path()?;
     let mut cmd = std::process::Command::new(exe);
     cmd.env(COPYOVER_SOCK_ENV, &sock_path);
     let _child = cmd.spawn()?;
