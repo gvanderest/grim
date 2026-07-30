@@ -1,21 +1,23 @@
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use grim::tr;
+use grim_text::tr;
 
 use bevy::log::info;
 use bevy::prelude::*;
 use chrono::Utc;
-use grim::components::{
+use grim_engine_types::components::{
     Account, Character, Client, ClientState, Description, Exits, InRoom, Linkdead,
     Name as GrimName, OutputHistory, Player, Room, StartingRoom,
 };
-use grim::events::{
+use grim_engine_types::events::{
     Command, EngineCommand, InfoMessage, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce,
     LookEntity, LookRoom, MoveEvent, OocEvent, SayEvent, ServerBroadcast, YellEvent,
 };
-use grim::validation::{
+use grim_engine_types::validation::{
     hash_password, validate_character_name, validate_identifier, validate_password, verify_password,
 };
-use grim::{ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest};
+use grim_networking::{
+    ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest,
+};
 use std::collections::VecDeque;
 use uuid::Uuid;
 
@@ -27,7 +29,7 @@ mod parser;
 #[derive(bevy::ecs::system::SystemParam)]
 struct SessionRes<'w> {
     starting: Res<'w, StartingRoom>,
-    registry: Res<'w, grim::CommandRegistry<Command>>,
+    registry: Res<'w, grim_command::CommandRegistry<Command>>,
 }
 
 pub struct ScenePlugin;
@@ -69,7 +71,7 @@ fn handle_connection_established(
 ) {
     for ev in established.read() {
         commands.spawn(Client::new(ev.connection));
-        let banner = grim::color::ansi(include_str!("../../../assets/login-banner.txt"));
+        let banner = grim_color::ansi(include_str!("../../../assets/login-banner.txt"));
         let text = format!("{}\n\n{}", banner, tr!("login.prompt"));
         outputs.write(ConnectionOutput {
             echo: None,
@@ -1095,9 +1097,11 @@ fn broadcast_global(
 mod tests {
     use super::*;
     use chrono::Utc;
-    use grim::components::*;
-    use grim::plugins::*;
-    use grim::Connection;
+    use grim_channel::ChannelPlugin;
+    use grim_engine_types::components::*;
+    use grim_networking::Connection;
+    use grim_persistence::PersistencePlugin;
+    use grim_world::WorldPlugin;
     use std::net::SocketAddr;
     use uuid::Uuid;
 
@@ -1570,7 +1574,9 @@ mod tests {
     /// systems without ordering to demonstrate the problem.
     #[test]
     fn first_input_lost_without_ordering() {
-        use grim::plugins::*;
+        use grim_channel::ChannelPlugin;
+        use grim_persistence::PersistencePlugin;
+        use grim_world::WorldPlugin;
         use std::net::SocketAddr;
 
         let mut app = App::new();
@@ -2455,7 +2461,7 @@ mod tests {
             actor,
             from: from_room,
             to: to_room,
-            direction: grim::cardinal::Cardinal::North,
+            direction: grim_engine_types::cardinal::Cardinal::North,
         });
         app.update();
 

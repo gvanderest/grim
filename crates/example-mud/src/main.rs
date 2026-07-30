@@ -1,5 +1,6 @@
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
+use grim::GrimDefaultPlugins;
 
 mod seed;
 
@@ -12,15 +13,9 @@ fn main() {
         ..Default::default()
     });
 
-    // Engine plugins
-    app.add_plugins(grim::plugins::WorldPlugin);
-    app.add_plugins(grim::plugins::ChannelPlugin);
-    app.add_plugins(grim::plugins::PersistencePlugin);
-    app.add_plugins(grim::plugins::ShutdownPlugin);
-
-    // Client + Protocol
-    app.add_plugins(grim_scene::ScenePlugin);
-    app.add_plugins(grim_networking_telnet::TelnetPlugin::new(4000));
+    // The full GRIM stack, from one facade crate. Swap `GrimDefaultPlugins` for
+    // the individual plugins (all under `grim::plugins`) to omit or replace any.
+    app.add_plugins(GrimDefaultPlugins { telnet_port: 4000 });
 
     // Seed the world
     app.add_systems(Startup, seed::seed_world);

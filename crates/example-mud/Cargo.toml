@@ -5,7 +5,5 @@ edition = "2021"
 
 [dependencies]
 grim = { path = "../grim" }
-grim-scene = { path = "../grim-scene" }
-grim-networking-telnet = { path = "../grim-networking-telnet" }
 bevy = { workspace = true, default-features = false }
 uuid = { workspace = true }
