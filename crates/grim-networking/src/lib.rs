@@ -81,6 +81,38 @@ pub struct DisconnectRequest {
     pub connection: Entity,
 }
 
+// ─── Copyover (hot restart) ─────────────────────────────────────────
+
+/// A connection re-adopted from a previous process across a copyover. The
+/// transport rebuilt the live socket and spawned a fresh [`Connection`] entity;
+/// the session layer places `character` straight back into the world (skipping
+/// the login flow) at its persisted `last_room`. See `docs/DEPLOY.md`.
+#[derive(Message, Debug)]
+pub struct ConnectionResumed {
+    pub connection: Entity,
+    /// The character name that was in-game on this socket before the restart.
+    pub character: String,
+}
+
+/// One in-game socket carried across a copyover: the character bound to it and
+/// whether its terminal echo was hidden (password entry). The order of
+/// [`HandoverManifest::entries`] matches the order the file descriptors are sent,
+/// so index *i* of the manifest pairs with the *i*-th connection fd — no
+/// transport-side connection id needs to survive the restart.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct HandoverEntry {
+    pub character: String,
+    pub echo_hidden: bool,
+}
+
+/// The out-of-band payload sent alongside the live socket fds during a copyover.
+/// Only in-game connections are carried; sessions still at the login prompt are
+/// dropped and reconnect fresh.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Default)]
+pub struct HandoverManifest {
+    pub entries: Vec<HandoverEntry>,
+}
+
 /// Registers the wire message types so the rest of the app can read and write
 /// them. A transport (telnet, …) drives the socket on top of these; a headless
 /// test harness registers this plugin and injects `ConnectionInput` /
@@ -93,6 +125,7 @@ impl Plugin for GrimNetworkingPlugin {
             .add_message::<ConnectionInput>()
             .add_message::<ConnectionClosed>()
             .add_message::<ConnectionOutput>()
+            .add_message::<ConnectionResumed>()
             .add_message::<DisconnectRequest>();
     }
 }

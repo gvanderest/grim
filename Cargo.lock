@@ -941,6 +941,7 @@ name = "grim-networking"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "serde",
 ]
 
 [[package]]
@@ -951,6 +952,10 @@ dependencies = [
  "grim-color",
  "grim-engine-types",
  "grim-networking",
+ "sd-notify",
+ "sendfd",
+ "serde_json",
+ "signal-hook",
  "tokio",
 ]
 
@@ -1508,10 +1513,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
+name = "sd-notify"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e4ef7359e694bfaf1dd27a30f9d760b54c00dfae9f19bd0c05a39bc9128fe76"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
+
+[[package]]
+name = "sendfd"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b183bfd5b1bc64ab0c1ef3ee06b008a9ef1b68a7d3a99ba566fbfe7a7c6d745b"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "serde"

@@ -16,7 +16,7 @@ use grim_engine_types::validation::{
     hash_password, validate_character_name, validate_identifier, validate_password, verify_password,
 };
 use grim_networking::{
-    ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest,
+    ConnectionEstablished, ConnectionInput, ConnectionOutput, ConnectionResumed, DisconnectRequest,
 };
 use std::collections::VecDeque;
 use uuid::Uuid;
@@ -77,6 +77,7 @@ impl Plugin for ScenePlugin {
         // PersistencePlugin is also present its identical default is a no-op.
         app.init_resource::<grim_persistence::PersistenceConfig>();
         app.add_message::<ConnectionOutput>()
+            .add_message::<ConnectionResumed>()
             .add_message::<DisconnectRequest>()
             .add_message::<EngineCommand>()
             .add_message::<LookRoom>()
@@ -94,6 +95,7 @@ impl Plugin for ScenePlugin {
                 Update,
                 (
                     handle_connection_established,
+                    handle_connection_resumed,
                     handle_client_input.after(handle_connection_established),
                     process_command_queue,
                     format_output,
@@ -116,6 +118,72 @@ fn handle_connection_established(
         outputs.write(ConnectionOutput {
             echo: None,
             ..ConnectionOutput::new(ev.connection, text)
+        });
+    }
+}
+
+/// Re-adopt a character whose socket was carried across a copyover. The
+/// transport already rebuilt the connection; here we skip the entire login flow
+/// and drop the character straight back into the world at its persisted
+/// `last_room` (falling back to the starting room if it no longer exists).
+#[allow(clippy::too_many_arguments)]
+fn handle_connection_resumed(
+    mut resumed: MessageReader<ConnectionResumed>,
+    mut commands: Commands,
+    characters: Query<(Entity, &Character, &GrimName)>,
+    accounts: Query<(Entity, &Account)>,
+    rooms: RoomResolver,
+    starting: Res<StartingRoom>,
+    mut outputs: MessageWriter<ConnectionOutput>,
+    mut look_room: MessageWriter<LookRoom>,
+) {
+    for ev in resumed.read() {
+        let conn = ev.connection;
+        // Match the persisted character entity (loaded at startup) by name.
+        let Some((char_entity, character, _)) =
+            characters.iter().find(|(_, c, _)| c.name == ev.character)
+        else {
+            warn!(
+                "copyover resume: character '{}' not found; disconnecting",
+                ev.character
+            );
+            outputs.write(ConnectionOutput::new(
+                conn,
+                "Your character could not be restored. Please reconnect.\n",
+            ));
+            continue;
+        };
+        let account = accounts
+            .iter()
+            .find(|(_, a)| a.id == character.account_id)
+            .map(|(e, _)| e);
+        let room = rooms.placement(character.last_room.as_ref(), starting.0);
+
+        commands.entity(char_entity).insert((
+            Player {
+                connection: Some(conn),
+            },
+            InRoom { room },
+        ));
+
+        let mut client = Client::new(conn);
+        client.state = ClientState::InGame;
+        client.account = account;
+        client.character = Some(char_entity);
+        commands.spawn(client);
+
+        // Capture output on the new connection, greet, and show the room.
+        commands.entity(conn).insert(OutputHistory::with_max(100));
+        outputs.write(ConnectionOutput {
+            echo: Some(true),
+            ..ConnectionOutput::new(
+                conn,
+                "{Y[SERVER]{x The world was reloaded. You are back where you left off.\n",
+            )
+        });
+        look_room.write(LookRoom {
+            target: char_entity,
+            room,
         });
     }
 }

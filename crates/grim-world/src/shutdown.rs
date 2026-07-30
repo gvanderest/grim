@@ -1,8 +1,10 @@
 //! Graceful server shutdown, triggered two ways:
 //!
 //! - **In-game:** `shutdown <seconds>` from an admin character.
-//! - **Out-of-band:** `SIGUSR1` to the process — this is what the deploy uses
-//!   (`kill -USR1 <MainPID>`), so no login or admin credentials are involved.
+//! - **Out-of-band:** `SIGTERM` to the process — this is what `systemctl stop`
+//!   sends, so a stop/restart warns players instead of terminating abruptly. No
+//!   login or admin credentials are involved. (Copyover, a *hot* restart that
+//!   keeps players connected, uses `SIGUSR2` instead — see `grim-networking-telnet`.)
 //!
 //! Either path schedules the same countdown: every connected player is warned
 //! at decreasing intervals, and when it expires the app writes
@@ -20,7 +22,7 @@ use grim_engine_types::events::{Command, EngineCommand, InfoMessage, ServerBroad
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-/// Countdown used when the shutdown is triggered by `SIGUSR1` (the deploy path).
+/// Countdown used when the shutdown is triggered by `SIGTERM` (the systemctl-stop/deploy path).
 const SIGNAL_COUNTDOWN_SECS: u64 = 30;
 
 /// Countdown thresholds (seconds remaining) at which a warning is broadcast.
@@ -87,7 +89,7 @@ impl ShutdownCountdown {
 #[derive(Resource, Debug)]
 pub struct ActiveShutdown(pub ShutdownCountdown);
 
-/// Shared flag set by the `SIGUSR1` handler and drained by `poll_shutdown_signal`.
+/// Shared flag set by the `SIGTERM` handler and drained by `poll_shutdown_signal`.
 /// A signal handler can do almost nothing safely, so it only flips this bool; the
 /// real work happens on the next Bevy tick.
 #[derive(Resource, Clone)]
@@ -109,7 +111,7 @@ impl Plugin for ShutdownPlugin {
             .add_systems(Startup, install_signal_handler)
             // Chained so the sync point between them applies each system's
             // `insert_resource(ActiveShutdown)` before the next reads it —
-            // otherwise a SIGUSR1 and an admin `shutdown` in the same tick both
+            // otherwise a SIGTERM and an admin `shutdown` in the same tick both
             // observe no active shutdown and schedule conflicting countdowns.
             .add_systems(
                 Update,
@@ -118,16 +120,19 @@ impl Plugin for ShutdownPlugin {
     }
 }
 
-/// Wire `SIGUSR1` to the shared flag. Failure is logged, not fatal — the in-game
-/// `shutdown` command still works without it.
+/// Wire `SIGTERM` to the shared flag so `systemctl stop` (and the deploy) trigger
+/// a warned, graceful shutdown instead of an abrupt terminate. Failure is logged,
+/// not fatal — the in-game `shutdown` command still works without it. The systemd
+/// unit's `TimeoutStopSec` must exceed the countdown, else systemd `SIGKILL`s
+/// mid-countdown. (Copyover uses `SIGUSR2` and is handled by the telnet transport.)
 fn install_signal_handler(signal: Res<ShutdownSignal>) {
-    match signal_hook::flag::register(signal_hook::consts::SIGUSR1, signal.0.clone()) {
-        Ok(_) => info!("SIGUSR1 will trigger a {SIGNAL_COUNTDOWN_SECS}s graceful shutdown"),
-        Err(e) => warn!("failed to register SIGUSR1 handler: {e}"),
+    match signal_hook::flag::register(signal_hook::consts::SIGTERM, signal.0.clone()) {
+        Ok(_) => info!("SIGTERM will trigger a {SIGNAL_COUNTDOWN_SECS}s graceful shutdown"),
+        Err(e) => warn!("failed to register SIGTERM handler: {e}"),
     }
 }
 
-/// If `SIGUSR1` fired, start the countdown (unless one is already running).
+/// If `SIGTERM` fired, start the countdown (unless one is already running).
 fn poll_shutdown_signal(
     signal: Res<ShutdownSignal>,
     active: Option<Res<ActiveShutdown>>,
@@ -347,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    fn sigusr1_flag_triggers_countdown() {
+    fn sigterm_flag_triggers_countdown() {
         let mut app = test_app();
         app.update(); // Startup installs the handler.
         let _ = drain::<ServerBroadcast>(&app);
@@ -365,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn sigusr1_ignored_when_already_counting_down() {
+    fn sigterm_ignored_when_already_counting_down() {
         let mut app = test_app();
         app.update();
         app.world_mut()
