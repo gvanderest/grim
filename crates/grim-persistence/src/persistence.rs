@@ -7,13 +7,39 @@ use grim_engine_types::components::{
 use grim_engine_types::events::LinkdeadAnnounce;
 use grim_networking::{Connection, ConnectionClosed};
 use std::fs;
+use std::path::PathBuf;
+
+/// Where accounts and characters are stored. Defaults to `data/`; a test harness
+/// (or an author) inserts a custom directory before adding the plugin to isolate
+/// state. `accounts/` and `characters/` live under `dir`.
+#[derive(Resource, Clone, Debug)]
+pub struct PersistenceConfig {
+    pub dir: PathBuf,
+}
+
+impl Default for PersistenceConfig {
+    fn default() -> Self {
+        Self { dir: "data".into() }
+    }
+}
+
+impl PersistenceConfig {
+    fn accounts_dir(&self) -> PathBuf {
+        self.dir.join("accounts")
+    }
+    fn characters_dir(&self) -> PathBuf {
+        self.dir.join("characters")
+    }
+}
 
 /// Loads accounts/characters on startup, saves on disconnect.
 pub struct PersistencePlugin;
 
 impl Plugin for PersistencePlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<ConnectionClosed>()
+        // Only inserts the default when the author/harness hasn't set one.
+        app.init_resource::<PersistenceConfig>()
+            .add_message::<ConnectionClosed>()
             .add_systems(Startup, load_persisted_data)
             .add_systems(Update, save_on_disconnect);
     }
@@ -21,11 +47,13 @@ impl Plugin for PersistencePlugin {
 
 /// Spawn every account and character found on disk. Missing directories are
 /// treated as empty (no-op) rather than errors.
-fn load_persisted_data(mut commands: Commands) {
-    let _ = fs::create_dir_all("data/accounts");
-    let _ = fs::create_dir_all("data/characters");
+fn load_persisted_data(mut commands: Commands, config: Res<PersistenceConfig>) {
+    let accounts_dir = config.accounts_dir();
+    let characters_dir = config.characters_dir();
+    let _ = fs::create_dir_all(&accounts_dir);
+    let _ = fs::create_dir_all(&characters_dir);
 
-    if let Ok(entries) = fs::read_dir("data/accounts") {
+    if let Ok(entries) = fs::read_dir(&accounts_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("json") {
@@ -39,7 +67,7 @@ fn load_persisted_data(mut commands: Commands) {
         }
     }
 
-    if let Ok(entries) = fs::read_dir("data/characters") {
+    if let Ok(entries) = fs::read_dir(&characters_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("json") {
@@ -75,6 +103,7 @@ fn save_on_disconnect(
     histories: Query<&OutputHistory>,
     mut announce_linkdead: MessageWriter<LinkdeadAnnounce>,
     players: Query<&Player>,
+    config: Res<PersistenceConfig>,
 ) {
     for ev in closed.read() {
         let conn = ev.connection;
@@ -101,7 +130,7 @@ fn save_on_disconnect(
 
         if let Some(acct_e) = account_entity {
             if let Ok(account) = accounts.get(acct_e) {
-                let path = format!("data/accounts/{}.json", account.id);
+                let path = config.accounts_dir().join(format!("{}.json", account.id));
                 if let Ok(json) = serde_json::to_string_pretty(account) {
                     let _ = fs::write(path, json);
                 }
@@ -117,7 +146,9 @@ fn save_on_disconnect(
                         });
                     }
                 }
-                let path = format!("data/characters/{}.json", character.name);
+                let path = config
+                    .characters_dir()
+                    .join(format!("{}.json", character.name));
                 if let Ok(json) = serde_json::to_string_pretty(&*character) {
                     let _ = fs::write(path, json);
                 }
