@@ -788,4 +788,78 @@ mod tests {
 
         cleanup_save_dirs();
     }
+
+    /// A non-default `PersistenceConfig` must redirect both load and save, and
+    /// nothing may leak to the default `data/` root. No `FS_LOCK`: the temp root
+    /// is unique, so this test is isolated from the `data/`-based ones.
+    #[test]
+    fn configured_directory_redirects_load_and_save() {
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("grim-pers-cfg-{}-{}", std::process::id(), n));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("characters")).unwrap();
+
+        // Seed a character file in the configured dir → it must load from there.
+        let seeded = Character {
+            id: Uuid::new_v4(),
+            name: "CfgHero".into(),
+            account_id: Uuid::new_v4(),
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+        };
+        fs::write(
+            dir.join("characters").join("CfgHero.json"),
+            serde_json::to_string(&seeded).unwrap(),
+        )
+        .unwrap();
+
+        let mut app = App::new();
+        app.insert_resource(PersistenceConfig { dir: dir.clone() });
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(PersistencePlugin);
+        app.add_message::<LinkdeadAnnounce>();
+        app.update(); // Startup load
+
+        let mut cq = app.world_mut().query::<&Character>();
+        assert!(
+            cq.iter(app.world()).any(|c| c.name == "CfgHero"),
+            "load must read the configured directory"
+        );
+
+        // Save: disconnect an account; the file must land in the configured dir.
+        let conn = make_connection(&mut app, 1);
+        let account = Account {
+            id: Uuid::new_v4(),
+            identifier: "cfguser".into(),
+            password_hash: "hash".into(),
+            characters: vec![],
+            created_at: Utc::now(),
+        };
+        let acct_id = account.id;
+        let acct_e = app.world_mut().spawn(account).id();
+        let client = Client {
+            account: Some(acct_e),
+            character: None,
+            ..Client::new(conn)
+        };
+        app.world_mut().spawn(client);
+        app.world_mut()
+            .write_message(ConnectionClosed { connection: conn });
+        app.update();
+
+        assert!(
+            dir.join("accounts")
+                .join(format!("{acct_id}.json"))
+                .exists(),
+            "save must write to the configured directory"
+        );
+        assert!(
+            !std::path::Path::new(&format!("data/accounts/{acct_id}.json")).exists(),
+            "nothing may leak to the default data/ root"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
