@@ -30,6 +30,7 @@ mod parser;
 struct SessionRes<'w> {
     starting: Res<'w, StartingRoom>,
     registry: Res<'w, grim_command::CommandRegistry<Command>>,
+    persistence: Res<'w, grim_persistence::PersistenceConfig>,
 }
 
 pub struct ScenePlugin;
@@ -513,7 +514,11 @@ fn handle_client_input(
                             roles: Vec::new(),
                         };
                         // Save character to disk immediately
-                        let path = format!("data/characters/{}.json", name);
+                        let path = res
+                            .persistence
+                            .characters_dir()
+                            .join(format!("{name}.json"));
+                        let _ = std::fs::create_dir_all(res.persistence.characters_dir());
                         if let Ok(json) = serde_json::to_string_pretty(&character) {
                             let _ = std::fs::write(path, json);
                         }
@@ -769,6 +774,7 @@ fn process_command_queue(
     mut disconnect: MessageWriter<DisconnectRequest>,
     player_chars: Query<(Entity, &GrimName)>,
     characters: Query<&Character>,
+    persistence: Res<grim_persistence::PersistenceConfig>,
     _commands: Commands,
 ) {
     for (entity, mut client) in clients.iter_mut() {
@@ -793,7 +799,10 @@ fn process_command_queue(
                 // keeping it available for reconnect without server restart.
                 if let Some(char_entity) = client.character {
                     if let Ok(ch) = characters.get(char_entity) {
-                        let path = format!("data/characters/{}.json", ch.name);
+                        let path = persistence
+                            .characters_dir()
+                            .join(format!("{}.json", ch.name));
+                        let _ = std::fs::create_dir_all(persistence.characters_dir());
                         if let Ok(json) = serde_json::to_string_pretty(ch) {
                             let _ = std::fs::write(path, json);
                         }

@@ -1,8 +1,7 @@
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
+use example_mud::seed;
 use grim::GrimDefaultPlugins;
-
-mod seed;
 
 fn main() {
     let mut app = App::new();
