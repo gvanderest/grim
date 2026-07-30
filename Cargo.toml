@@ -1,5 +1,8 @@
 [workspace]
 resolver = "2"
+# Bare `cargo run` / `cargo build` default to the example MUD. Whole-workspace
+# operations (CI) still use `--workspace` explicitly.
+default-members = ["crates/example-mud"]
 members = [
     "crates/example-mud",
     "crates/grim",
