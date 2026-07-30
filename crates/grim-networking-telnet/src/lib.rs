@@ -233,16 +233,18 @@ fn start_telnet_server(port: Res<TelnetPort>, done: Res<CopyoverDone>, mut comma
                     });
                 }
 
-                // Tell systemd we are the main process now (before the
-                // predecessor exits, so its exit doesn't tear down the service),
-                // then acknowledge the predecessor so it can exit. Both no-op
-                // outside a copyover / outside systemd.
-                if ack.is_some() {
-                    let _ = sd_notify::notify(&[
-                        sd_notify::NotifyState::MainPid(std::process::id()),
-                        sd_notify::NotifyState::Ready,
-                    ]);
-                }
+                // Always signal readiness: the systemd unit is `Type=notify`, so
+                // even a fresh start must send READY=1 or the service is
+                // considered to have timed out. On a copyover the accompanying
+                // MAINPID reassigns supervision to us *before* the predecessor
+                // exits, so its exit doesn't tear the service down. Both no-op
+                // outside systemd (NOTIFY_SOCKET unset).
+                let _ = sd_notify::notify(&[
+                    sd_notify::NotifyState::MainPid(std::process::id()),
+                    sd_notify::NotifyState::Ready,
+                ]);
+                // Acknowledge the predecessor (copyover only) so it can exit now
+                // that we are serving and have claimed MAINPID.
                 if let Some(mut ack) = ack {
                     use std::io::Write;
                     let _ = ack.write_all(&[1u8]);

@@ -3,14 +3,23 @@ Description=GRIM MUD server
 After=network.target
 
 [Service]
-Type=simple
+# notify: the server sends READY=1 once its listener is up. This is also what
+# makes copyover work — the successor process sends MAINPID=<its pid> so systemd
+# follows the handoff instead of treating the predecessor's exit as a crash.
+Type=notify
+NotifyAccess=all
 User=grim
 WorkingDirectory=/opt/grim
 ExecStart=/opt/grim/bin/grim
-# Clean exit (code 0, from an admin `shutdown`) stays down so the deploy can
-# swap the binary. Only a crash (non-zero) auto-restarts.
+# Clean exit (code 0, from an admin `shutdown` or the SIGTERM countdown) stays
+# down so a cold deploy can swap the binary. Only a crash (non-zero) restarts.
 Restart=on-failure
 RestartSec=2
+# SIGTERM triggers the in-server graceful countdown (players are warned) rather
+# than an abrupt kill. TimeoutStopSec must exceed that countdown (30s) or systemd
+# SIGKILLs mid-countdown.
+KillSignal=SIGTERM
+TimeoutStopSec=45
 
 [Install]
 WantedBy=multi-user.target
