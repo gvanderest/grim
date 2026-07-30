@@ -1,5 +1,5 @@
-use grim::color::escape_codes;
-use grim::tr;
+use grim_color::escape_codes;
+use grim_text::tr;
 
 /// Format a room's full description.
 pub fn format_room(name: &str, desc: &str, exits: &[String], occupants: &[String]) -> String {
@@ -189,7 +189,7 @@ mod tests {
     #[test]
     fn say_does_not_let_speech_inject_colour() {
         let out = format_say("Alice", "{RHELLO");
-        let rendered = grim::color::ansi(&grim::color::convert_16color(&out));
+        let rendered = grim_color::ansi(&grim_color::convert_16color(&out));
         assert!(
             rendered.contains("{RHELLO"),
             "spoken markup must render literally: {rendered:?}"
@@ -204,7 +204,7 @@ mod tests {
             format_yell("Alice", "{RHELLO"),
             format_ooc("Alice", "{RHELLO"),
         ] {
-            let rendered = grim::color::ansi(&grim::color::convert_16color(&out));
+            let rendered = grim_color::ansi(&grim_color::convert_16color(&out));
             assert!(
                 rendered.contains("{RHELLO"),
                 "spoken markup must render literally: {rendered:?}"
@@ -223,7 +223,7 @@ mod tests {
     #[test]
     fn say_does_not_let_a_name_inject_colour() {
         let out = format_say("@xf00Alice", "hi");
-        let rendered = grim::color::ansi(&grim::color::convert_16color(&out));
+        let rendered = grim_color::ansi(&grim_color::convert_16color(&out));
         assert!(
             rendered.contains("@xf00Alice"),
             "name markup must render literally: {rendered:?}"

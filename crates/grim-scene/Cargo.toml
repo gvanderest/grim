@@ -4,8 +4,18 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-grim = { path = "../grim" }
+grim-engine-types = { path = "../grim-engine-types" }
+grim-networking = { path = "../grim-networking" }
+grim-command = { path = "../grim-command" }
+grim-text = { path = "../grim-text" }
+grim-color = { path = "../grim-color" }
 bevy = { workspace = true, default-features = false }
 uuid = { workspace = true }
 chrono = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+# Test harness composes the gameplay plugins to exercise the full loop.
+grim-world = { path = "../grim-world" }
+grim-channel = { path = "../grim-channel" }
+grim-persistence = { path = "../grim-persistence" }
