@@ -9,3 +9,7 @@ grim-networking = { path = "../grim-networking" }
 grim-engine-types = { path = "../grim-engine-types" }
 bevy = { workspace = true, default-features = false }
 tokio = { workspace = true }
+serde_json = { workspace = true }
+signal-hook = { workspace = true }
+sendfd = { workspace = true }
+sd-notify = { workspace = true }

@@ -24,3 +24,5 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 sha2 = "0.10"
 signal-hook = "0.3"
+sendfd = "0.4"
+sd-notify = "0.5"

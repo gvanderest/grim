@@ -2,37 +2,86 @@ use grim_color::ansi;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 
-use bevy::log::info;
+use bevy::log::{error, info, warn};
 use bevy::prelude::*;
-use grim_engine_types::components::{Client, ClientState};
+use grim_engine_types::components::{Character, Client, ClientState};
 use grim_networking::{
     Connection, ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,
-    DisconnectRequest,
+    ConnectionResumed, DisconnectRequest, HandoverEntry, HandoverManifest,
 };
+use sendfd::{RecvWithFd, SendWithFd};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
+
+/// Env var carrying the unix-socket path a copyover successor uses to receive
+/// the live listener + client sockets from its predecessor. Its presence on
+/// startup means "you are the successor: adopt fds instead of binding fresh".
+const COPYOVER_SOCK_ENV: &str = "GRIM_COPYOVER_SOCK";
 
 // ─── Internal bridge types ─────────────────────────────────────────
 
 struct Conn {
     write_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
+    #[allow(dead_code)]
     read_handle: tokio::task::JoinHandle<()>,
+    /// Raw fd of the underlying socket, recorded at accept/adopt time. Stays
+    /// valid while the socket lives; sent (dup'd) to the successor on copyover.
+    raw_fd: RawFd,
 }
 
 enum NetworkEvent {
-    Connected { conn_id: usize, addr: SocketAddr },
-    Input { conn_id: usize, text: String },
-    Disconnected { conn_id: usize },
+    Connected {
+        conn_id: usize,
+        addr: SocketAddr,
+    },
+    /// A socket re-adopted from a predecessor across a copyover. Unlike
+    /// `Connected`, the session layer resumes `character` straight into the world.
+    Resumed {
+        conn_id: usize,
+        addr: SocketAddr,
+        character: String,
+        echo_hidden: bool,
+    },
+    Input {
+        conn_id: usize,
+        text: String,
+    },
+    Disconnected {
+        conn_id: usize,
+    },
 }
 
 enum NetworkCommand {
-    Send { conn_id: usize, text: String },
-    SendRaw { conn_id: usize, data: Vec<u8> },
-    Disconnect { conn_id: usize },
+    Send {
+        conn_id: usize,
+        text: String,
+    },
+    SendRaw {
+        conn_id: usize,
+        data: Vec<u8>,
+    },
+    Disconnect {
+        conn_id: usize,
+    },
+    /// Begin a copyover: hand the listed in-game connections (and the listener)
+    /// to a freshly-spawned successor process, then let the app exit.
+    Copyover {
+        conns: Vec<CopyoverConn>,
+    },
+}
+
+/// One in-game connection selected for copyover handoff, joined transport-side
+/// with its raw fd by `conn_id`.
+struct CopyoverConn {
+    conn_id: usize,
+    character: String,
+    echo_hidden: bool,
 }
 
 #[derive(Resource)]
@@ -43,6 +92,28 @@ struct NetworkBridge {
 
 #[derive(Resource)]
 struct TelnetPort(pub u16);
+
+/// Set by the `SIGUSR2` handler; drained by `poll_copyover_signal` on the next
+/// tick (a signal handler can safely do little more than flip a flag).
+#[derive(Resource, Clone)]
+struct CopyoverSignal(Arc<AtomicBool>);
+
+impl Default for CopyoverSignal {
+    fn default() -> Self {
+        Self(Arc::new(AtomicBool::new(false)))
+    }
+}
+
+/// Flipped by the tokio thread once the successor has acknowledged the handoff;
+/// `finish_copyover` then exits this (predecessor) process cleanly.
+#[derive(Resource, Clone)]
+struct CopyoverDone(Arc<AtomicBool>);
+
+impl Default for CopyoverDone {
+    fn default() -> Self {
+        Self(Arc::new(AtomicBool::new(false)))
+    }
+}
 
 // ─── Plugin ─────────────────────────────────────────────────────────
 
@@ -62,19 +133,36 @@ impl Plugin for TelnetPlugin {
             .add_message::<ConnectionInput>()
             .add_message::<ConnectionClosed>()
             .add_message::<ConnectionOutput>()
+            .add_message::<ConnectionResumed>()
             .add_message::<DisconnectRequest>()
             .insert_resource(TelnetPort(self.port))
-            .add_systems(Startup, start_telnet_server)
+            .init_resource::<CopyoverSignal>()
+            .init_resource::<CopyoverDone>()
+            .add_systems(Startup, (install_copyover_signal, start_telnet_server))
             .add_systems(
                 Update,
-                (drain_network_events, send_network_commands).chain(),
+                (
+                    drain_network_events,
+                    send_network_commands,
+                    poll_copyover_signal,
+                    finish_copyover,
+                )
+                    .chain(),
             );
+    }
+}
+
+/// Wire `SIGUSR2` to the copyover flag. Failure is logged, not fatal.
+fn install_copyover_signal(signal: Res<CopyoverSignal>) {
+    match signal_hook::flag::register(signal_hook::consts::SIGUSR2, signal.0.clone()) {
+        Ok(_) => info!("SIGUSR2 will trigger a copyover (hot restart)"),
+        Err(e) => warn!("failed to register SIGUSR2 handler: {e}"),
     }
 }
 
 // ─── Startup: spawn the tokio network thread ────────────────────────
 
-fn start_telnet_server(port: Res<TelnetPort>, mut commands: Commands) {
+fn start_telnet_server(port: Res<TelnetPort>, done: Res<CopyoverDone>, mut commands: Commands) {
     let port = port.0;
 
     let (to_bevy_tx, from_network) = std_mpsc::channel::<NetworkEvent>();
@@ -85,81 +173,91 @@ fn start_telnet_server(port: Res<TelnetPort>, mut commands: Commands) {
         from_network: Arc::new(Mutex::new(from_network)),
     });
 
+    let copyover_done = done.0.clone();
+
     std::thread::spawn(move || {
+        // Receive any handoff *before* building the runtime — blocking std I/O,
+        // and the raw fds must be adopted before tokio touches them.
+        let handoff = std::env::var(COPYOVER_SOCK_ENV)
+            .ok()
+            .map(|path| receive_handoff(&path));
+
         tokio::runtime::Runtime::new()
             .unwrap()
             .block_on(async move {
-                let listener = TcpListener::bind(("0.0.0.0", port))
-                    .await
-                    .expect("failed to bind telnet listener");
-                info!("Telnet server listening on port {}", port);
+                let mut to_tokio_rx = to_tokio_rx;
                 let next_id = AtomicUsize::new(1);
                 let conns: Arc<Mutex<HashMap<usize, Conn>>> = Arc::new(Mutex::new(HashMap::new()));
-                let mut to_tokio_rx = to_tokio_rx;
+
+                // Adopt the inherited listener + sockets, or bind fresh.
+                let (listener, resumed, ack) = match handoff {
+                    Some(Ok(h)) => {
+                        let listener = TcpListener::from_std(h.listener)
+                            .expect("failed to adopt inherited listener");
+                        info!(
+                            "Telnet server resumed via copyover with {} connection(s)",
+                            h.conns.len()
+                        );
+                        (listener, h.conns, Some(h.ack))
+                    }
+                    Some(Err(e)) => {
+                        error!("copyover receive failed: {e}; binding fresh on {port}");
+                        (bind_fresh(port).await, Vec::new(), None)
+                    }
+                    None => (bind_fresh(port).await, Vec::new(), None),
+                };
+                let listener_fd = listener.as_raw_fd();
+
+                // Re-adopt each carried socket into a live connection and ask the
+                // session layer to resume its character (no login, no banner).
+                for (fd, entry) in resumed {
+                    // SAFETY: `fd` was just delivered to us via SCM_RIGHTS and is
+                    // not owned by anything else in this process.
+                    let std_stream = unsafe { std::net::TcpStream::from_raw_fd(fd) };
+                    if std_stream.set_nonblocking(true).is_err() {
+                        continue;
+                    }
+                    let addr = std_stream
+                        .peer_addr()
+                        .unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
+                    let Ok(socket) = TcpStream::from_std(std_stream) else {
+                        continue;
+                    };
+                    let conn_id = next_id.fetch_add(1, Ordering::Relaxed);
+                    register_connection(conn_id, socket, &to_bevy_tx, &conns, false);
+                    let _ = to_bevy_tx.send(NetworkEvent::Resumed {
+                        conn_id,
+                        addr,
+                        character: entry.character,
+                        echo_hidden: entry.echo_hidden,
+                    });
+                }
+
+                // Tell systemd we are the main process now (before the
+                // predecessor exits, so its exit doesn't tear down the service),
+                // then acknowledge the predecessor so it can exit. Both no-op
+                // outside a copyover / outside systemd.
+                if ack.is_some() {
+                    let _ = sd_notify::notify(&[
+                        sd_notify::NotifyState::MainPid(std::process::id()),
+                        sd_notify::NotifyState::Ready,
+                    ]);
+                }
+                if let Some(mut ack) = ack {
+                    use std::io::Write;
+                    let _ = ack.write_all(&[1u8]);
+                }
+
+                // `accepting` gates new connections; it is turned off for the
+                // brief window of a copyover handoff.
+                let mut accepting = true;
 
                 loop {
                     tokio::select! {
-                        Ok((socket, addr)) = listener.accept() => {
+                        Ok((socket, addr)) = listener.accept(), if accepting => {
                             let conn_id = next_id.fetch_add(1, Ordering::Relaxed);
                             let _ = to_bevy_tx.send(NetworkEvent::Connected { conn_id, addr });
-
-                            // Minimal telnet handshake: IAC WILL ECHO, IAC WILL SUPPRESS_GO_AHEAD.
-                            let (read_half, mut write_half) = tokio::io::split(socket);
-                            let _ = write_half.write_all(&[255, 253, 1, 255, 253, 3]).await;
-
-                            let (write_tx, write_rx) =
-                                tokio::sync::mpsc::channel::<Vec<u8>>(32);
-
-                            // Read task — handle stored to abort on clean disconnect.
-                            let read_handle = tokio::spawn({
-                                let to_bevy_tx = to_bevy_tx.clone();
-                                let conns = conns.clone();
-                                async move {
-                                    let mut reader = BufReader::new(read_half);
-                                    let mut buf: Vec<u8> = Vec::new();
-                                    loop {
-                                        buf.clear();
-                                        match reader.read_until(b'\n', &mut buf).await {
-                                            Ok(0) => break,
-                                            Ok(_) => {}
-                                            Err(_) => break,
-                                        }
-
-                                        // Strip telnet IAC sequences (0xFF cmd1 cmd2).
-                                        let mut clean = Vec::with_capacity(buf.len());
-                                        let mut i = 0;
-                                        while i < buf.len() {
-                                            if buf[i] == 0xFF && i + 2 < buf.len() {
-                                                i += 3;
-                                                continue;
-                                            }
-                                            clean.push(buf[i]);
-                                            i += 1;
-                                        }
-
-                                        let text = String::from_utf8_lossy(&clean)
-                                            .trim_end_matches(['\r', '\n'])
-                                            .to_string();
-                                        let _ = to_bevy_tx.send(NetworkEvent::Input {
-                                            conn_id, text,
-                                        });
-                                    }
-                                    let _ = to_bevy_tx.send(NetworkEvent::Disconnected { conn_id });
-                                    conns.lock().unwrap().remove(&conn_id);
-                                }
-                            });
-
-                            conns.lock().unwrap().insert(conn_id, Conn { write_tx, read_handle });
-
-                            // Write task: drain per-connection channel -> socket.
-                            tokio::spawn(async move {
-                                let mut write_rx = write_rx;
-                                while let Some(data) = write_rx.recv().await {
-                                    if write_half.write_all(&data).await.is_err() {
-                                        break;
-                                    }
-                                }
-                            });
+                            register_connection(conn_id, socket, &to_bevy_tx, &conns, true);
                         }
                         Some(cmd) = to_tokio_rx.recv() => {
                             match cmd {
@@ -180,6 +278,52 @@ fn start_telnet_server(port: Res<TelnetPort>, mut commands: Commands) {
                                         conn.read_handle.abort();
                                     }
                                 }
+                                NetworkCommand::Copyover { conns: list } => {
+                                    accepting = false;
+                                    // Join each requested connection with its raw fd
+                                    // and build the ordered manifest (listener fd
+                                    // first, then one fd per manifest entry).
+                                    let mut fds = vec![listener_fd];
+                                    let mut entries = Vec::new();
+                                    {
+                                        let guard = conns.lock().unwrap();
+                                        for c in &list {
+                                            if let Some(conn) = guard.get(&c.conn_id) {
+                                                fds.push(conn.raw_fd);
+                                                entries.push(HandoverEntry {
+                                                    character: c.character.clone(),
+                                                    echo_hidden: c.echo_hidden,
+                                                });
+                                                let _ = conn.write_tx.try_send(
+                                                    b"\r\n[SERVER] Reloading, hold on...\r\n".to_vec(),
+                                                );
+                                            }
+                                        }
+                                    }
+                                    // Let the notices flush to the sockets before
+                                    // we hand the fds to the successor.
+                                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                                    let manifest = HandoverManifest { entries };
+                                    let done = copyover_done.clone();
+                                    match tokio::task::spawn_blocking(move || {
+                                        perform_handoff(&manifest, &fds)
+                                    })
+                                    .await
+                                    {
+                                        Ok(Ok(())) => {
+                                            info!("copyover handoff complete; exiting");
+                                            done.store(true, Ordering::SeqCst);
+                                        }
+                                        Ok(Err(e)) => {
+                                            error!("copyover handoff failed: {e}; resuming service");
+                                            accepting = true;
+                                        }
+                                        Err(e) => {
+                                            error!("copyover task panicked: {e}; resuming service");
+                                            accepting = true;
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -188,12 +332,165 @@ fn start_telnet_server(port: Res<TelnetPort>, mut commands: Commands) {
     });
 }
 
+/// Bind the telnet listener fresh (the non-copyover path).
+async fn bind_fresh(port: u16) -> TcpListener {
+    let listener = TcpListener::bind(("0.0.0.0", port))
+        .await
+        .expect("failed to bind telnet listener");
+    info!("Telnet server listening on port {}", port);
+    listener
+}
+
+/// Split `socket` into read/write tasks and register it under `conn_id`. Fresh
+/// accepts send the minimal telnet negotiation first (`handshake`); re-adopted
+/// copyover sockets have already negotiated, so they skip it.
+fn register_connection(
+    conn_id: usize,
+    socket: TcpStream,
+    to_bevy_tx: &std_mpsc::Sender<NetworkEvent>,
+    conns: &Arc<Mutex<HashMap<usize, Conn>>>,
+    handshake: bool,
+) {
+    let raw_fd = socket.as_raw_fd();
+    let (read_half, mut write_half) = tokio::io::split(socket);
+    let (write_tx, mut write_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(32);
+
+    let read_handle = tokio::spawn({
+        let to_bevy_tx = to_bevy_tx.clone();
+        let conns = conns.clone();
+        async move {
+            let mut reader = BufReader::new(read_half);
+            let mut buf: Vec<u8> = Vec::new();
+            loop {
+                buf.clear();
+                match reader.read_until(b'\n', &mut buf).await {
+                    Ok(0) => break,
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+                // Strip telnet IAC sequences (0xFF cmd1 cmd2).
+                let mut clean = Vec::with_capacity(buf.len());
+                let mut i = 0;
+                while i < buf.len() {
+                    if buf[i] == 0xFF && i + 2 < buf.len() {
+                        i += 3;
+                        continue;
+                    }
+                    clean.push(buf[i]);
+                    i += 1;
+                }
+                let text = String::from_utf8_lossy(&clean)
+                    .trim_end_matches(['\r', '\n'])
+                    .to_string();
+                let _ = to_bevy_tx.send(NetworkEvent::Input { conn_id, text });
+            }
+            let _ = to_bevy_tx.send(NetworkEvent::Disconnected { conn_id });
+            conns.lock().unwrap().remove(&conn_id);
+        }
+    });
+
+    conns.lock().unwrap().insert(
+        conn_id,
+        Conn {
+            write_tx,
+            read_handle,
+            raw_fd,
+        },
+    );
+
+    tokio::spawn(async move {
+        if handshake {
+            // IAC WILL ECHO, IAC WILL SUPPRESS_GO_AHEAD.
+            let _ = write_half.write_all(&[255, 253, 1, 255, 253, 3]).await;
+        }
+        while let Some(data) = write_rx.recv().await {
+            if write_half.write_all(&data).await.is_err() {
+                break;
+            }
+        }
+    });
+}
+
+/// Live sockets received from a predecessor during a copyover.
+struct Handoff {
+    /// The inherited listener, already set non-blocking.
+    listener: std::net::TcpListener,
+    /// Client sockets paired with the character to resume on each.
+    conns: Vec<(RawFd, HandoverEntry)>,
+    /// The handoff channel, kept open so we can acknowledge once we're serving.
+    ack: UnixStream,
+}
+
+/// Predecessor side of a copyover: spawn the successor, hand it the listener +
+/// client fds and the manifest over a unix socket, and wait for its ack.
+fn perform_handoff(manifest: &HandoverManifest, fds: &[RawFd]) -> std::io::Result<()> {
+    use std::io::Read;
+    let sock_path = std::env::temp_dir().join(format!("grim-copyover-{}.sock", std::process::id()));
+    let _ = std::fs::remove_file(&sock_path);
+    let listener = UnixListener::bind(&sock_path)?;
+
+    let exe = std::env::current_exe()?;
+    let mut cmd = std::process::Command::new(exe);
+    cmd.env(COPYOVER_SOCK_ENV, &sock_path);
+    let _child = cmd.spawn()?;
+
+    let (mut stream, _addr) = listener.accept()?;
+    let json = serde_json::to_vec(manifest)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    stream.send_with_fd(&json, fds)?;
+
+    // Wait for the successor to confirm it is serving before we let the process
+    // exit — this keeps the fds (and the systemd MainPID handoff) valid until
+    // the new instance has taken over.
+    let mut ack = [0u8; 1];
+    stream.read_exact(&mut ack)?;
+    let _ = std::fs::remove_file(&sock_path);
+    Ok(())
+}
+
+/// Successor side of a copyover: connect to the predecessor and receive the
+/// listener + client fds plus the manifest. Blocking; run before the runtime.
+fn receive_handoff(path: &str) -> std::io::Result<Handoff> {
+    let stream = UnixStream::connect(path)?;
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut fds = [0 as RawFd; 512];
+    let (n, fd_count) = stream.recv_with_fd(&mut buf, &mut fds)?;
+    let manifest: HandoverManifest = serde_json::from_slice(&buf[..n])
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+    if fd_count == 0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "copyover handoff carried no listener fd",
+        ));
+    }
+    // fds[0] is the listener; fds[1..] pair with manifest entries in order.
+    // SAFETY: each fd was just delivered via SCM_RIGHTS and is owned by no one
+    // else in this process.
+    let listener = unsafe { std::net::TcpListener::from_raw_fd(fds[0]) };
+    listener.set_nonblocking(true)?;
+
+    let conns = manifest
+        .entries
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, entry)| fds.get(i + 1).map(|&fd| (fd, entry)))
+        .collect();
+
+    Ok(Handoff {
+        listener,
+        conns,
+        ack: stream,
+    })
+}
+
 // ─── Update: drain network -> Bevy events ──────────────────────────
 
 fn drain_network_events(
     bridge: Res<NetworkBridge>,
     mut commands: Commands,
     mut established: MessageWriter<ConnectionEstablished>,
+    mut resumed: MessageWriter<ConnectionResumed>,
     mut input: MessageWriter<ConnectionInput>,
     mut closed: MessageWriter<ConnectionClosed>,
     mut connections: Query<(Entity, &mut Connection)>,
@@ -213,6 +510,30 @@ fn drain_network_events(
                 established.write(ConnectionEstablished {
                     connection: entity,
                     addr,
+                });
+            }
+            NetworkEvent::Resumed {
+                conn_id,
+                addr,
+                character,
+                echo_hidden,
+            } => {
+                info!(
+                    "Connection {} resumed as '{}' (copyover)",
+                    conn_id, character
+                );
+                let entity = commands
+                    .spawn(Connection {
+                        id: conn_id,
+                        addr,
+                        echo_hidden,
+                    })
+                    .id();
+                // No banner, no login: the session layer places the character
+                // straight back into the world.
+                resumed.write(ConnectionResumed {
+                    connection: entity,
+                    character,
                 });
             }
             NetworkEvent::Input { conn_id, text } => {
@@ -312,6 +633,65 @@ fn send_network_commands(
                 .to_network
                 .try_send(NetworkCommand::Disconnect { conn_id: conn.id });
         }
+    }
+}
+
+// ─── Copyover ───────────────────────────────────────────────────────
+
+/// If `SIGUSR2` fired, snapshot the in-game connections and ask the tokio thread
+/// to hand them to a successor process. Runs once — `started` latches so a
+/// second signal mid-handoff is ignored.
+fn poll_copyover_signal(
+    signal: Res<CopyoverSignal>,
+    bridge: Res<NetworkBridge>,
+    clients: Query<&Client>,
+    characters: Query<&Character>,
+    connections: Query<&Connection>,
+    mut started: Local<bool>,
+) {
+    if !signal.0.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    if *started {
+        return;
+    }
+    // Only in-game sessions carry across; anyone still at the login prompt is
+    // dropped and reconnects fresh.
+    let mut list = Vec::new();
+    for client in clients.iter() {
+        if client.state != ClientState::InGame {
+            continue;
+        }
+        let Some(char_entity) = client.character else {
+            continue;
+        };
+        let Ok(character) = characters.get(char_entity) else {
+            continue;
+        };
+        let Ok(conn) = connections.get(client.connection) else {
+            continue;
+        };
+        list.push(CopyoverConn {
+            conn_id: conn.id,
+            character: character.name.clone(),
+            echo_hidden: conn.echo_hidden,
+        });
+    }
+    info!(
+        "copyover requested: handing off {} connection(s)",
+        list.len()
+    );
+    let _ = bridge
+        .to_network
+        .try_send(NetworkCommand::Copyover { conns: list });
+    *started = true;
+}
+
+/// Once the tokio thread reports the successor has taken over, exit cleanly so
+/// the predecessor process goes away.
+fn finish_copyover(done: Res<CopyoverDone>, mut exit: MessageWriter<AppExit>) {
+    if done.0.load(Ordering::SeqCst) {
+        exit.write(AppExit::Success);
     }
 }
 

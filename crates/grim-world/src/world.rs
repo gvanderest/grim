@@ -93,6 +93,7 @@ pub fn room_location(
 /// `move <direction>`: traverse an exit, emitting a movement event and an
 /// automatic look at the destination. Also refreshes the character's persisted
 /// `last_room` so a restart/copyover resumes them where they walked to.
+#[allow(clippy::too_many_arguments)]
 fn handle_move(
     mut engine: MessageReader<EngineCommand>,
     mut inroom: Query<&mut InRoom>,
