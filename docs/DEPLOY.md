@@ -17,21 +17,36 @@ the binary.
 
 `deploy/deploy.sh` (on the host):
 
-- If the server is **up**: `kill -USR1 <MainPID>` (PID read via `systemctl show`).
-  The server traps `SIGUSR1` and runs a 30-second countdown, broadcasting
-  warnings to every connected player, then exits 0. Signalling the process
-  directly needs no privilege (the service runs as the deploy user) and works
-  even under a least-privilege sudoers policy that only allows `start`/`stop`.
-- If the server is **already down**: skip the countdown.
-- Swap `grim.new` into `grim`, then `systemctl start grim`.
+- **Swap `grim.new` into `grim` first.** On copyover the running process re-execs
+  its own path, so that path must already hold the new binary.
+- If the server is **up**: `kill -USR2 <MainPID>` — a **copyover** (hot restart).
+  The process execs the new binary and hands its live listener + player sockets
+  to the successor over a unix socket (SCM_RIGHTS); the successor reloads the
+  world from disk and drops each player back into the room they were in, with **no
+  disconnect and no re-login**. Signalling directly needs no privilege (the
+  service runs as the deploy user).
+- If the server is **down**: `systemctl start grim` (cold start).
 
-The systemd unit uses **`Restart=on-failure`**: a clean shutdown (exit 0) stays
-down long enough to swap the binary; only a crash auto-restarts. That is what
-makes the graceful path work without a restart race.
+### How copyover survives systemd
 
-The graceful shutdown needs **no login and no credentials** — the deploy just
-signals the process. (An admin can also trigger the same countdown in-game with
-`shutdown <seconds>`; see below.)
+The unit is **`Type=notify`** with **`NotifyAccess=all`**. On startup the server
+sends `READY=1`. During a copyover the successor also sends `MAINPID=<its pid>`
+*before* the predecessor exits, so systemd follows the handoff instead of seeing
+the old MainPID die and treating it as a crash. `Restart=on-failure` still means a
+real crash (non-zero exit) restarts, while a clean admin/SIGTERM shutdown stays
+down for a cold deploy.
+
+Only **actively-playing** sessions (in-game, not linkdead) carry across; anyone at
+the login prompt reconnects fresh. If a character can't be cleanly restored on the
+far side, that one socket is dropped rather than logged into a bad state.
+
+### Graceful shutdown (SIGTERM)
+
+`systemctl stop` (and thus a manual stop) sends **`SIGTERM`**, which the server
+traps to run a 30-second countdown, broadcasting warnings to every player, then
+exits 0. `TimeoutStopSec=45` gives the countdown room before systemd would
+`SIGKILL`. No login or credentials needed. (An admin can trigger the same
+countdown in-game with `shutdown <seconds>`; see below.)
 
 ## One-time EC2 setup
 
@@ -48,12 +63,15 @@ Description=GRIM MUD server
 After=network.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=all
 User=ec2-user
 WorkingDirectory=/opt/grim
 ExecStart=/opt/grim/bin/grim
 Restart=on-failure
 RestartSec=2
+KillSignal=SIGTERM
+TimeoutStopSec=45
 
 [Install]
 WantedBy=multi-user.target
@@ -84,8 +102,9 @@ The binary itself reads no configuration — port `4000` is compiled in.
 
 ## Admin role (for the in-game `shutdown` command)
 
-The deploy does not need this — it uses `SIGUSR1`. But the in-game `shutdown`
-command is gated on an `admin` role. Roles live on the character JSON
+The deploy does not need this — it uses `SIGUSR2` (copyover) / `SIGTERM`
+(shutdown). But the in-game `shutdown` command is gated on an `admin` role. Roles
+live on the character JSON
 (`/opt/grim/data/characters/<name>.json`):
 
 ```json
@@ -103,7 +122,11 @@ is not disclosed.
 ## Caveats
 
 - **Port `4000` is hardcoded** in `crates/example-mud/src/main.rs`.
-- **No player-state flush on shutdown** beyond the normal save-on-disconnect —
-  in-flight position changes can be lost across a restart. Acceptable for now.
-- `SHUTDOWN_SECS` in `deploy.sh` must match `SIGNAL_COUNTDOWN_SECS` in
-  `crates/grim/src/plugins/shutdown.rs` (both `30`).
+- **Copyover reloads the world from scratch** — only persisted accounts/characters
+  carry over, not transient world state. A character's room *is* persisted (written
+  to disk on every move), so players resume where they were.
+- **Copyover is Unix-only** (POSIX signals + fd passing). On other platforms a
+  restart is a plain cold restart.
+- **A crash (SIGKILL, panic) still loses** anything since the last disk write.
+  Durable persistence (WAL + autosave) is planned; today the guarantees are
+  save-on-disconnect, save-on-quit, and save-on-move.
