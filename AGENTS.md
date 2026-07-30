@@ -9,14 +9,13 @@ architecture, and [CONTEXT.md](./CONTEXT.md) for vocabulary.** Read both before
 designing anything. This file describes how to work in the repo and what the code
 looks like *today*.
 
-Current shape — 4 event-passing layers, no layer calls another's functions:
+Current shape — event-passing subsystems behind a facade. The dependency
+direction now matches the target: `grim` depends on the subsystems and re-exports
+them (`GrimDefaultPlugins`); nothing depends back on the facade.
 
-```
-Protocol  ─→  Client  ─→  Engine  → Persistence
-```
-
-⚠️ "Client" is retired in the target architecture; it was carrying three unrelated
-meanings. See CONTEXT.md.
+⚠️ "Client" is retired in the vocabulary; the session crate is `grim-scene`. But
+it still uses the `ClientState` enum internally — the scene-stack entity model is
+deferred (ARCHITECTURE.md §8). See CONTEXT.md.
 
 ## Crate Map (Current)
 
@@ -25,11 +24,15 @@ meanings. See CONTEXT.md.
 | `grim-color` | Colour markup, ANSI rendering, palette, `escape_codes`. No Bevy, no serde |
 | `grim-text` | Text catalog: `tr`/`tr!`, inlined defaults. Depends only on `grim-color`. No Bevy |
 | `grim-command` | `CommandRegistry<C>` — generic, resource-ready. Exact-then-prefix resolution, `prioritize`/`deprioritize`, `contested_prefixes`. Bevy-only |
-| `grim-engine-types` | Wire/game events, components, validation; re-exports `grim-color` |
-| `grim` | Engine library: re-exports types + `grim_text::tr`, owns World/Social/Persistence plugins |
-| `grim-client` | Session lifecycle, input parsing, output formatting |
-| `grim-protocol-telnet` | TCP server, IAC negotiation, tokio↔Bevy bridge |
-| `example-mud` | Binary (`crates/example-mud`): composes plugins, seeds world |
+| `grim-networking` | `Connection` component + wire events (`ConnectionInput`/`Output`, `ConnectionEstablished`/`Closed`, `DisconnectRequest`). Bevy-only |
+| `grim-networking-telnet` | `TelnetPlugin`: TCP server, IAC negotiation, tokio↔Bevy bridge, ANSI render |
+| `grim-engine-types` | Game events, components, validation; re-exports `grim-color` |
+| `grim-scene` | `ScenePlugin`: session lifecycle (`ClientState`), input parsing, output formatting. Owns the `CommandRegistry` resource |
+| `grim-world` | `WorldPlugin` (rooms/areas/exits/movement/look) + `ShutdownPlugin` (`shutdown` + SIGUSR1) |
+| `grim-channel` | `ChannelPlugin`: say/yell/ooc handlers |
+| `grim-persistence` | `PersistencePlugin`: account/character load + save-on-disconnect |
+| `grim` | Facade: depends on and re-exports every subsystem; `GrimDefaultPlugins` group. No code of its own |
+| `example-mud` | Binary (`crates/example-mud`): `GrimDefaultPlugins` + world seed |
 
 ## Crate Map (Target)
 
@@ -55,7 +58,7 @@ extend.
 - **`Exit` vs `Exits`**: The component is `Exits { exits: HashMap<Cardinal, Entity> }`. On a Room entity.
 - **`Name` vs `GrimName`**: Import aliased from `grim` as `GrimName` in binary/client to avoid collisions with Bevy's `Name`.
 - **Single-letter directions** (`n`/`e`/`s`/`w`/`u`/`d`) work via prefix matching against the `CommandRegistry`. Directions are registered last in `parser.rs::build_registry()`, and `register` puts each new command at the front of the priority ordering, so directions win single-character input.
-- **Command resolution**: `grim::CommandRegistry<Command>` (from `grim-command`). Commands are registered by name + `fn(&str) -> Option<Command>` factory. Resolution is case-insensitive: exact name first, then highest-priority prefix. Priority is explicit and reorderable via `prioritize`/`deprioritize` — not `max(entry_idx)`. `l` is a registered name; `n` matches `north` via prefix. `init_registry` logs any contested prefix at startup. Still held in a `OnceLock` (not yet a live resource) — see ARCHITECTURE.md §8.
+- **Command resolution**: `grim::CommandRegistry<Command>` (from `grim-command`). Commands are registered by name + `fn(&str) -> Option<Command>` factory. Resolution is case-insensitive: exact name first, then highest-priority prefix. Priority is explicit and reorderable via `prioritize`/`deprioritize` — not `max(entry_idx)`. `l` is a registered name; `n` matches `north` via prefix. It is a live Bevy **resource** (`grim-scene` inserts `parser::command_registry()`, which logs contested prefixes), threaded into `handle_client_input` via the `SessionRes` `SystemParam`. The `OnceLock` is gone.
 - **Character takeover**: If a character is already online (has `Player` with `connection: Some(...)`) and another session selects it, the old session receives "Someone else has logged into this character." and is immediately disconnected. The new session proceeds normally.
 - **Online indicator**: The character select menu shows "(online)" for characters with a live `Player` connection and "(linkdead)" for linkdead characters.
 - **Multiple characters per account**: Allowed simultaneously. No check prevents multiple characters from the same account being `InGame` at the same time.
