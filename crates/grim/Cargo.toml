@@ -10,6 +10,7 @@ grim-command = { path = "../grim-command" }
 grim-networking = { path = "../grim-networking" }
 grim-world = { path = "../grim-world" }
 grim-persistence = { path = "../grim-persistence" }
+grim-channel = { path = "../grim-channel" }
 bevy = { workspace = true, default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -14,7 +14,7 @@ fn main() {
 
     // Engine plugins
     app.add_plugins(grim::plugins::WorldPlugin);
-    app.add_plugins(grim::plugins::SocialPlugin);
+    app.add_plugins(grim::plugins::ChannelPlugin);
     app.add_plugins(grim::plugins::PersistencePlugin);
     app.add_plugins(grim::plugins::ShutdownPlugin);
 

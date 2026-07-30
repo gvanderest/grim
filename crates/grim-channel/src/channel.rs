@@ -1,14 +1,16 @@
-use crate::tr;
+use grim_text::tr;
 
-use crate::components::{InRoom, Name, Room};
-use crate::events::{Command, EngineCommand, InfoMessage, OocEvent, SayEvent, YellEvent};
 use bevy::prelude::*;
+use grim_engine_types::components::{InRoom, Name, Room};
+use grim_engine_types::events::{
+    Command, EngineCommand, InfoMessage, OocEvent, SayEvent, YellEvent,
+};
 
 /// Handles `say` commands, emitting a `SayEvent` for room broadcast and an
 /// `InfoMessage` echo back to the speaker.
-pub struct SocialPlugin;
+pub struct ChannelPlugin;
 
-impl Plugin for SocialPlugin {
+impl Plugin for ChannelPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<EngineCommand>()
             .add_message::<InfoMessage>()
@@ -99,12 +101,14 @@ fn handle_ooc(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::components::{InRoom, Name, Room};
-    use crate::events::{Command, EngineCommand, InfoMessage, OocEvent, SayEvent, YellEvent};
+    use grim_engine_types::components::{InRoom, Name, Room};
+    use grim_engine_types::events::{
+        Command, EngineCommand, InfoMessage, OocEvent, SayEvent, YellEvent,
+    };
 
     fn test_app() -> App {
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins).add_plugins(SocialPlugin);
+        app.add_plugins(MinimalPlugins).add_plugins(ChannelPlugin);
         app
     }
 

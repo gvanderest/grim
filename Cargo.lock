@@ -894,6 +894,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "chrono",
+ "grim-channel",
  "grim-command",
  "grim-engine-types",
  "grim-networking",
@@ -904,6 +905,16 @@ dependencies = [
  "serde_json",
  "sha2",
  "signal-hook",
+ "uuid",
+]
+
+[[package]]
+name = "grim-channel"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "grim-engine-types",
+ "grim-text",
  "uuid",
 ]
 

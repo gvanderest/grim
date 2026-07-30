@@ -1,0 +1,12 @@
+[package]
+name = "grim-channel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+grim-engine-types = { path = "../grim-engine-types" }
+grim-text = { path = "../grim-text" }
+bevy = { workspace = true, default-features = false }
+
+[dev-dependencies]
+uuid = { workspace = true }
