@@ -192,8 +192,16 @@ fn start_telnet_server(port: Res<TelnetPort>, done: Res<CopyoverDone>, mut comma
                 // Adopt the inherited listener + sockets, or bind fresh.
                 let (listener, resumed, ack) = match handoff {
                     Some(Ok(h)) => {
-                        let listener = TcpListener::from_std(h.listener)
-                            .expect("failed to adopt inherited listener");
+                        let listener = match TcpListener::from_std(h.listener) {
+                            Ok(l) => l,
+                            Err(e) => {
+                                // Can't serve without the inherited listener — a
+                                // detached network thread quietly dying would leave
+                                // a listener-less zombie MUD, so fail the process.
+                                error!("failed to adopt inherited listener: {e}");
+                                std::process::exit(1);
+                            }
+                        };
                         info!(
                             "Telnet server resumed via copyover with {} connection(s)",
                             h.conns.len()
@@ -336,11 +344,20 @@ fn start_telnet_server(port: Res<TelnetPort>, done: Res<CopyoverDone>, mut comma
 
 /// Bind the telnet listener fresh (the non-copyover path).
 async fn bind_fresh(port: u16) -> TcpListener {
-    let listener = TcpListener::bind(("0.0.0.0", port))
-        .await
-        .expect("failed to bind telnet listener");
-    info!("Telnet server listening on port {}", port);
-    listener
+    match TcpListener::bind(("0.0.0.0", port)).await {
+        Ok(listener) => {
+            info!("Telnet server listening on port {}", port);
+            listener
+        }
+        Err(e) => {
+            // The listener lives on a detached thread, so a panic here would be
+            // swallowed and leave the MUD running with no transport. Exit the
+            // whole process instead (systemd `Restart=on-failure` handles the
+            // real box; locally you get a clean, obvious crash).
+            error!("failed to bind telnet listener on port {port}: {e}");
+            std::process::exit(1);
+        }
+    }
 }
 
 /// Split `socket` into read/write tasks and register it under `conn_id`. Fresh

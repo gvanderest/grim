@@ -2,6 +2,8 @@
 name = "example-mud"
 version = "0.1.0"
 edition = "2021"
+# Two bins (the MUD + the copyover test fixture); make bare `cargo run` the MUD.
+default-run = "example-mud"
 
 [dependencies]
 grim = { path = "../grim" }
