@@ -1,0 +1,39 @@
+//! Minimal MUD binary used by the copyover integration test (`tests/copyover.rs`).
+//!
+//! It is the *lightest* real server that can exercise a copyover end-to-end: the
+//! full `GrimDefaultPlugins` stack (telnet transport + world + scene +
+//! persistence + channel) over a real TCP port, seeded with the example world.
+//! Port and data directory come from the environment so the test can bind an
+//! unused port and isolate persistence in a temp dir:
+//!
+//! - `GRIM_TEST_PORT` — TCP port to listen on (default 4000)
+//! - `GRIM_TEST_DATA` — persistence root directory (default `data`)
+//!
+//! On copyover (`SIGUSR2`) this process execs itself again; the successor
+//! inherits the same environment, so it lands in the same data dir and adopts
+//! the handed-over listener rather than binding the port afresh.
+
+use bevy::log::LogPlugin;
+use bevy::prelude::*;
+use example_mud::seed;
+use grim::{GrimDefaultPlugins, PersistenceConfig};
+
+fn main() {
+    let port: u16 = std::env::var("GRIM_TEST_PORT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(4000);
+    let data = std::env::var("GRIM_TEST_DATA").unwrap_or_else(|_| "data".to_string());
+
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(LogPlugin {
+        filter: "info".into(),
+        ..Default::default()
+    });
+    // Isolate persistence before the plugins init their default config.
+    app.insert_resource(PersistenceConfig { dir: data.into() });
+    app.add_plugins(GrimDefaultPlugins { telnet_port: port });
+    app.add_systems(Startup, seed::seed_world);
+    app.run();
+}

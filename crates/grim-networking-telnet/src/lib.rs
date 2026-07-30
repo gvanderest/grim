@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use bevy::log::{error, info, warn};
 use bevy::prelude::*;
-use grim_engine_types::components::{Character, Client, ClientState};
+use grim_engine_types::components::{Character, Client, ClientState, Linkdead};
 use grim_networking::{
     Connection, ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,
     ConnectionResumed, DisconnectRequest, HandoverEntry, HandoverManifest,
@@ -646,6 +646,7 @@ fn poll_copyover_signal(
     bridge: Res<NetworkBridge>,
     clients: Query<&Client>,
     characters: Query<&Character>,
+    linkdead: Query<&Linkdead>,
     connections: Query<&Connection>,
     mut started: Local<bool>,
 ) {
@@ -655,7 +656,8 @@ fn poll_copyover_signal(
     if *started {
         return;
     }
-    // Only in-game sessions carry across; anyone still at the login prompt is
+    // Only actively-playing sessions carry across: in-game state, a bound
+    // character, and not linkdead. Anyone at the login prompt or linkdead is
     // dropped and reconnects fresh.
     let mut list = Vec::new();
     for client in clients.iter() {
@@ -665,6 +667,9 @@ fn poll_copyover_signal(
         let Some(char_entity) = client.character else {
             continue;
         };
+        if linkdead.get(char_entity).is_ok() {
+            continue;
+        }
         let Ok(character) = characters.get(char_entity) else {
             continue;
         };
