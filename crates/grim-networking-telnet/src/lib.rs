@@ -1,4 +1,4 @@
-use grim::color::ansi;
+use grim_color::ansi;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 
 use bevy::log::info;
 use bevy::prelude::*;
-use grim::prelude::*;
-use grim::{
+use grim_engine_types::components::{Client, ClientState};
+use grim_networking::{
     Connection, ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,
     DisconnectRequest,
 };
@@ -297,7 +297,7 @@ fn send_network_commands(
             } else {
                 text
             };
-            let palette = grim::color::convert_16color(&send_text);
+            let palette = grim_color::convert_16color(&send_text);
             let colored = ansi(&palette);
             let ready = colored.replace('\n', "\r\n");
             let _ = bridge.to_network.try_send(NetworkCommand::Send {
@@ -694,7 +694,7 @@ mod tests {
             .expect("should have a connection");
 
         // Spawn an in-game Client linked to this connection
-        use grim::components::{Client, ClientState};
+        use grim_engine_types::components::{Client, ClientState};
         let mut client = Client::new(conn_entity);
         client.state = ClientState::InGame;
         app.world_mut().spawn(client);
@@ -764,7 +764,7 @@ mod tests {
             .next()
             .expect("should have a connection");
 
-        use grim::components::{Client, ClientState};
+        use grim_engine_types::components::{Client, ClientState};
         let mut client = Client::new(conn_entity);
         client.state = ClientState::InGame;
         app.world_mut().spawn(client);
@@ -839,7 +839,7 @@ mod tests {
             .next()
             .expect("should have a connection");
 
-        use grim::components::{Client, ClientState};
+        use grim_engine_types::components::{Client, ClientState};
         let mut client = Client::new(conn_entity);
         client.state = ClientState::InGame;
         app.world_mut().spawn(client);

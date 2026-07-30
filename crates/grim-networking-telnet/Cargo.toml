@@ -1,0 +1,11 @@
+[package]
+name = "grim-networking-telnet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+grim-color = { path = "../grim-color" }
+grim-networking = { path = "../grim-networking" }
+grim-engine-types = { path = "../grim-engine-types" }
+bevy = { workspace = true, default-features = false }
+tokio = { workspace = true }

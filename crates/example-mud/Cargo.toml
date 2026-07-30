@@ -6,6 +6,6 @@ edition = "2021"
 [dependencies]
 grim = { path = "../grim" }
 grim-client = { path = "../grim-client" }
-grim-protocol-telnet = { path = "../grim-protocol-telnet" }
+grim-networking-telnet = { path = "../grim-networking-telnet" }
 bevy = { workspace = true, default-features = false }
 uuid = { workspace = true }
