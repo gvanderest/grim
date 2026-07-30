@@ -660,3 +660,64 @@ value, so an argument can never carry markup. If a legitimate case appears (a
 coloured clan tag, say), it wants an explicit opt-in at the call site. Deferred until
 one exists, because the default has to stay "escape", and an opt-in added later is
 cheap while a hole closed later is not.
+
+---
+
+## 10. Testing
+
+Everything GRIM does is a plugin, and plugins are registered rather than
+hardcoded. That is what makes the engine extensible — and it is also the thing
+most likely to break silently, because two independently-correct plugins can
+still conflict once composed. Testing has two layers, and the second exists
+specifically to catch that.
+
+### Unit tests — a crate in isolation
+
+Each crate tests its own logic with no `App`, or a minimal one:
+`grim-color`/`grim-text` are pure functions; `grim-command` resolution,
+`grim-scene`'s parser, and the shutdown countdown are exercised directly. These
+are fast, deterministic, and prove a single piece correct. What they *cannot*
+see is interaction: a unit test of `grim-command` never learns that
+`grim-channel` and a world command both answer to `n`.
+
+### End-to-end tests — the whole engine composed
+
+`crates/example-mud/tests/` boots the **real** stack a player would hit and
+drives it from the outside. The harness (`tests/harness`) is deliberately
+**message-level, not socket-level**: it adds `GrimHeadlessPlugins` — the exact
+plugin set `GrimDefaultPlugins` ships, minus the transport — injects
+`ConnectionInput`, and records every `ConnectionOutput` per connection. No TCP,
+a manually-advanced clock, so runs are deterministic and free of ports and
+sleeps. State is isolated per test via `PersistenceConfig` pointed at a temp dir,
+so every test starts from a clean world.
+
+Two properties make this the plugin-conflict harness:
+
+- **It composes the shipping plugin set.** `GrimHeadlessPlugins` is the shared
+  core of `GrimDefaultPlugins`, so the E2E stack cannot drift from what the
+  binary runs. If two plugins collide, the collision is present in the test.
+- **It asserts on player-visible output**, not internal state. A scenario says
+  "create an account, make a character, `say hello`, and another player in the
+  room hears it" and checks the recorded lines. That exercises command
+  resolution, scene routing, channel audience, the Catalog, and persistence in
+  one pass — the seams *between* plugins, which is where composition breaks.
+
+Conflicts this layer is meant to surface, and unit tests structurally cannot:
+
+- **Contested command prefixes / shadowed verbs** — a new plugin's command
+  stealing an abbreviation another plugin relies on.
+- **Duplicate or missing registration** — two plugins registering the same
+  resource or message, or a plugin assuming a message another plugin was
+  supposed to register.
+- **System-ordering hazards** — a dispatch hop that only works because of an
+  incidental `.after()` ordering, or a deferred `commands.spawn` read in the
+  same frame before it is flushed.
+- **Cross-plugin visibility leaks** — e.g. one account seeing another's
+  characters; there is an E2E regression test for exactly this.
+
+The rule of thumb: **if a behaviour depends on more than one plugin, it wants an
+E2E scenario.** As third-party plugins register commands, scenes, and channels,
+this is the layer that proves they coexist. When a subsystem grows (combat,
+items), it adds scenarios here rather than only unit tests, and the harness gains
+an admin/immortal session helper to set a scene up (spawn a mob into a room)
+before driving a player through it.
