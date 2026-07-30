@@ -24,10 +24,10 @@ impl Default for PersistenceConfig {
 }
 
 impl PersistenceConfig {
-    fn accounts_dir(&self) -> PathBuf {
+    pub fn accounts_dir(&self) -> PathBuf {
         self.dir.join("accounts")
     }
-    fn characters_dir(&self) -> PathBuf {
+    pub fn characters_dir(&self) -> PathBuf {
         self.dir.join("characters")
     }
 }
