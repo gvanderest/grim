@@ -21,7 +21,9 @@ fn create_char(mud: &mut Mud, email: &str, name: &str) -> Session {
     let _ = mud.send(s, PW); //    choose password → account created, character menu
     let _ = mud.send(s, "c"); //   create a character
     let _ = mud.send(s, name); //  name it → MOTD
-    let _ = mud.send(s, ""); //    press enter at MOTD → enter the world
+                               // Press enter at the MOTD → enter the world. Assert we actually landed in a
+                               // room, so a broken login/creation step can't return a bogus Session.
+    mud.send(s, "").assert_contains("Exits:");
     s
 }
 
@@ -131,7 +133,17 @@ fn password_must_be_valid() {
     let (s, _) = mud.connect();
     let _ = mud.send(s, "alice@example.com");
     let _ = mud.send(s, "y");
-    // Too-short password is rejected; no account/character is created.
-    mud.send(s, "pw").assert_excludes("Characters");
-    assert!(!mud.character_names().contains(&"Alice".to_string()));
+    // Too-short password is rejected with a validation error, not accepted;
+    // the flow stays on the password prompt and no account is created.
+    mud.send(s, "pw")
+        .assert_contains("at least 6 characters")
+        .assert_excludes("Characters");
+    assert!(mud.character_names().is_empty());
+
+    // And nothing was persisted: a fresh connection with that email is still
+    // offered account creation, not an existing-account password prompt.
+    let (s2, _) = mud.connect();
+    mud.send(s2, "alice@example.com")
+        .assert_contains("create an account")
+        .assert_excludes("Password");
 }

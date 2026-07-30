@@ -37,6 +37,10 @@ pub struct ScenePlugin;
 impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(parser::command_registry());
+        // Scene writes account/character JSON, so it needs the persistence
+        // directory. init_resource so ScenePlugin stands alone; if
+        // PersistencePlugin is also present its identical default is a no-op.
+        app.init_resource::<grim_persistence::PersistenceConfig>();
         app.add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>()
             .add_message::<EngineCommand>()
@@ -228,7 +232,11 @@ fn handle_client_input(
                                 created_at: Utc::now(),
                             };
                             // Save to disk immediately
-                            let path = format!("data/accounts/{}.json", account.id);
+                            let path = res
+                                .persistence
+                                .accounts_dir()
+                                .join(format!("{}.json", account.id));
+                            let _ = std::fs::create_dir_all(res.persistence.accounts_dir());
                             if let Ok(json) = serde_json::to_string_pretty(&account) {
                                 let _ = std::fs::write(path, json);
                             }
@@ -537,7 +545,11 @@ fn handle_client_input(
                             .id();
                         account.characters.push(char_id);
                         // Update account JSON with new character reference
-                        let acct_path = format!("data/accounts/{}.json", account.id);
+                        let acct_path = res
+                            .persistence
+                            .accounts_dir()
+                            .join(format!("{}.json", account.id));
+                        let _ = std::fs::create_dir_all(res.persistence.accounts_dir());
                         if let Ok(json) = serde_json::to_string_pretty(&*account) {
                             let _ = std::fs::write(acct_path, json);
                         }

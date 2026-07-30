@@ -16,7 +16,7 @@
 #![allow(dead_code)]
 
 use bevy::prelude::*;
-use grim::components::Name as GrimName;
+use grim::components::{Character, Name as GrimName};
 use grim::plugins::PersistenceConfig;
 use grim::GrimHeadlessPlugins;
 use grim::{
@@ -208,10 +208,15 @@ impl Mud {
         self.pump();
     }
 
-    /// Names of characters currently in the world (for assertions about state).
+    /// Names of player characters currently in the world (for assertions about
+    /// state). Filtered to entities with a `Character`, so seeded rooms and NPCs
+    /// (which also carry a name) are excluded.
     pub fn character_names(&mut self) -> Vec<String> {
-        let mut q = self.app.world_mut().query::<&GrimName>();
-        let mut names: Vec<String> = q.iter(self.app.world()).map(|n| n.0.clone()).collect();
+        let mut q = self.app.world_mut().query::<(&GrimName, &Character)>();
+        let mut names: Vec<String> = q
+            .iter(self.app.world())
+            .map(|(name, _)| name.0.clone())
+            .collect();
         names.sort();
         names
     }
