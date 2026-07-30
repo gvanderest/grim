@@ -10,6 +10,8 @@ members = [
     "crates/grim-text",
     "crates/grim-command",
     "crates/grim-networking",
+    "crates/grim-world",
+    "crates/grim-persistence",
 ]
 
 [workspace.dependencies]

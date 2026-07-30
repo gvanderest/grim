@@ -1,7 +1,9 @@
-use crate::components::{Exits, InRoom, Name, Player};
-use crate::events::{Command, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent};
-use crate::DisconnectRequest;
 use bevy::prelude::*;
+use grim_engine_types::components::{Exits, InRoom, Name, Player};
+use grim_engine_types::events::{
+    Command, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent,
+};
+use grim_networking::DisconnectRequest;
 
 /// Handles `look`, `move`, and `quit` commands; emits room/entity description
 /// events, movement broadcasts, and disconnect requests.
@@ -143,9 +145,11 @@ fn handle_quit(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cardinal::Cardinal;
-    use crate::components::{Exits, InRoom, Name};
-    use crate::events::{Command, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent};
+    use grim_engine_types::cardinal::Cardinal;
+    use grim_engine_types::components::{Exits, InRoom, Name};
+    use grim_engine_types::events::{
+        Command, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent,
+    };
 
     macro_rules! count_messages {
         ($app:expr, $t:ty) => {{

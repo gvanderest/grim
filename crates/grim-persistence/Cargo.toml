@@ -1,19 +1,16 @@
 [package]
-name = "grim"
+name = "grim-persistence"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 grim-engine-types = { path = "../grim-engine-types" }
-grim-text = { path = "../grim-text" }
-grim-command = { path = "../grim-command" }
 grim-networking = { path = "../grim-networking" }
-grim-world = { path = "../grim-world" }
-grim-persistence = { path = "../grim-persistence" }
 bevy = { workspace = true, default-features = false }
-serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
-sha2 = { workspace = true }
-signal-hook = { workspace = true }
+
+[dev-dependencies]
+uuid = { workspace = true }
+chrono = { workspace = true }

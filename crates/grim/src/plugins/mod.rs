@@ -1,9 +1,10 @@
-pub mod persistence;
-pub mod shutdown;
-pub mod social;
-pub mod world;
+//! Plugin re-exports. World, shutdown, and persistence now live in their own
+//! crates (grim-world, grim-persistence); the facade re-exports them so
+//! `grim::plugins::WorldPlugin` etc. keep resolving. `social` still lives here
+//! until it becomes grim-channel.
 
-pub use persistence::PersistencePlugin;
-pub use shutdown::ShutdownPlugin;
+pub mod social;
+
+pub use grim_persistence::PersistencePlugin;
+pub use grim_world::{ShutdownPlugin, WorldPlugin};
 pub use social::SocialPlugin;
-pub use world::WorldPlugin;
