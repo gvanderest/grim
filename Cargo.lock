@@ -776,7 +776,7 @@ dependencies = [
  "bevy",
  "grim",
  "grim-client",
- "grim-protocol-telnet",
+ "grim-networking-telnet",
  "uuid",
 ]
 
@@ -948,12 +948,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "grim-protocol-telnet"
+name = "grim-networking-telnet"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "grim",
- "parking_lot",
+ "grim-color",
+ "grim-engine-types",
+ "grim-networking",
  "tokio",
 ]
 

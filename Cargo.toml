@@ -3,7 +3,7 @@ resolver = "2"
 members = [
     "crates/example-mud",
     "crates/grim",
-    "crates/grim-protocol-telnet",
+    "crates/grim-networking-telnet",
     "crates/grim-client",
     "crates/grim-engine-types",
     "crates/grim-color",
