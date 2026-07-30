@@ -1108,7 +1108,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
         app.add_plugins(WorldPlugin);
-        app.add_plugins(SocialPlugin);
+        app.add_plugins(ChannelPlugin);
         app.add_plugins(PersistencePlugin);
         app.add_plugins(ScenePlugin);
         // Telnet protocol messages not registered by the above plugins
@@ -1576,7 +1576,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
         app.add_plugins(WorldPlugin);
-        app.add_plugins(SocialPlugin);
+        app.add_plugins(ChannelPlugin);
         app.add_plugins(PersistencePlugin);
         app.add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>()
