@@ -1,7 +1,6 @@
 use crate::components::{Exits, InRoom, Name, Player};
-use crate::events::{
-    Command, DisconnectRequest, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent,
-};
+use crate::events::{Command, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent};
+use crate::DisconnectRequest;
 use bevy::prelude::*;
 
 /// Handles `look`, `move`, and `quit` commands; emits room/entity description

@@ -9,6 +9,10 @@ use std::sync::{Arc, Mutex};
 use bevy::log::info;
 use bevy::prelude::*;
 use grim::prelude::*;
+use grim::{
+    Connection, ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,
+    DisconnectRequest,
+};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
 
@@ -55,9 +59,9 @@ impl TelnetPlugin {
 impl Plugin for TelnetPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<ConnectionEstablished>()
-            .add_message::<ClientInput>()
+            .add_message::<ConnectionInput>()
             .add_message::<ConnectionClosed>()
-            .add_message::<ClientOutput>()
+            .add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>()
             .insert_resource(TelnetPort(self.port))
             .add_systems(Startup, start_telnet_server)
@@ -190,7 +194,7 @@ fn drain_network_events(
     bridge: Res<NetworkBridge>,
     mut commands: Commands,
     mut established: MessageWriter<ConnectionEstablished>,
-    mut input: MessageWriter<ClientInput>,
+    mut input: MessageWriter<ConnectionInput>,
     mut closed: MessageWriter<ConnectionClosed>,
     mut connections: Query<(Entity, &mut Connection)>,
 ) {
@@ -233,7 +237,7 @@ fn drain_network_events(
                         });
                         conn.echo_hidden = false;
                     }
-                    input.write(ClientInput {
+                    input.write(ConnectionInput {
                         connection: entity,
                         text,
                     });
@@ -254,7 +258,7 @@ fn drain_network_events(
 
 fn send_network_commands(
     bridge: Res<NetworkBridge>,
-    mut output: MessageReader<ClientOutput>,
+    mut output: MessageReader<ConnectionOutput>,
     mut disconnect: MessageReader<DisconnectRequest>,
     mut connections: Query<&mut Connection>,
     clients: Query<&Client>,
@@ -314,10 +318,6 @@ fn send_network_commands(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim::components::Connection;
-    use grim::events::{
-        ClientInput, ClientOutput, ConnectionClosed, ConnectionEstablished, DisconnectRequest,
-    };
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::time::Duration;
@@ -328,9 +328,9 @@ mod tests {
         app.add_plugins(MinimalPlugins);
         app.add_plugins(TelnetPlugin { port: 19999 });
         app.add_message::<ConnectionEstablished>()
-            .add_message::<ClientInput>()
+            .add_message::<ConnectionInput>()
             .add_message::<ConnectionClosed>()
-            .add_message::<ClientOutput>()
+            .add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>();
 
         app.update();
@@ -365,11 +365,11 @@ mod tests {
         app.update();
 
         {
-            let msg_resource = app.world().resource::<Messages<ClientInput>>();
+            let msg_resource = app.world().resource::<Messages<ConnectionInput>>();
             let mut cursor = msg_resource.get_cursor();
-            let events: Vec<&ClientInput> = cursor.read(msg_resource).collect();
+            let events: Vec<&ConnectionInput> = cursor.read(msg_resource).collect();
             let has_hello = events.iter().any(|e| e.text == "hello");
-            assert!(has_hello, "Should have received 'hello' ClientInput");
+            assert!(has_hello, "Should have received 'hello' ConnectionInput");
         }
 
         drop(stream);
@@ -390,9 +390,9 @@ mod tests {
         app.add_plugins(MinimalPlugins);
         app.add_plugins(TelnetPlugin { port: 19998 });
         app.add_message::<ConnectionEstablished>()
-            .add_message::<ClientInput>()
+            .add_message::<ConnectionInput>()
             .add_message::<ConnectionClosed>()
-            .add_message::<ClientOutput>()
+            .add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>();
 
         app.update();
@@ -416,7 +416,7 @@ mod tests {
             .next()
             .expect("should have a connection");
 
-        app.world_mut().write_message(ClientOutput {
+        app.world_mut().write_message(ConnectionOutput {
             connection: conn_entity,
             text: "test message".into(),
             echo: None,
@@ -456,9 +456,9 @@ mod tests {
         app.add_plugins(MinimalPlugins);
         app.add_plugins(TelnetPlugin { port: 19995 });
         app.add_message::<ConnectionEstablished>()
-            .add_message::<ClientInput>()
+            .add_message::<ConnectionInput>()
             .add_message::<ConnectionClosed>()
-            .add_message::<ClientOutput>()
+            .add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>();
 
         app.update();
@@ -485,8 +485,8 @@ mod tests {
             .expect("should have a connection");
         assert!(!conn.echo_hidden, "echo_hidden should start false");
 
-        // Send ClientOutput with echo: Some(false) → sends IAC WILL ECHO, sets echo_hidden=true
-        app.world_mut().write_message(ClientOutput {
+        // Send ConnectionOutput with echo: Some(false) → sends IAC WILL ECHO, sets echo_hidden=true
+        app.world_mut().write_message(ConnectionOutput {
             connection: conn_entity,
             text: "".into(),
             echo: Some(false),
@@ -524,9 +524,9 @@ mod tests {
         app.add_plugins(MinimalPlugins);
         app.add_plugins(TelnetPlugin { port: 19994 });
         app.add_message::<ConnectionEstablished>()
-            .add_message::<ClientInput>()
+            .add_message::<ConnectionInput>()
             .add_message::<ConnectionClosed>()
-            .add_message::<ClientOutput>()
+            .add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>();
 
         app.update();
@@ -551,7 +551,7 @@ mod tests {
             .expect("should have a connection");
 
         // Set echo_hidden=true via echo: Some(false)
-        app.world_mut().write_message(ClientOutput {
+        app.world_mut().write_message(ConnectionOutput {
             connection: conn_entity,
             text: "".into(),
             echo: Some(false),
@@ -596,12 +596,12 @@ mod tests {
             "echo_hidden should be false after user input"
         );
 
-        // ClientInput should have been written
-        let msg_resource = app.world().resource::<Messages<ClientInput>>();
+        // ConnectionInput should have been written
+        let msg_resource = app.world().resource::<Messages<ConnectionInput>>();
         let mut cursor = msg_resource.get_cursor();
-        let events: Vec<&ClientInput> = cursor.read(msg_resource).collect();
+        let events: Vec<&ConnectionInput> = cursor.read(msg_resource).collect();
         let has_hello = events.iter().any(|e| e.text == "hello");
-        assert!(has_hello, "ClientInput should contain 'hello'");
+        assert!(has_hello, "ConnectionInput should contain 'hello'");
 
         drop(stream);
     }
@@ -613,9 +613,9 @@ mod tests {
         app.add_plugins(MinimalPlugins);
         app.add_plugins(TelnetPlugin { port: 19993 });
         app.add_message::<ConnectionEstablished>()
-            .add_message::<ClientInput>()
+            .add_message::<ConnectionInput>()
             .add_message::<ConnectionClosed>()
-            .add_message::<ClientOutput>()
+            .add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>();
 
         app.update();
@@ -642,9 +642,9 @@ mod tests {
         app.update();
 
         // Verify control chars are stripped
-        let msg_resource = app.world().resource::<Messages<ClientInput>>();
+        let msg_resource = app.world().resource::<Messages<ConnectionInput>>();
         let mut cursor = msg_resource.get_cursor();
-        let events: Vec<&ClientInput> = cursor.read(msg_resource).collect();
+        let events: Vec<&ConnectionInput> = cursor.read(msg_resource).collect();
         let has_filtered = events.iter().any(|e| e.text == "helloworld");
         assert!(
             has_filtered,
@@ -667,9 +667,9 @@ mod tests {
         app.add_plugins(MinimalPlugins);
         app.add_plugins(TelnetPlugin { port: 19992 });
         app.add_message::<ConnectionEstablished>()
-            .add_message::<ClientInput>()
+            .add_message::<ConnectionInput>()
             .add_message::<ConnectionClosed>()
-            .add_message::<ClientOutput>()
+            .add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>();
 
         app.update();
@@ -700,7 +700,7 @@ mod tests {
         app.world_mut().spawn(client);
 
         // Send output with prepend_newline=true
-        app.world_mut().write_message(ClientOutput {
+        app.world_mut().write_message(ConnectionOutput {
             connection: conn_entity,
             text: "Someone enters the room.".into(),
             echo: None,
@@ -738,9 +738,9 @@ mod tests {
         app.add_plugins(MinimalPlugins);
         app.add_plugins(TelnetPlugin { port: 19991 });
         app.add_message::<ConnectionEstablished>()
-            .add_message::<ClientInput>()
+            .add_message::<ConnectionInput>()
             .add_message::<ConnectionClosed>()
-            .add_message::<ClientOutput>()
+            .add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>();
 
         app.update();
@@ -770,7 +770,7 @@ mod tests {
         app.world_mut().spawn(client);
 
         // Send output with prepend_newline=false
-        app.world_mut().write_message(ClientOutput {
+        app.world_mut().write_message(ConnectionOutput {
             connection: conn_entity,
             text: "stand".into(),
             echo: None,
@@ -813,9 +813,9 @@ mod tests {
         app.add_plugins(MinimalPlugins);
         app.add_plugins(TelnetPlugin { port: 19990 });
         app.add_message::<ConnectionEstablished>()
-            .add_message::<ClientInput>()
+            .add_message::<ConnectionInput>()
             .add_message::<ConnectionClosed>()
-            .add_message::<ClientOutput>()
+            .add_message::<ConnectionOutput>()
             .add_message::<DisconnectRequest>();
 
         app.update();
@@ -845,7 +845,7 @@ mod tests {
         app.world_mut().spawn(client);
 
         // Empty text with in-game client — goes through else branch
-        app.world_mut().write_message(ClientOutput {
+        app.world_mut().write_message(ConnectionOutput {
             connection: conn_entity,
             text: "".into(),
             echo: None,

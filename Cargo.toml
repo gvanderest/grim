@@ -9,6 +9,7 @@ members = [
     "crates/grim-color",
     "crates/grim-text",
     "crates/grim-command",
+    "crates/grim-networking",
 ]
 
 [workspace.dependencies]
