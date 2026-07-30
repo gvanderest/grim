@@ -897,7 +897,9 @@ dependencies = [
  "grim-command",
  "grim-engine-types",
  "grim-networking",
+ "grim-persistence",
  "grim-text",
+ "grim-world",
  "serde",
  "serde_json",
  "sha2",
@@ -948,6 +950,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "grim-persistence"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "chrono",
+ "grim-engine-types",
+ "grim-networking",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "grim-scene"
 version = "0.1.0"
 dependencies = [
@@ -963,6 +977,18 @@ name = "grim-text"
 version = "0.1.0"
 dependencies = [
  "grim-color",
+]
+
+[[package]]
+name = "grim-world"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "chrono",
+ "grim-engine-types",
+ "grim-networking",
+ "signal-hook",
+ "uuid",
 ]
 
 [[package]]

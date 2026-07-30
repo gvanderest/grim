@@ -14,9 +14,9 @@
 //! and on `quit`, and the project currently tolerates losing in-flight position
 //! changes across a restart.
 
-use crate::components::Character;
-use crate::events::{Command, EngineCommand, InfoMessage, ServerBroadcast};
 use bevy::prelude::*;
+use grim_engine_types::components::Character;
+use grim_engine_types::events::{Command, EngineCommand, InfoMessage, ServerBroadcast};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -280,8 +280,8 @@ mod tests {
 
     // ── System-level tests ────────────────────────────────────────
 
-    use crate::components::Role;
     use chrono::Utc;
+    use grim_engine_types::components::Role;
     use std::time::Duration;
     use uuid::Uuid;
 

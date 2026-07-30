@@ -1,11 +1,11 @@
-use crate::components::{
+use bevy::log::info;
+use bevy::prelude::*;
+use grim_engine_types::components::{
     Account, Area, Character, Client, Description, InRoom, Linkdead, Name, OutputHistory, Player,
     Room, RoomLocation,
 };
-use crate::events::LinkdeadAnnounce;
-use crate::{Connection, ConnectionClosed};
-use bevy::log::info;
-use bevy::prelude::*;
+use grim_engine_types::events::LinkdeadAnnounce;
+use grim_networking::{Connection, ConnectionClosed};
 use std::fs;
 
 /// Loads accounts/characters on startup, saves on disconnect.
