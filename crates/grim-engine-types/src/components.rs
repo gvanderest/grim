@@ -193,6 +193,12 @@ impl OutputHistory {
     }
 }
 
+/// The last player who whispered (`tell`/`whisper`) this character, so `reply`
+/// can answer them. Set on delivery; points at a (boot-local) player entity, so
+/// a reply fails gracefully if they've since left.
+#[derive(Component, Debug)]
+pub struct LastWhisperFrom(pub Entity);
+
 /// Marks an entity as an NPC.
 #[derive(Component, Debug)]
 pub struct Npc;

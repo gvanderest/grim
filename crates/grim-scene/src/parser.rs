@@ -89,6 +89,13 @@ fn build_registry() -> CommandRegistry<Command> {
     // non-empty message; a bare `tell` or `tell name` is rejected.
     r.register("tell", parse_tell);
     r.register("whisper", parse_tell);
+    // `reply <message>` — to the last player who whispered you.
+    r.register("reply", |rest| {
+        let text = rest.trim();
+        (!text.is_empty()).then(|| Command::Reply {
+            text: text.to_string(),
+        })
+    });
 
     // ── Game actions ─────────────────────────────────────────────
     r.register("look", |rest| {

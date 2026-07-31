@@ -23,6 +23,8 @@ pub enum Command {
     /// `tell <target> <text>` — private message to one player (fuzzy-matched by
     /// name; `self` targets the sender).
     Tell { target: String, text: String },
+    /// `reply <text>` — private message to the last player who whispered you.
+    Reply { text: String },
     /// Movement via cardinal direction
     Move { direction: Cardinal },
     /// `quit` — clean disconnect
