@@ -245,12 +245,12 @@ fn start_telnet_server(port: Res<TelnetPort>, done: Res<CopyoverDone>, mut comma
                     });
                 }
 
-                // Always signal readiness: the systemd unit is `Type=notify`, so
-                // even a fresh start must send READY=1 or the service is
-                // considered to have timed out. On a copyover the accompanying
-                // MAINPID reassigns supervision to us *before* the predecessor
-                // exits, so its exit doesn't tear the service down. Both no-op
-                // outside systemd (NOTIFY_SOCKET unset).
+                // Signal readiness: the unit is `Type=notify`, so even a fresh
+                // start must send READY=1 or systemd times the service out. We
+                // also send our own MAINPID; on a copyover the predecessor
+                // authoritatively re-sends MAINPID=<us> before it exits (see
+                // perform_handoff), so supervision transfers regardless of which
+                // notify systemd processes first. No-op outside systemd.
                 let _ = sd_notify::notify(&[
                     sd_notify::NotifyState::MainPid(std::process::id()),
                     sd_notify::NotifyState::Ready,
@@ -525,7 +525,7 @@ fn perform_handoff(manifest: &HandoverManifest, fds: &[RawFd]) -> std::io::Resul
     let exe = current_exe_path()?;
     let mut cmd = std::process::Command::new(exe);
     cmd.env(COPYOVER_SOCK_ENV, &sock_path);
-    let _child = cmd.spawn()?;
+    let child = cmd.spawn()?;
 
     let (mut stream, _addr) = listener.accept()?;
     write_handoff(&stream, manifest, fds)?;
@@ -535,6 +535,15 @@ fn perform_handoff(manifest: &HandoverManifest, fds: &[RawFd]) -> std::io::Resul
     // the new instance has taken over.
     let mut ack = [0u8; 1];
     stream.read_exact(&mut ack)?;
+
+    // Hand the systemd MainPID to the successor *from the current main process*
+    // (us). systemd trusts a MAINPID change from the tracked main most readily,
+    // and doing it here — before we exit — guarantees the reassignment is queued
+    // ahead of our exit rather than racing the successor's own notify. The
+    // successor also sends MAINPID+READY; this is the authoritative belt-and-
+    // suspenders. No-op outside systemd (NOTIFY_SOCKET unset).
+    let _ = sd_notify::notify(&[sd_notify::NotifyState::MainPid(child.id())]);
+
     let _ = std::fs::remove_file(&sock_path);
     Ok(())
 }
