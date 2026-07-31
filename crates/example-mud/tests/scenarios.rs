@@ -98,11 +98,13 @@ fn quit_saves_and_unloads_then_reconnect_logs_in_fresh() {
 
     // `quit` is an intentional logout: it saves and UNLOADS the character from
     // the world. It must NOT go linkdead (that is only for an unexpected socket
-    // drop). The character still exists on disk / as an offline entity, but it is
-    // no longer in the world.
+    // drop). The character lives only on disk now — no in-world entity remains.
     let _ = mud.send(alice, "quit");
     mud.disconnect(alice);
-    assert!(mud.character_names().contains(&"Alice".to_string()));
+    assert!(
+        !mud.character_names().contains(&"Alice".to_string()),
+        "quit must unload the character from the world (disk-only when logged out)"
+    );
 
     // Reconnect is a normal login, not a linkdead reconnect: existing account →
     // password → character menu (Alice listed, not "linkdead") → select → MOTD →
