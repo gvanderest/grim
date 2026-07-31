@@ -923,7 +923,7 @@ fn process_command_queue(
     player_chars: Query<(Entity, &GrimName)>,
     characters: Query<&Character>,
     persistence: Res<grim_persistence::PersistenceConfig>,
-    _commands: Commands,
+    mut commands: Commands,
 ) {
     for (entity, mut client) in clients.iter_mut() {
         let conn = client.connection;
@@ -941,10 +941,14 @@ fn process_command_queue(
                     .and_then(|c| player_chars.get(c).ok())
                     .map(|(_, n)| n.0.clone())
                     .unwrap_or_else(|| "Someone".into());
-                // Save character JSON to disk, then disconnect.
-                // Do NOT despawn the character entity — save_on_disconnect
-                // will mark it linkdead when ConnectionClosed fires,
-                // keeping it available for reconnect without server restart.
+                // `quit` is an intentional logout: save the character, then
+                // UNLOAD it from the world — remove the in-world components so it
+                // returns to the same bare, offline state as a not-yet-logged-in
+                // character (a later login re-enters it). This is deliberately
+                // NOT linkdead: linkdead is only for an *unexpected* socket drop
+                // (see `save_on_disconnect`). The Client is despawned here, so
+                // when the socket close fires `ConnectionClosed`, save_on_disconnect
+                // finds no client and does not mark the character linkdead.
                 if let Some(char_entity) = client.character {
                     if let Ok(ch) = characters.get(char_entity) {
                         let path = persistence
@@ -955,7 +959,11 @@ fn process_command_queue(
                             let _ = std::fs::write(path, json);
                         }
                     }
+                    commands
+                        .entity(char_entity)
+                        .remove::<(Player, InRoom, Linkdead, OutputHistory)>();
                 }
+                commands.entity(entity).despawn();
                 announce_logout.write(LogoutAnnounce {
                     name: char_name.clone(),
                 });
