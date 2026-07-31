@@ -525,26 +525,39 @@ fn perform_handoff(manifest: &HandoverManifest, fds: &[RawFd]) -> std::io::Resul
     let exe = current_exe_path()?;
     let mut cmd = std::process::Command::new(exe);
     cmd.env(COPYOVER_SOCK_ENV, &sock_path);
-    let child = cmd.spawn()?;
+    let mut child = cmd.spawn()?;
 
-    let (mut stream, _addr) = listener.accept()?;
-    write_handoff(&stream, manifest, fds)?;
+    // Everything after spawn can fail; on any failure the predecessor resumes
+    // serving, so the half-started successor must not linger (dropping `Child`
+    // does not kill it) holding dup'd sockets or the port.
+    let outcome = (|| -> std::io::Result<()> {
+        let (mut stream, _addr) = listener.accept()?;
+        write_handoff(&stream, manifest, fds)?;
 
-    // Wait for the successor to confirm it is serving before we let the process
-    // exit — this keeps the fds (and the systemd MainPID handoff) valid until
-    // the new instance has taken over.
-    let mut ack = [0u8; 1];
-    stream.read_exact(&mut ack)?;
+        // Wait for the successor to confirm it is serving before we let the
+        // process exit — this keeps the fds (and the systemd MainPID handoff)
+        // valid until the new instance has taken over.
+        let mut ack = [0u8; 1];
+        stream.read_exact(&mut ack)?;
 
-    // Hand the systemd MainPID to the successor *from the current main process*
-    // (us). systemd trusts a MAINPID change from the tracked main most readily,
-    // and doing it here — before we exit — guarantees the reassignment is queued
-    // ahead of our exit rather than racing the successor's own notify. The
-    // successor also sends MAINPID+READY; this is the authoritative belt-and-
-    // suspenders. No-op outside systemd (NOTIFY_SOCKET unset).
-    let _ = sd_notify::notify(&[sd_notify::NotifyState::MainPid(child.id())]);
+        // Hand the systemd MainPID to the successor *from the current main
+        // process* (us). systemd trusts a MAINPID change from the tracked main
+        // most readily, and doing it here — before we exit — queues the
+        // reassignment ahead of our exit rather than racing the successor's own
+        // notify. The successor also sends MAINPID+READY; this is the
+        // authoritative belt-and-suspenders. No-op outside systemd.
+        let _ = sd_notify::notify(&[sd_notify::NotifyState::MainPid(child.id())]);
+        Ok(())
+    })();
 
     let _ = std::fs::remove_file(&sock_path);
+
+    if let Err(e) = outcome {
+        error!("copyover handoff failed ({e}); terminating half-started successor");
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(e);
+    }
     Ok(())
 }
 
