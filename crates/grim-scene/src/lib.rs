@@ -260,6 +260,29 @@ fn handle_connection_resumed(
 }
 
 // ─── Client input dispatch ───────────────────────────────────────────
+
+/// Dispatch an admin-gated command: an admin's is queued for the engine; a
+/// non-admin gets the exact unknown-command reply (same text, same direct
+/// framing — no leading newline) so the command's existence is not leaked.
+/// Shared by every admin-gated command so their masked responses stay
+/// byte-identical.
+fn dispatch_admin_gated(
+    cmd: Command,
+    is_admin: bool,
+    conn: Entity,
+    queue: &mut std::collections::VecDeque<Command>,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+) {
+    if is_admin {
+        queue.push_back(cmd);
+    } else {
+        outputs.write(ConnectionOutput {
+            echo: None,
+            ..ConnectionOutput::new(conn, tr!("error.unknown_command"))
+        });
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn handle_client_input(
     mut inputs: MessageReader<ConnectionInput>,
@@ -785,43 +808,25 @@ fn handle_client_input(
                                 )
                             });
                         }
-                        Command::Shutdown { .. } => {
-                            // Admin-gated. A non-admin must not be able to tell
-                            // the command exists, so respond exactly as for an
-                            // unknown command — same text, same framing (a
-                            // direct ConnectionOutput, no prepended newline). Routing
-                            // this through the engine's InfoMessage path would
-                            // add a leading newline and leak the difference.
+                        Command::Shutdown { .. } | Command::Goto { .. } => {
+                            // Admin-gated + masked: a non-admin must not learn the
+                            // command exists, so respond exactly as for an unknown
+                            // command — same text, same framing (a direct
+                            // ConnectionOutput, no prepended newline; the engine's
+                            // InfoMessage path would add a leading newline and leak
+                            // the difference). One shared helper keeps every
+                            // admin-gated command byte-identical for non-admins.
                             let is_admin = characters
                                 .get(char_entity)
                                 .map(|(_, c, _)| c.is_admin())
                                 .unwrap_or(false);
-                            if is_admin {
-                                client.input_queue.push_back(cmd);
-                            } else {
-                                outputs.write(ConnectionOutput {
-                                    echo: None,
-                                    ..ConnectionOutput::new(conn, tr!("error.unknown_command"))
-                                });
-                            }
-                        }
-                        Command::Goto { .. } => {
-                            // Admin-gated + masked identically to `shutdown`: a
-                            // non-admin must not learn the command exists, so
-                            // reply exactly as for an unknown command (same text,
-                            // same direct framing). Admins queue it for the engine.
-                            let is_admin = characters
-                                .get(char_entity)
-                                .map(|(_, c, _)| c.is_admin())
-                                .unwrap_or(false);
-                            if is_admin {
-                                client.input_queue.push_back(cmd);
-                            } else {
-                                outputs.write(ConnectionOutput {
-                                    echo: None,
-                                    ..ConnectionOutput::new(conn, tr!("error.unknown_command"))
-                                });
-                            }
+                            dispatch_admin_gated(
+                                cmd,
+                                is_admin,
+                                conn,
+                                &mut client.input_queue,
+                                &mut outputs,
+                            );
                         }
                         _ => {
                             // All other commands go through the queue to enforce cooldown
@@ -2805,7 +2810,7 @@ mod tests {
                 );
             } else {
                 assert!(
-                    !text.contains("entity:"),
+                    !text.contains("entity:") && !text.contains("grim:") && !text.contains("slug:"),
                     "normal player must not see room ids; got:\n{text}"
                 );
             }

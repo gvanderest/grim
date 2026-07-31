@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 grim-engine-types = { path = "../grim-engine-types" }
 grim-networking = { path = "../grim-networking" }
+grim-color = { path = "../grim-color" }
 bevy = { workspace = true, default-features = false }
 signal-hook = { workspace = true }
 

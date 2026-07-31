@@ -212,6 +212,10 @@ fn parse_entity(tok: &str) -> Option<Entity> {
 /// location update is a property of the *destination*, not of how the actor
 /// arrived, so walk and `goto` (and, later, summon/recall/login) share it. `loc`
 /// is the destination's persisted [`RoomLocation`], precomputed by the caller.
+///
+/// Persists only `last_room` today. ADR-0001's `last_canonical_room` is not a
+/// field yet; while every room is Canonical (no instancing) the two would be
+/// equal, so it is deferred to the instancing work rather than added dead here.
 fn place_actor(
     actor: Entity,
     to: Entity,
@@ -331,9 +335,12 @@ fn handle_goto(
                 });
             }
             RoomLookup::NotFound => {
+                // `target` is raw admin input; escape it so it can't inject
+                // colour markup into the reply (only the admin's own session,
+                // but keep the invariant that interpolated input is escaped).
                 info.write(InfoMessage {
                     target: actor,
-                    text: format!("No room matches '{target}'.\n"),
+                    text: format!("No room matches '{}'.\n", grim_color::escape_codes(target)),
                 });
             }
             RoomLookup::Ambiguous(candidates) => {

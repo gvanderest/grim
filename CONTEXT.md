@@ -183,7 +183,8 @@ How input (e.g. the admin `goto` command) names a target room. One of:
   combination), and the area side may also be an Entity ID, or
 - a bare room token (**Grim ID** or **Slug**).
 Resolution precedence when a bare/slug token is ambiguous is an implementation
-concern, not glossary — see ADR (to be written).
+concern, not glossary — see
+[ADR-0001](docs/adr/0001-area-identity-and-instancing.md).
 
 ### World instancing
 

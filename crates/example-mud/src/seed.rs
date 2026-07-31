@@ -15,7 +15,7 @@
 //! **ids**, never slugs. Slugs are only a human alias, so renaming a room's slug
 //! never breaks a link.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use bevy::log::{error, warn};
 use bevy::prelude::*;
@@ -100,6 +100,20 @@ pub fn seed_world(mut commands: Commands) {
 /// exits, place NPCs. Returns this area's starting-room entity, if it declared a
 /// resolvable one.
 fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
+    // Validate room ids BEFORE spawning anything: a duplicate id would otherwise
+    // leave the first room spawned but unreferenced (exits wire only the last
+    // entity for that id). Reject the whole area instead of a half-built one.
+    let mut seen = HashSet::new();
+    for r in &bp.rooms {
+        if !seen.insert(r.id) {
+            error!(
+                "area '{}': duplicate room id {} — skipping area",
+                bp.slug, r.id
+            );
+            return None;
+        }
+    }
+
     let area = commands
         .spawn(Area {
             id: bp.id,
@@ -124,9 +138,7 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
                 Exits::default(),
             ))
             .id();
-        if room_ents.insert(r.id, entity).is_some() {
-            warn!("area '{}': duplicate room id {}", bp.slug, r.id);
-        }
+        room_ents.insert(r.id, entity);
     }
 
     // Pass 2: wire exits (by Grim ID, within this area) and place NPCs.

@@ -16,9 +16,14 @@ references coherently:
 `<id>.json`, so they are renamed to the new id; character files are named
 `<name>.json` and keep their name.
 
-PREREQUISITE: run this only together with / after the `Uuid -> GrimId` code
-change. The current binary types these ids as `Uuid` and will fail to load
-base62 ids. Nothing here is reversible — back up `data/` first if you care.
+PREREQUISITE / ORDER: the old binary loads only UUID records; the new
+(`GrimId`) binary loads only base62 records — neither loads the other. So:
+  1. stop the old binary,
+  2. run this tool,
+  3. start the binary built with `GrimId` support.
+Running it while the old binary is up (or before deploying the new one) leaves
+data the running binary cannot read. Nothing here is reversible — back up
+`data/` first if you care.
 
 Usage:
     python3 scripts/migrate_ids_to_grimid.py [DATA_DIR]   # default: ./data
@@ -109,24 +114,37 @@ def main() -> int:
     for obj in characters.values():
         remap(obj["id"])
 
-    # ── Apply, rewriting refs. A ref to an id we never saw as canonical is
-    # dangling; warn and leave it untouched rather than invent a mapping. ──
-    def resolve_ref(ref: str, where: str) -> str:
-        if is_grim_id(ref):
-            return ref
-        if ref in id_map:
-            return id_map[ref]
-        print(f"  WARN dangling reference {ref} in {where} — left unchanged")
-        return ref
+    # ── Validate EVERY reference before writing anything. A legacy ref with no
+    # canonical target would, once written, be a UUID that the new GrimId parser
+    # rejects — making the record unloadable. Abort (nonzero) on any such ref so
+    # we never persist a partially-migrated, unloadable record. ──
+    def resolvable(ref: str) -> bool:
+        return is_grim_id(ref) or ref in id_map
+
+    dangling: list[str] = []
+    for path, obj in accounts.items():
+        for c in obj.get("characters", []):
+            if not resolvable(c):
+                dangling.append(f"{path.name}: account.characters -> {c}")
+    for path, obj in characters.items():
+        acct = obj.get("account_id", "")
+        if not resolvable(acct):
+            dangling.append(f"{path.name}: character.account_id -> {acct}")
+    if dangling:
+        print("ERROR: dangling references (no canonical target) — aborting, nothing written:")
+        for d in dangling:
+            print(f"  {d}")
+        return 1
+
+    def resolve_ref(ref: str) -> str:
+        return ref if is_grim_id(ref) else id_map[ref]
 
     for obj in accounts.values():
         obj["id"] = remap(obj["id"])
-        obj["characters"] = [
-            resolve_ref(c, "account.characters") for c in obj.get("characters", [])
-        ]
+        obj["characters"] = [resolve_ref(c) for c in obj.get("characters", [])]
     for obj in characters.values():
         obj["id"] = remap(obj["id"])
-        obj["account_id"] = resolve_ref(obj.get("account_id", ""), "character.account_id")
+        obj["account_id"] = resolve_ref(obj.get("account_id", ""))
 
     # ── Write. Accounts are renamed to <new-id>.json; characters keep <name>.json. ──
     print(f"remapped {len(id_map)} id(s)")
