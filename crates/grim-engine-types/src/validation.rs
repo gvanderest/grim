@@ -8,16 +8,26 @@ pub enum ValidationError {
     InvalidCharacters,
     InvalidEmail,
     InvalidFormat,
-    /// The name begins with a reserved word (e.g. `self`, `someone`).
-    Reserved,
 }
 
-/// Reserved name prefixes. A character name may not *begin* with any of these
-/// (case-insensitive) so it can never be confused with a targeting keyword — a
-/// command like `cast fire self` must unambiguously mean the caster, never a
+/// Default reserved name prefixes. A character name may not *begin* with any of
+/// these (case-insensitive) so it can never be confused with a targeting keyword
+/// — a command like `cast fire self` must unambiguously mean the caster, never a
 /// character named "Selfius". Prefix-based on purpose: "Selfius" is rejected but
-/// "Zself" is fine.
-pub const RESERVED_NAME_PREFIXES: &[&str] = &["self", "someone"];
+/// "Zself" is fine. This is only the DEFAULT list; the server exposes it as
+/// configuration (see `grim_scene::ReservedNamePrefixes`) so an author can extend
+/// or replace it. Enforcement lives at the creation boundary, not in the pure
+/// validator, so the configured list is what actually applies.
+pub const DEFAULT_RESERVED_NAME_PREFIXES: &[&str] = &["self", "someone"];
+
+/// Whether `name` begins with any of `prefixes` (case-insensitive). Used at
+/// character creation against the configured reserved list.
+pub fn is_name_reserved(name: &str, prefixes: &[String]) -> bool {
+    let lower = name.to_lowercase();
+    prefixes
+        .iter()
+        .any(|p| lower.starts_with(&p.to_lowercase()))
+}
 
 impl fmt::Display for ValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -28,7 +38,6 @@ impl fmt::Display for ValidationError {
             Self::InvalidCharacters => write!(f, "contains invalid characters"),
             Self::InvalidEmail => write!(f, "is not a valid email address"),
             Self::InvalidFormat => write!(f, "has an invalid format"),
-            Self::Reserved => write!(f, "starts with a reserved word"),
         }
     }
 }
@@ -80,12 +89,9 @@ pub fn validate_character_name(input: &str) -> Result<String, ValidationError> {
     if len > 20 {
         return Err(ValidationError::TooLong(20));
     }
-    // Reject names beginning with a reserved targeting word (prefix match), so a
-    // name can never be mistaken for a keyword like `self`.
-    let lower = name.to_lowercase();
-    if RESERVED_NAME_PREFIXES.iter().any(|p| lower.starts_with(p)) {
-        return Err(ValidationError::Reserved);
-    }
+    // NOTE: the reserved-name (targeting keyword) check is NOT here — it is
+    // enforced at the creation boundary against the server's configured list via
+    // `is_name_reserved`, so a custom list actually applies.
     Ok(name)
 }
 
@@ -277,18 +283,19 @@ mod tests {
     }
 
     #[test]
-    fn validate_character_name_rejects_reserved_prefixes() {
-        // Exact reserved words and any name starting with one are rejected.
+    fn is_name_reserved_is_prefix_based_and_case_insensitive() {
+        let prefixes: Vec<String> = DEFAULT_RESERVED_NAME_PREFIXES
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         for n in ["self", "Self", "Selfius", "someone", "SomeoneElse"] {
-            assert_eq!(
-                validate_character_name(n),
-                Err(ValidationError::Reserved),
-                "{n} should be reserved"
-            );
+            assert!(is_name_reserved(n, &prefixes), "{n} should be reserved");
         }
         // A reserved word not at the start is fine.
-        assert_eq!(validate_character_name("Zself").unwrap(), "Zself");
-        assert_eq!(validate_character_name("Bobself").unwrap(), "Bobself");
+        assert!(!is_name_reserved("Zself", &prefixes));
+        assert!(!is_name_reserved("Bobself", &prefixes));
+        // Empty configured list reserves nothing.
+        assert!(!is_name_reserved("Self", &[]));
     }
 
     // ── normalize_filename ──
