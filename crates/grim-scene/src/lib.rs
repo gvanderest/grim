@@ -72,6 +72,15 @@ impl RoomResolver<'_, '_> {
     }
 }
 
+/// The three global-announce readers bundled into one `SystemParam`, so
+/// `format_output` stays within Bevy's 16-parameter system limit.
+#[derive(bevy::ecs::system::SystemParam)]
+struct AnnounceReaders<'w, 's> {
+    login: MessageReader<'w, 's, LoginAnnounce>,
+    logout: MessageReader<'w, 's, LogoutAnnounce>,
+    linkdead: MessageReader<'w, 's, LinkdeadAnnounce>,
+}
+
 pub struct ScenePlugin;
 impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
@@ -1161,14 +1170,13 @@ fn format_output(
     mut ooc_events: MessageReader<OocEvent>,
     mut move_events: MessageReader<MoveEvent>,
     mut info_events: MessageReader<InfoMessage>,
-    mut announce_login: MessageReader<LoginAnnounce>,
-    mut announce_logout: MessageReader<LogoutAnnounce>,
-    mut announce_linkdead: MessageReader<LinkdeadAnnounce>,
+    mut announces: AnnounceReaders,
     rooms: Query<(Entity, &Room, &GrimName)>,
     room_occupants: Query<(Entity, &InRoom, Option<&Player>, &GrimName)>,
     room_exits: Query<&Exits>,
     names: Query<&GrimName>,
     descriptions: Query<&Description>,
+    characters: Query<&Character>,
     mut outputs: MessageWriter<ConnectionOutput>,
 ) {
     // Helper to find connection from room_occupants
@@ -1180,14 +1188,14 @@ fn format_output(
             .unwrap_or(target)
     };
     // ── Login / Logout announces ──
-    for ev in announce_login.read() {
+    for ev in announces.login.read() {
         broadcast_global(
             &format!("{} has connected.\n", ev.name),
             &room_occupants,
             &mut outputs,
         );
     }
-    for ev in announce_logout.read() {
+    for ev in announces.logout.read() {
         broadcast_global(
             &format!("{} has disconnected.\n", ev.name),
             &room_occupants,
@@ -1196,7 +1204,7 @@ fn format_output(
     }
 
     // ── Linkdead announce ──
-    for ev in announce_linkdead.read() {
+    for ev in announces.linkdead.read() {
         let formatted = formatter::format_linkdead(&ev.name, ev.reconnecting);
         broadcast_global(&formatted, &room_occupants, &mut outputs);
     }
@@ -1221,12 +1229,26 @@ fn format_output(
                 occupant_names.push(occ_name.0.clone());
             }
         }
+        // Admins see the room's ids in the title for building/debugging.
+        let is_admin = characters
+            .get(ev.target)
+            .map(|c| c.is_admin())
+            .unwrap_or(false);
+        let grim = room.id.to_string();
+        let title = formatter::room_title(
+            &name.0,
+            is_admin.then_some(formatter::RoomDebugIds {
+                entity: ev.room.to_bits(),
+                grim: &grim,
+                slug: &room.friendly_id,
+            }),
+        );
         let conn = find_conn(ev.target);
         outputs.write(ConnectionOutput {
             echo: None,
             ..ConnectionOutput::new(
                 conn,
-                formatter::format_room(&name.0, &room.description, &exits, &occupant_names),
+                formatter::format_room(&title, &room.description, &exits, &occupant_names),
             )
         });
     }
@@ -2744,6 +2766,50 @@ mod tests {
         app.update();
 
         // No crash = success
+    }
+
+    // ── format_output: admins see room ids in the title, players don't ──
+    #[test]
+    fn format_output_admin_sees_room_ids() {
+        for (admin, expect_ids) in [(true, true), (false, false)] {
+            let mut app = test_app();
+            let room = spawn_room(&mut app);
+            app.world_mut().insert_resource(StartingRoom(room));
+            let conn = app
+                .world_mut()
+                .spawn(Connection {
+                    id: 1,
+                    addr: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
+                    echo_hidden: false,
+                })
+                .id();
+            let roles = if admin { vec![Role::Admin] } else { vec![] };
+            let target = spawn_ingame(&mut app, conn, make_character(roles));
+            app.world_mut().write_message(LookRoom { target, room });
+            app.update();
+
+            let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+            let mut cursor = msgs.get_cursor();
+            let text: String = cursor
+                .read(msgs)
+                .filter(|o| o.connection == conn)
+                .map(|o| o.text.clone())
+                .collect();
+
+            if expect_ids {
+                assert!(
+                    text.contains("entity:")
+                        && text.contains("grim:")
+                        && text.contains("slug:room1"),
+                    "admin should see room ids; got:\n{text}"
+                );
+            } else {
+                assert!(
+                    !text.contains("entity:"),
+                    "normal player must not see room ids; got:\n{text}"
+                );
+            }
+        }
     }
 
     // ── format_output: look_entity with missing subject name ──

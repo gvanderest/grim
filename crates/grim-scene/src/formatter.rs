@@ -1,6 +1,30 @@
 use grim_color::escape_codes;
 use grim_text::tr;
 
+/// Room identity ids appended to a room title for admins only.
+pub struct RoomDebugIds<'a> {
+    /// Boot-local entity id (`Entity::to_bits`).
+    pub entity: u64,
+    /// Stable grim id. (Today this is the room's `Uuid`; becomes the base62
+    /// Grim ID once that lands — see `docs/adr/0001`.)
+    pub grim: &'a str,
+    /// Human-facing slug (`friendly_id`).
+    pub slug: &'a str,
+}
+
+/// A room's title line. Plain for normal players; admins additionally see the
+/// entity id, grim id, and slug for building/debugging:
+/// `Town Square (entity:… grim:… slug:…)`.
+pub fn room_title(name: &str, debug: Option<RoomDebugIds>) -> String {
+    match debug {
+        Some(d) => format!(
+            "{name} (entity:{} grim:{} slug:{})",
+            d.entity, d.grim, d.slug
+        ),
+        None => name.to_string(),
+    }
+}
+
 /// Format a room's full description.
 pub fn format_room(name: &str, desc: &str, exits: &[String], occupants: &[String]) -> String {
     let mut out = format!("{}\n{}", name, desc);
@@ -152,6 +176,26 @@ mod tests {
         assert!(got.starts_with("Areas (2):\n"));
         assert!(got.contains("  haven — Haven\n"));
         assert!(got.contains("  swamp — Southern Swamp\n"));
+    }
+
+    // ── room_title ───────────────────────────────────────────────
+
+    #[test]
+    fn room_title_plain_without_debug() {
+        assert_eq!(room_title("Town Square", None), "Town Square");
+    }
+
+    #[test]
+    fn room_title_shows_ids_for_admin() {
+        let got = room_title(
+            "Town Square",
+            Some(RoomDebugIds {
+                entity: 42,
+                grim: "abc-123",
+                slug: "town-square",
+            }),
+        );
+        assert_eq!(got, "Town Square (entity:42 grim:abc-123 slug:town-square)");
     }
 
     // ── format_room ──────────────────────────────────────────────
