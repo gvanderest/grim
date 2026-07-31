@@ -13,8 +13,8 @@ use grim_engine_types::events::{
     LookEntity, LookRoom, MoveEvent, OocEvent, SayEvent, ServerBroadcast, YellEvent,
 };
 use grim_engine_types::validation::{
-    hash_password, normalize_character_name, validate_character_name, validate_identifier,
-    validate_password, verify_password,
+    hash_password, is_name_reserved, normalize_character_name, validate_character_name,
+    validate_identifier, validate_password, verify_password, DEFAULT_RESERVED_NAME_PREFIXES,
 };
 use grim_networking::{
     ConnectionEstablished, ConnectionInput, ConnectionOutput, ConnectionResumed, DisconnectRequest,
@@ -33,6 +33,27 @@ struct SessionRes<'w> {
     starting: Res<'w, StartingRoom>,
     registry: Res<'w, grim_command::CommandRegistry<Command>>,
     persistence: Res<'w, grim_persistence::PersistenceConfig>,
+    reserved: Res<'w, ReservedNamePrefixes>,
+}
+
+/// Configurable list of reserved character-name prefixes. A new character's
+/// (canonical) name may not begin with any of these — see
+/// [`grim_engine_types::validation::is_name_reserved`] and
+/// [`DEFAULT_RESERVED_NAME_PREFIXES`]. Defaults to the built-in list; a server
+/// author overrides it by inserting this resource before adding [`ScenePlugin`],
+/// e.g. `app.insert_resource(ReservedNamePrefixes(vec!["admin".into()]))`.
+#[derive(Resource, Clone, Debug)]
+pub struct ReservedNamePrefixes(pub Vec<String>);
+
+impl Default for ReservedNamePrefixes {
+    fn default() -> Self {
+        Self(
+            DEFAULT_RESERVED_NAME_PREFIXES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+    }
 }
 
 /// Rooms + areas bundled so placement code can resolve a persisted
@@ -78,6 +99,9 @@ impl Plugin for ScenePlugin {
         // directory. init_resource so ScenePlugin stands alone; if
         // PersistencePlugin is also present its identical default is a no-op.
         app.init_resource::<grim_persistence::PersistenceConfig>();
+        // Reserved character-name prefixes. init_resource keeps the built-in
+        // defaults unless the author inserted a custom list before this plugin.
+        app.init_resource::<ReservedNamePrefixes>();
         app.add_message::<ConnectionOutput>()
             .add_message::<ConnectionResumed>()
             .add_message::<DisconnectRequest>()
@@ -576,6 +600,15 @@ fn handle_client_input(
 
             ClientState::CreateCharacter => {
                 match validate_character_name(text.trim()) {
+                    Ok(name) if is_name_reserved(&name, &res.reserved.0) => {
+                        outputs.write(ConnectionOutput {
+                            echo: None,
+                            ..ConnectionOutput::new(
+                                conn,
+                                "That name is reserved.\nEnter a name for your new character: ",
+                            )
+                        });
+                    }
                     Ok(name) => {
                         let Some(account_entity) = client.account else {
                             continue;
@@ -1923,6 +1956,7 @@ mod tests {
             ))
             .id();
         app.world_mut().insert_resource(StartingRoom(room));
+        app.init_resource::<ReservedNamePrefixes>();
 
         let conn = app
             .world_mut()
@@ -3400,6 +3434,62 @@ mod tests {
             .unwrap()
             .connection
             .is_some());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn create_character_reserved_name_is_configurable() {
+        let dir = unique_dir("reserved");
+        let mut app = test_app_in(&dir);
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let account_entity = app
+            .world_mut()
+            .spawn(Account {
+                id: Uuid::new_v4(),
+                identifier: "r@example.com".into(),
+                password_hash: hash_password("password"),
+                characters: vec![],
+                created_at: Utc::now(),
+            })
+            .id();
+        let conn = spawn_conn(&mut app, 1);
+        let mut client = Client::new(conn);
+        client.state = ClientState::CreateCharacter;
+        client.account = Some(account_entity);
+        app.world_mut().spawn(client);
+
+        // Default reserved list rejects a name starting with "self".
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "self".into(),
+        });
+        app.update();
+        {
+            let mut q = app.world_mut().query::<&GrimName>();
+            assert!(
+                q.iter(app.world()).all(|n| n.0 != "Self"),
+                "a reserved name must not create a character"
+            );
+        }
+
+        // Replace the reserved list with an empty one → the name is now allowed.
+        app.world_mut()
+            .insert_resource(ReservedNamePrefixes(vec![]));
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "self".into(),
+        });
+        app.update();
+        {
+            let mut q = app.world_mut().query::<&GrimName>();
+            assert!(
+                q.iter(app.world()).any(|n| n.0 == "Self"),
+                "an empty reserved list should allow the name"
+            );
+        }
 
         let _ = std::fs::remove_dir_all(&dir);
     }
