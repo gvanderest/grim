@@ -1,8 +1,7 @@
 use bevy::log::info;
 use bevy::prelude::*;
 use grim_engine_types::components::{
-    Account, Area, Character, Client, Description, InRoom, Linkdead, Name, OutputHistory, Player,
-    Room, RoomLocation,
+    Account, Area, Character, Client, InRoom, Linkdead, OutputHistory, Player, Room, RoomLocation,
 };
 use grim_engine_types::events::{LinkdeadAnnounce, MoveEvent};
 use grim_networking::{Connection, ConnectionClosed};
@@ -68,7 +67,20 @@ fn load_persisted_data(mut commands: Commands, config: Res<PersistenceConfig>) {
         }
     }
 
-    if let Ok(entries) = fs::read_dir(&characters_dir) {
+    // Characters are NOT loaded here. They load lazily from disk when their
+    // account logs in (see `load_account_characters`) and are despawned on quit,
+    // so the world only holds characters that are actually in play.
+}
+
+/// Read every character on disk belonging to `account_id`. Used to lazily bring
+/// an account's characters into the world at login. Missing dir → empty.
+pub fn load_account_characters(
+    config: &PersistenceConfig,
+    account_id: uuid::Uuid,
+) -> Vec<Character> {
+    let dir = config.characters_dir();
+    let mut out = Vec::new();
+    if let Ok(entries) = fs::read_dir(&dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().and_then(|e| e.to_str()) != Some("json") {
@@ -76,16 +88,22 @@ fn load_persisted_data(mut commands: Commands, config: Res<PersistenceConfig>) {
             }
             if let Ok(data) = fs::read_to_string(&path) {
                 if let Ok(character) = serde_json::from_str::<Character>(&data) {
-                    let name = character.name.clone();
-                    commands.spawn((
-                        character,
-                        Name(name),
-                        Description("A new adventurer.".into()),
-                    ));
+                    if character.account_id == account_id {
+                        out.push(character);
+                    }
                 }
             }
         }
     }
+    out
+}
+
+/// Read a single character from disk by name (`<name>.json`), for login-by-name
+/// of a character that isn't currently in the world.
+pub fn load_character_by_name(config: &PersistenceConfig, name: &str) -> Option<Character> {
+    let path = config.characters_dir().join(format!("{name}.json"));
+    let data = fs::read_to_string(path).ok()?;
+    serde_json::from_str::<Character>(&data).ok()
 }
 
 /// On connection close: persist the bound account/character (refreshing the
@@ -265,40 +283,67 @@ mod tests {
     // --- load_persisted_data: character loading ---
 
     #[test]
-    fn test_load_persisted_data_with_valid_character() {
-        let _guard = FS_LOCK.lock().unwrap();
-        let _ = fs::remove_dir_all("data/accounts");
-        let _ = fs::remove_dir_all("data/characters");
-        let _ = fs::create_dir_all("data/accounts");
-        let _ = fs::create_dir_all("data/characters");
+    fn startup_does_not_load_characters_but_helper_reads_them_by_account() {
+        // Characters load lazily (on login), not at startup. A unique temp dir so
+        // no FS_LOCK is needed.
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("grim-pers-lazy-{}-{}", std::process::id(), n));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("characters")).unwrap();
 
-        let character = Character {
+        let account_id = Uuid::new_v4();
+        let mine = Character {
             id: Uuid::new_v4(),
             name: "TestHero".into(),
-            account_id: Uuid::new_v4(),
+            account_id,
             created_at: Utc::now(),
             last_room: None,
             roles: Vec::new(),
         };
-        let char_path = format!("data/characters/{}.json", character.name);
-        fs::write(&char_path, serde_json::to_string(&character).unwrap()).unwrap();
+        let other = Character {
+            id: Uuid::new_v4(),
+            name: "Stranger".into(),
+            account_id: Uuid::new_v4(), // a different account
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+        };
+        for c in [&mine, &other] {
+            fs::write(
+                dir.join("characters").join(format!("{}.json", c.name)),
+                serde_json::to_string(c).unwrap(),
+            )
+            .unwrap();
+        }
 
-        let mut app = test_app();
+        let config = PersistenceConfig { dir: dir.clone() };
+
+        // Startup does NOT spawn any character entity.
+        let mut app = App::new();
+        app.insert_resource(config.clone());
+        app.add_plugins(MinimalPlugins)
+            .add_plugins(PersistencePlugin);
+        app.add_message::<LinkdeadAnnounce>();
         app.update();
+        let mut q = app.world_mut().query::<&Character>();
+        assert_eq!(
+            q.iter(app.world()).len(),
+            0,
+            "startup must not load characters"
+        );
 
-        let mut query = app.world_mut().query::<(&Character, &Name, &Description)>();
-        let loaded: Vec<_> = query.iter(app.world()).collect();
-        assert_eq!(loaded.len(), 1);
-        assert_eq!(loaded[0].0.name, "TestHero");
-        assert_eq!(loaded[0].1 .0, "TestHero");
-        assert_eq!(loaded[0].2 .0, "A new adventurer.");
+        // The lazy loader reads only this account's characters, by name too.
+        let mut mine_only = load_account_characters(&config, account_id);
+        assert_eq!(mine_only.len(), 1);
+        assert_eq!(mine_only.remove(0).name, "TestHero");
+        assert_eq!(
+            load_character_by_name(&config, "TestHero").unwrap().name,
+            "TestHero"
+        );
+        assert!(load_character_by_name(&config, "Nobody").is_none());
 
-        // No account was loaded
-        let mut acct_query = app.world_mut().query::<&Account>();
-        assert_eq!(acct_query.iter(app.world()).len(), 0);
-
-        let _ = fs::remove_dir_all("data/accounts");
-        let _ = fs::remove_dir_all("data/characters");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -338,10 +383,15 @@ mod tests {
         assert_eq!(loaded_accts.len(), 1);
         assert_eq!(loaded_accts[0].identifier, "dualuser");
 
-        let mut char_query = app.world_mut().query::<(&Character, &Name)>();
-        let loaded_chars: Vec<_> = char_query.iter(app.world()).collect();
-        assert_eq!(loaded_chars.len(), 1);
-        assert_eq!(loaded_chars[0].0.name, "DualHero");
+        // Startup loads the account but NOT its characters (those load on login).
+        let mut char_query = app.world_mut().query::<&Character>();
+        assert_eq!(char_query.iter(app.world()).len(), 0);
+        let config = PersistenceConfig {
+            dir: std::path::PathBuf::from("data"),
+        };
+        let chars = load_account_characters(&config, account.id);
+        assert_eq!(chars.len(), 1);
+        assert_eq!(chars[0].name, "DualHero");
 
         let _ = fs::remove_dir_all("data/accounts");
         let _ = fs::remove_dir_all("data/characters");
@@ -842,16 +892,19 @@ mod tests {
         )
         .unwrap();
 
+        let config = PersistenceConfig { dir: dir.clone() };
         let mut app = App::new();
-        app.insert_resource(PersistenceConfig { dir: dir.clone() });
+        app.insert_resource(config.clone());
         app.add_plugins(MinimalPlugins)
             .add_plugins(PersistencePlugin);
         app.add_message::<LinkdeadAnnounce>();
-        app.update(); // Startup load
+        app.update(); // Startup load (accounts only)
 
-        let mut cq = app.world_mut().query::<&Character>();
+        // The lazy character loader must read from the configured directory.
         assert!(
-            cq.iter(app.world()).any(|c| c.name == "CfgHero"),
+            load_account_characters(&config, seeded.account_id)
+                .iter()
+                .any(|c| c.name == "CfgHero"),
             "load must read the configured directory"
         );
 

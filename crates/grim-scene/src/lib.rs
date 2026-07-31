@@ -18,6 +18,7 @@ use grim_engine_types::validation::{
 use grim_networking::{
     ConnectionEstablished, ConnectionInput, ConnectionOutput, ConnectionResumed, DisconnectRequest,
 };
+use grim_persistence::{load_account_characters, load_character_by_name, PersistenceConfig};
 use std::collections::VecDeque;
 use uuid::Uuid;
 
@@ -135,6 +136,7 @@ fn handle_connection_resumed(
     players: Query<&Player>,
     rooms: RoomResolver,
     starting: Res<StartingRoom>,
+    persistence: Res<PersistenceConfig>,
     mut outputs: MessageWriter<ConnectionOutput>,
     mut look_room: MessageWriter<LookRoom>,
     mut disconnect: MessageWriter<DisconnectRequest>,
@@ -156,39 +158,69 @@ fn handle_connection_resumed(
             disconnect.write(DisconnectRequest { connection: conn });
         };
 
-        // Match the persisted character entity (loaded at startup) by name.
-        let Some((char_entity, character, _)) =
+        // Resolve the character entity + account + room. In the new lifecycle a
+        // logged-out character lives only on disk, so a resumed character may not
+        // be resident yet — spawn it from disk before placing it.
+        let account_entity;
+        let char_entity;
+        let room;
+        if let Some((resident, character, _)) =
             characters.iter().find(|(_, c, _)| c.name == ev.character)
-        else {
-            abort(&mut outputs, &mut disconnect, "character not found");
-            continue;
-        };
-        // A resumed character must not already be live (would mean a duplicate
-        // handoff or a name collision) — unexpected state, so refuse.
-        if players
-            .get(char_entity)
-            .ok()
-            .and_then(|p| p.connection)
-            .is_some()
         {
-            abort(&mut outputs, &mut disconnect, "character already connected");
-            continue;
+            // A resumed character must not already be live (would mean a
+            // duplicate handoff or a name collision) — unexpected state, refuse.
+            if players
+                .get(resident)
+                .ok()
+                .and_then(|p| p.connection)
+                .is_some()
+            {
+                abort(&mut outputs, &mut disconnect, "character already connected");
+                continue;
+            }
+            // A character with no matching account is corrupt; refuse.
+            let Some((acct, _)) = accounts.iter().find(|(_, a)| a.id == character.account_id)
+            else {
+                abort(&mut outputs, &mut disconnect, "account not found");
+                continue;
+            };
+            let r = rooms.placement(character.last_room.as_ref(), starting.0);
+            commands.entity(resident).insert((
+                Player {
+                    connection: Some(conn),
+                },
+                InRoom { room: r },
+            ));
+            account_entity = acct;
+            char_entity = resident;
+            room = r;
+        } else {
+            // Not resident: load from disk and spawn a fresh entity.
+            let Some(loaded) = load_character_by_name(&persistence, &ev.character) else {
+                abort(&mut outputs, &mut disconnect, "character not found");
+                continue;
+            };
+            let Some((acct, _)) = accounts.iter().find(|(_, a)| a.id == loaded.account_id) else {
+                abort(&mut outputs, &mut disconnect, "account not found");
+                continue;
+            };
+            let last = loaded.last_room.clone();
+            let name = loaded.name.clone();
+            let r = rooms.placement(last.as_ref(), starting.0);
+            char_entity = commands
+                .spawn((
+                    loaded,
+                    GrimName(name),
+                    Description("A new adventurer.".into()),
+                    Player {
+                        connection: Some(conn),
+                    },
+                    InRoom { room: r },
+                ))
+                .id();
+            account_entity = acct;
+            room = r;
         }
-        // A character with no matching account is corrupt; refuse.
-        let Some((account_entity, _)) = accounts.iter().find(|(_, a)| a.id == character.account_id)
-        else {
-            abort(&mut outputs, &mut disconnect, "account not found");
-            continue;
-        };
-
-        let room = rooms.placement(character.last_room.as_ref(), starting.0);
-
-        commands.entity(char_entity).insert((
-            Player {
-                connection: Some(conn),
-            },
-            InRoom { room },
-        ));
 
         let mut client = Client::new(conn);
         client.state = ClientState::InGame;
@@ -251,28 +283,28 @@ fn handle_client_input(
                     });
                     continue;
                 }
-                // First, try as character name
+                // First, try as a character name. Resolve to (account_id, name)
+                // WITHOUT needing a resident entity: prefer a resident character
+                // (linkdead beats online for the same name), else read from disk.
                 let trimmed = text.trim();
-                let char_match = characters
+                let resolved: Option<(Uuid, String)> = characters
                     .iter()
                     .filter(|(_, _, n)| n.0.eq_ignore_ascii_case(trimmed))
-                    .max_by_key(|(e, _, _)| if linkdead.get(*e).is_ok() { 1 } else { 0 });
-                if let Some((char_entity, character, _)) = char_match {
-                    let account_found = accounts.iter().find(|(_, a)| a.id == character.account_id);
-                    if let Some((_account_entity, _)) = account_found {
+                    .max_by_key(|(e, _, _)| if linkdead.get(*e).is_ok() { 1 } else { 0 })
+                    .map(|(_, c, n)| (c.account_id, n.0.clone()))
+                    .or_else(|| {
+                        load_character_by_name(&res.persistence, trimmed)
+                            .map(|c| (c.account_id, c.name))
+                    });
+                if let Some((acct_id, name)) = resolved {
+                    // Only enter the password flow if the owning account is known
+                    // (accounts are all loaded at startup); otherwise fall through
+                    // to email validation below.
+                    if let Some((_, account)) = accounts.iter().find(|(_, a)| a.id == acct_id) {
                         client.state = ClientState::PasswordPrompt {
-                            identifier: characters
-                                .get(char_entity)
-                                .map(|(_, c, _)| {
-                                    accounts
-                                        .iter()
-                                        .find(|(_, a)| a.id == c.account_id)
-                                        .map(|(_, a)| a.identifier.clone())
-                                        .unwrap_or_default()
-                                })
-                                .unwrap_or_default(),
+                            identifier: account.identifier.clone(),
                             is_new: false,
-                            character: Some(char_entity),
+                            character: Some(name),
                         };
                         outputs.write(ConnectionOutput {
                             echo: Some(false),
@@ -338,8 +370,8 @@ fn handle_client_input(
                 is_new,
                 character,
             } => {
-                // Copy before mutating client to avoid borrow conflict
-                let auto_select = *character;
+                // Clone before mutating client to avoid borrow conflict.
+                let auto_select = character.clone();
                 if text.trim().is_empty() {
                     client.state = ClientState::LoginPrompt;
                     outputs.write(ConnectionOutput {
@@ -383,6 +415,7 @@ fn handle_client_input(
                                 &mut outputs,
                                 &linkdead,
                                 &players,
+                                &res.persistence,
                             );
                         }
                         Err(e) => {
@@ -396,85 +429,40 @@ fn handle_client_input(
                         }
                     }
                 } else {
-                    let account_found = accounts.iter().find(|(_, a)| a.identifier == *identifier);
+                    let account_found = accounts
+                        .iter()
+                        .find(|(_, a)| a.identifier == *identifier)
+                        .map(|(e, a)| (e, a.id));
                     match account_found {
-                        Some((account_entity, account)) => {
-                            if verify_password(text.trim(), &account.password_hash) {
+                        Some((account_entity, account_id)) => {
+                            let ok = accounts
+                                .get(account_entity)
+                                .map(|(_, a)| verify_password(text.trim(), &a.password_hash))
+                                .unwrap_or(false);
+                            if ok {
                                 client.account = Some(account_entity);
-                                if let Some(char_entity) = auto_select {
-                                    // Auto-select character: skip character select
-                                    info!("PasswordPrompt auto-select: char_entity={:?}, has_linkdead={}",
-                                        char_entity, linkdead.get(char_entity).is_ok());
-                                    if linkdead.get(char_entity).is_ok() {
-                                        // Linkdead reconnect
-                                        commands.entity(char_entity).remove::<Linkdead>();
-                                        commands.entity(char_entity).insert(Player {
-                                            connection: Some(conn),
-                                        });
-                                        client.character = Some(char_entity);
-                                        client.state = ClientState::InGame;
-                                        client.input_queue = VecDeque::new();
-                                        client.command_cooldown =
-                                            Timer::from_seconds(0.5, TimerMode::Once);
-                                        outputs.write(ConnectionOutput {
-                                            echo: None,
-                                            ..ConnectionOutput::new(conn, "Reconnecting...\n")
-                                        });
-                                        // Replay buffered output from before disconnect
-                                        if let Ok(mut history) = histories.get_mut(char_entity) {
-                                            for line in history.drain() {
-                                                outputs.write(ConnectionOutput {
-                                                    echo: None,
-                                                    ..ConnectionOutput::new(conn, line)
-                                                });
-                                            }
-                                        }
-                                        if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
-                                            look_room.write(LookRoom {
-                                                target: char_entity,
-                                                room: ir.room,
-                                            });
-                                        }
-                                        announce_linkdead.write(LinkdeadAnnounce {
-                                            name: characters
-                                                .get(char_entity)
-                                                .map(|(_, _, n)| n.0.clone())
-                                                .unwrap_or_default(),
-                                            reconnecting: true,
-                                        });
-                                        info!("Character reconnected via name login");
-                                        // Start fresh output capture on the new connection
-                                        commands.entity(conn).insert(OutputHistory::with_max(100));
-                                    } else {
-                                        // Check if character is already online — disconnect old session
-                                        if let Ok(player) = players.get(char_entity) {
-                                            if let Some(old_conn) = player.connection {
-                                                outputs.write(ConnectionOutput::new(old_conn, "Someone else has logged into this character.\n"));
-                                                disconnect.write(DisconnectRequest {
-                                                    connection: old_conn,
-                                                });
-                                            }
-                                        }
-                                        let last = characters
-                                            .get(char_entity)
-                                            .ok()
-                                            .and_then(|(_, c, _)| c.last_room.clone());
-                                        commands.entity(char_entity).insert((
-                                            Player {
-                                                connection: Some(conn),
-                                            },
-                                            InRoom {
-                                                room: rooms
-                                                    .placement(last.as_ref(), res.starting.0),
-                                            },
-                                        ));
-                                        client.character = Some(char_entity);
-                                        client.state = ClientState::MotdPrompt;
-                                        outputs.write(ConnectionOutput {
-                                            echo: Some(true),
-                                            ..ConnectionOutput::new(conn, formatter::format_motd())
-                                        });
-                                    }
+                                if let Some(name) = auto_select {
+                                    // Logged in by character name → straight into
+                                    // the world (reconnect / takeover / spawn).
+                                    enter_world_by_name(
+                                        conn,
+                                        &mut client,
+                                        account_id,
+                                        &name,
+                                        &mut commands,
+                                        &characters,
+                                        &players,
+                                        &linkdead,
+                                        &player_chars,
+                                        &mut histories,
+                                        &rooms,
+                                        res.starting.0,
+                                        &res.persistence,
+                                        &mut outputs,
+                                        &mut look_room,
+                                        &mut announce_linkdead,
+                                        &mut disconnect,
+                                    );
                                 } else {
                                     client.state = ClientState::CharacterSelect;
                                     show_character_menu(
@@ -485,6 +473,7 @@ fn handle_client_input(
                                         &mut outputs,
                                         &linkdead,
                                         &players,
+                                        &res.persistence,
                                     );
                                 }
                             } else {
@@ -525,31 +514,24 @@ fn handle_client_input(
                 let Ok((_, account)) = accounts.get(account_entity) else {
                     continue;
                 };
-                let mut char_list: Vec<(Entity, Uuid, String)> = characters
-                    .iter()
-                    .filter(|(_, c, _)| account.characters.contains(&c.id))
-                    .map(|(e, c, n)| (e, c.id, n.0.clone()))
-                    .collect();
-                // Sort so linkdead characters come first (for same name)
-                char_list.sort_by_key(|(e, _, name)| {
-                    (name.clone(), if linkdead.get(*e).is_ok() { 0 } else { 1 })
-                });
-                // Try number selection
-                let selected = if let Ok(idx) = lower.parse::<usize>() {
-                    if idx >= 1 && idx <= char_list.len() {
-                        Some(char_list[idx - 1].0)
+                let account_id = account.id;
+                // Resident (owned) UNION disk, deduped by id, stable order.
+                let entries = account_character_list(account, &characters, &res.persistence);
+                // Resolve the selection (index or case-insensitive name) to a name.
+                let selected: Option<String> = if let Ok(idx) = lower.parse::<usize>() {
+                    if idx >= 1 {
+                        entries.get(idx - 1).map(|e| e.name.clone())
                     } else {
                         None
                     }
-                // Try name selection (case-insensitive)
                 } else {
-                    char_list
+                    entries
                         .iter()
-                        .find(|(_, _, n)| n.to_lowercase() == lower)
-                        .map(|&(e, _, _)| e)
+                        .find(|e| e.name.to_lowercase() == lower)
+                        .map(|e| e.name.clone())
                 };
 
-                let Some(char_entity) = selected else {
+                let Some(name) = selected else {
                     show_character_menu(
                         client_entity,
                         &client,
@@ -558,85 +540,30 @@ fn handle_client_input(
                         &mut outputs,
                         &linkdead,
                         &players,
+                        &res.persistence,
                     );
                     continue;
                 };
 
-                let char_name = characters
-                    .get(char_entity)
-                    .map(|(_, _, n)| n.0.clone())
-                    .ok();
-                if linkdead.get(char_entity).is_ok() {
-                    // Reconnecting linkdead
-                    commands.entity(char_entity).remove::<Linkdead>();
-                    commands.entity(char_entity).insert(Player {
-                        connection: Some(conn),
-                    });
-                    client.character = Some(char_entity);
-                    client.state = ClientState::InGame;
-                    client.input_queue = VecDeque::new();
-                    client.command_cooldown = Timer::from_seconds(0.5, TimerMode::Once);
-                    outputs.write(ConnectionOutput {
-                        echo: None,
-                        ..ConnectionOutput::new(conn, "Reconnecting...\n")
-                    });
-                    // Replay buffered output from before disconnect
-                    if let Ok(mut history) = histories.get_mut(char_entity) {
-                        for line in history.drain() {
-                            outputs.write(ConnectionOutput {
-                                echo: None,
-                                ..ConnectionOutput::new(conn, line)
-                            });
-                        }
-                    }
-                    if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
-                        look_room.write(LookRoom {
-                            target: char_entity,
-                            room: ir.room,
-                        });
-                    }
-                    announce_linkdead.write(LinkdeadAnnounce {
-                        name: char_name.clone().unwrap_or_default(),
-                        reconnecting: true,
-                    });
-                    info!(
-                        "Character '{}' reconnected",
-                        char_name.as_deref().unwrap_or("?")
-                    );
-                    // Start fresh output capture on the new connection
-                    commands.entity(conn).insert(OutputHistory::with_max(100));
-                } else {
-                    // Check if character is already online — disconnect old session
-                    if let Ok(player) = players.get(char_entity) {
-                        if let Some(old_conn) = player.connection {
-                            outputs.write(ConnectionOutput::new(
-                                old_conn,
-                                "Someone else has logged into this character.\n",
-                            ));
-                            disconnect.write(DisconnectRequest {
-                                connection: old_conn,
-                            });
-                        }
-                    }
-                    let last = characters
-                        .get(char_entity)
-                        .ok()
-                        .and_then(|(_, c, _)| c.last_room.clone());
-                    commands.entity(char_entity).insert((
-                        Player {
-                            connection: Some(conn),
-                        },
-                        InRoom {
-                            room: rooms.placement(last.as_ref(), res.starting.0),
-                        },
-                    ));
-                    client.character = Some(char_entity);
-                    client.state = ClientState::MotdPrompt;
-                    outputs.write(ConnectionOutput {
-                        echo: None,
-                        ..ConnectionOutput::new(conn, formatter::format_motd())
-                    });
-                }
+                enter_world_by_name(
+                    conn,
+                    &mut client,
+                    account_id,
+                    &name,
+                    &mut commands,
+                    &characters,
+                    &players,
+                    &linkdead,
+                    &player_chars,
+                    &mut histories,
+                    &rooms,
+                    res.starting.0,
+                    &res.persistence,
+                    &mut outputs,
+                    &mut look_room,
+                    &mut announce_linkdead,
+                    &mut disconnect,
+                );
             }
 
             ClientState::CreateCharacter => {
@@ -853,7 +780,209 @@ fn handle_client_input(
     }
 }
 
+/// One selectable character for the account menu / selection. A logged-out
+/// character has no ECS entity, so `resident` is `None` and it lives only on
+/// disk; a resident entity (in-world / linkdead) carries `Some(entity)`.
+struct CharEntry {
+    id: Uuid,
+    name: String,
+    resident: Option<Entity>,
+}
+
+/// The account's characters as a stable, deduped, name-sorted list: resident
+/// (owned) entities UNION the account's on-disk characters, deduped by id with
+/// the resident copy winning. Used by BOTH `show_character_menu` (display) and
+/// `CharacterSelect` (index/name resolution) so numbering always agrees.
+fn account_character_list(
+    account: &Account,
+    characters: &Query<(Entity, &Character, &GrimName)>,
+    persistence: &PersistenceConfig,
+) -> Vec<CharEntry> {
+    let mut entries: Vec<CharEntry> = Vec::new();
+    for (e, ch, name) in characters.iter() {
+        if account.characters.contains(&ch.id) {
+            entries.push(CharEntry {
+                id: ch.id,
+                name: name.0.clone(),
+                resident: Some(e),
+            });
+        }
+    }
+    for ch in load_account_characters(persistence, account.id) {
+        if !entries.iter().any(|e| e.id == ch.id) {
+            entries.push(CharEntry {
+                id: ch.id,
+                name: ch.name,
+                resident: None,
+            });
+        }
+    }
+    entries.sort_by_key(|e| e.name.to_lowercase());
+    entries
+}
+
+/// Enter the world as a named character owned by the just-authed account. Used
+/// by both the login-by-name auto-select path and the character-menu selection,
+/// so the two share one placement/reconnect/takeover routine.
+///
+/// - Resident + linkdead → reconnect (replay buffered output).
+/// - Resident + online/offline → takeover (disconnect any old session), place.
+/// - Not resident → load from disk and spawn a fresh in-world entity.
+///
+/// Fails closed: the character's `account_id` must equal `account_id`, and an
+/// unknown name is refused — both return the client to the login prompt.
+#[allow(clippy::too_many_arguments)]
+fn enter_world_by_name(
+    conn: Entity,
+    client: &mut Client,
+    account_id: Uuid,
+    name: &str,
+    commands: &mut Commands,
+    characters: &Query<(Entity, &Character, &GrimName)>,
+    players: &Query<&Player>,
+    linkdead: &Query<&Linkdead>,
+    player_chars: &Query<(Entity, &GrimName, &InRoom, Option<&Character>)>,
+    histories: &mut Query<&mut OutputHistory>,
+    rooms: &RoomResolver,
+    starting: Entity,
+    persistence: &PersistenceConfig,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+    look_room: &mut MessageWriter<LookRoom>,
+    announce_linkdead: &mut MessageWriter<LinkdeadAnnounce>,
+    disconnect: &mut MessageWriter<DisconnectRequest>,
+) {
+    let refuse = |client: &mut Client, outputs: &mut MessageWriter<ConnectionOutput>, msg: &str| {
+        client.state = ClientState::LoginPrompt;
+        outputs.write(ConnectionOutput {
+            echo: Some(true),
+            ..ConnectionOutput::new(conn, format!("{msg}\n{}", tr!("login.prompt")))
+        });
+    };
+
+    // Prefer a resident entity for this name (linkdead beats online).
+    let resident = characters
+        .iter()
+        .filter(|(_, _, n)| n.0.eq_ignore_ascii_case(name))
+        .max_by_key(|(e, _, _)| if linkdead.get(*e).is_ok() { 1 } else { 0 })
+        .map(|(e, c, _)| (e, c.account_id));
+
+    if let Some((char_entity, char_account)) = resident {
+        // Fail closed: the character must belong to the authed account.
+        if char_account != account_id {
+            refuse(
+                client,
+                outputs,
+                "That character does not belong to this account.",
+            );
+            return;
+        }
+        if linkdead.get(char_entity).is_ok() {
+            // Reconnect a linkdead character.
+            commands.entity(char_entity).remove::<Linkdead>();
+            commands.entity(char_entity).insert(Player {
+                connection: Some(conn),
+            });
+            client.character = Some(char_entity);
+            client.state = ClientState::InGame;
+            client.input_queue = VecDeque::new();
+            client.command_cooldown = Timer::from_seconds(0.5, TimerMode::Once);
+            outputs.write(ConnectionOutput {
+                echo: None,
+                ..ConnectionOutput::new(conn, "Reconnecting...\n")
+            });
+            // Replay buffered output from before the disconnect.
+            if let Ok(mut history) = histories.get_mut(char_entity) {
+                for line in history.drain() {
+                    outputs.write(ConnectionOutput {
+                        echo: None,
+                        ..ConnectionOutput::new(conn, line)
+                    });
+                }
+            }
+            if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
+                look_room.write(LookRoom {
+                    target: char_entity,
+                    room: ir.room,
+                });
+            }
+            announce_linkdead.write(LinkdeadAnnounce {
+                name: name.to_string(),
+                reconnecting: true,
+            });
+            info!("Character '{name}' reconnected");
+            // Start fresh output capture on the new connection.
+            commands.entity(conn).insert(OutputHistory::with_max(100));
+        } else {
+            // Online/offline resident → takeover: kick any existing session.
+            if let Ok(player) = players.get(char_entity) {
+                if let Some(old_conn) = player.connection {
+                    outputs.write(ConnectionOutput::new(
+                        old_conn,
+                        "Someone else has logged into this character.\n",
+                    ));
+                    disconnect.write(DisconnectRequest {
+                        connection: old_conn,
+                    });
+                }
+            }
+            let last = characters
+                .get(char_entity)
+                .ok()
+                .and_then(|(_, c, _)| c.last_room.clone());
+            commands.entity(char_entity).insert((
+                Player {
+                    connection: Some(conn),
+                },
+                InRoom {
+                    room: rooms.placement(last.as_ref(), starting),
+                },
+            ));
+            client.character = Some(char_entity);
+            client.state = ClientState::MotdPrompt;
+            outputs.write(ConnectionOutput {
+                echo: Some(true),
+                ..ConnectionOutput::new(conn, formatter::format_motd())
+            });
+        }
+        return;
+    }
+
+    // Not resident: bring the character in from disk.
+    match load_character_by_name(persistence, name) {
+        Some(loaded) if loaded.account_id == account_id => {
+            let last = loaded.last_room.clone();
+            let canonical = loaded.name.clone();
+            let char_entity = commands
+                .spawn((
+                    loaded,
+                    GrimName(canonical),
+                    Description("A new adventurer.".into()),
+                    Player {
+                        connection: Some(conn),
+                    },
+                    InRoom {
+                        room: rooms.placement(last.as_ref(), starting),
+                    },
+                ))
+                .id();
+            client.character = Some(char_entity);
+            client.state = ClientState::MotdPrompt;
+            outputs.write(ConnectionOutput {
+                echo: Some(true),
+                ..ConnectionOutput::new(conn, formatter::format_motd())
+            });
+        }
+        Some(_) => refuse(
+            client,
+            outputs,
+            "That character does not belong to this account.",
+        ),
+        None => refuse(client, outputs, "That character could not be found."),
+    }
+}
+
 /// Build and send the character selection menu.
+#[allow(clippy::too_many_arguments)]
 fn show_character_menu(
     _client_entity: Entity,
     client: &Client,
@@ -862,6 +991,7 @@ fn show_character_menu(
     outputs: &mut MessageWriter<ConnectionOutput>,
     linkdead: &Query<&Linkdead>,
     players: &Query<&Player>,
+    persistence: &PersistenceConfig,
 ) {
     let conn = client.connection;
     let Some(account_entity) = client.account else {
@@ -875,32 +1005,19 @@ fn show_character_menu(
     };
     let mut menu = format!("{}\n[ Characters ]\n", welcome);
     let mut idx = 1;
-    // Resolve the account's owned character ids ONCE, and fail closed: if the
-    // account entity is not resolvable (e.g. spawned this frame via
-    // commands.spawn and not yet flushed, which is exactly the case for an
-    // account created moments ago), show no characters. The previous code put
-    // the ownership check inside `if let Ok(..)` and let a failed lookup fall
-    // straight through to listing EVERY character in the world — a brand-new
-    // account saw every other account's characters.
+    // Fail closed: if the account entity is not resolvable (e.g. spawned this
+    // frame via commands.spawn and not yet flushed, which is exactly the case
+    // for an account created moments ago), show no characters.
     if let Ok((_, account)) = accounts.get(account_entity) {
-        for (char_entity, ch, name) in characters.iter() {
-            if !account.characters.contains(&ch.id) {
-                continue;
-            }
-            let suffix = if linkdead.get(char_entity).is_ok() {
-                " (linkdead)"
-            } else if let Ok(player) = players.get(char_entity) {
-                if player.connection.is_some() {
-                    " (online)"
-                } else {
-                    ""
-                }
-            } else {
-                ""
+        for entry in account_character_list(account, characters, persistence) {
+            let suffix = match entry.resident {
+                Some(e) if linkdead.get(e).is_ok() => " (linkdead)",
+                Some(e) if players.get(e).ok().and_then(|p| p.connection).is_some() => " (online)",
+                _ => "",
             };
             menu.push_str(&format!(
                 "{}. {} - 1 Human Adventurer{}\n",
-                idx, name.0, suffix
+                idx, entry.name, suffix
             ));
             idx += 1;
         }
@@ -941,14 +1058,12 @@ fn process_command_queue(
                     .and_then(|c| player_chars.get(c).ok())
                     .map(|(_, n)| n.0.clone())
                     .unwrap_or_else(|| "Someone".into());
-                // `quit` is an intentional logout: save the character, then
-                // UNLOAD it from the world — remove the in-world components so it
-                // returns to the same bare, offline state as a not-yet-logged-in
-                // character (a later login re-enters it). This is deliberately
-                // NOT linkdead: linkdead is only for an *unexpected* socket drop
-                // (see `save_on_disconnect`). The Client is despawned here, so
-                // when the socket close fires `ConnectionClosed`, save_on_disconnect
-                // finds no client and does not mark the character linkdead.
+                // `quit` is an intentional logout: save the character to disk,
+                // then DESPAWN its entity entirely — a logged-out character lives
+                // only on disk and is re-loaded on next login. This is NOT
+                // linkdead: linkdead is only for an *unexpected* socket drop (see
+                // `save_on_disconnect`). The Client is despawned too, so the
+                // ensuing `ConnectionClosed` finds no client and no linkdead is set.
                 if let Some(char_entity) = client.character {
                     if let Ok(ch) = characters.get(char_entity) {
                         let path = persistence
@@ -959,9 +1074,7 @@ fn process_command_queue(
                             let _ = std::fs::write(path, json);
                         }
                     }
-                    commands
-                        .entity(char_entity)
-                        .remove::<(Player, InRoom, Linkdead, OutputHistory)>();
+                    commands.entity(char_entity).despawn();
                 }
                 commands.entity(entity).despawn();
                 announce_logout.write(LogoutAnnounce {
@@ -1370,7 +1483,7 @@ mod tests {
             ClientState::PasswordPrompt {
                 identifier: "test@example.com".into(),
                 is_new: false,
-                character: Some(char_entity),
+                character: Some("Test".into()),
             },
             "Should be in PasswordPrompt state after name entry"
         );
@@ -1532,10 +1645,9 @@ mod tests {
         );
     }
 
-    /// Reproduce the duplicate-entity bug: two character entities with the same
-    /// name exist (one with Linkdead, one freshly loaded from disk without).
-    /// The name-based login should find the linkdead one, but the query finds
-    /// the first match which may be the wrong entity.
+    /// Two character entities share a name (one linkdead, one stale without
+    /// Linkdead). Login-by-name carries the NAME; entering the world must pick
+    /// the linkdead entity to reconnect, never the stale duplicate.
     #[test]
     fn duplicate_entity_name_login_finds_wrong_one() {
         let mut app = test_app();
@@ -1613,14 +1725,35 @@ mod tests {
 
         match &client.state {
             ClientState::PasswordPrompt { character, .. } => {
-                let selected = character.expect("Should have auto-selected a character");
                 assert_eq!(
-                    selected, real_entity,
-                    "Should have found the linkdead entity, not the stale one"
+                    character.as_deref(),
+                    Some("Test"),
+                    "login-by-name should carry the character name"
                 );
             }
             other => panic!("Expected PasswordPrompt, got {:?}", other),
         }
+
+        // Send password → enter the world. The linkdead (real) entity must be
+        // reconnected, and the stale duplicate left untouched.
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "password".into(),
+        });
+        app.update();
+
+        let mut players = app.world_mut().query::<&Player>();
+        assert!(
+            players
+                .get(app.world(), real_entity)
+                .is_ok_and(|p| p.connection.is_some()),
+            "the linkdead entity should be reconnected"
+        );
+        let mut linkdead = app.world_mut().query::<&Linkdead>();
+        assert!(
+            linkdead.get(app.world(), real_entity).is_err(),
+            "Linkdead should be cleared on the reconnected entity"
+        );
     }
 
     /// Duplicate entity via email login + character select menu.
@@ -2906,5 +3039,358 @@ mod tests {
                     && o.text.contains("character name or email address")),
             "Banner output should contain login prompt"
         );
+    }
+
+    // ── Disk-only character lifecycle (logged-out char has no ECS entity) ──
+
+    /// Fresh app rooted at a unique temp data dir so on-disk fixtures are
+    /// isolated (no `data/` contention with the other tests).
+    fn test_app_in(dir: &std::path::Path) -> App {
+        let _ = std::fs::remove_dir_all(dir);
+        std::fs::create_dir_all(dir.join("characters")).unwrap();
+        std::fs::create_dir_all(dir.join("accounts")).unwrap();
+        let mut app = App::new();
+        app.insert_resource(PersistenceConfig {
+            dir: dir.to_path_buf(),
+        });
+        app.add_plugins(MinimalPlugins);
+        app.add_plugins(WorldPlugin);
+        app.add_plugins(ChannelPlugin);
+        app.add_plugins(PersistencePlugin);
+        app.add_plugins(ScenePlugin);
+        app.add_message::<ConnectionEstablished>()
+            .add_message::<ConnectionInput>();
+        app
+    }
+
+    fn unique_dir(tag: &str) -> std::path::PathBuf {
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        std::env::temp_dir().join(format!("grim-scene-{tag}-{}-{}", std::process::id(), n))
+    }
+
+    /// Write a character to the configured `characters/` dir as if it were saved
+    /// there while logged out (no in-world entity).
+    fn write_disk_char(dir: &std::path::Path, ch: &Character) {
+        std::fs::write(
+            dir.join("characters").join(format!("{}.json", ch.name)),
+            serde_json::to_string(ch).unwrap(),
+        )
+        .unwrap();
+    }
+
+    fn spawn_conn(app: &mut App, id: usize) -> Entity {
+        app.world_mut()
+            .spawn(Connection {
+                id,
+                addr: format!("127.0.0.1:{}", 10000 + id)
+                    .parse::<SocketAddr>()
+                    .unwrap(),
+                echo_hidden: false,
+            })
+            .id()
+    }
+
+    /// Logging in by the name of a character that only exists on disk spawns a
+    /// fresh in-world entity and enters the world (no entity existed before).
+    #[test]
+    fn login_by_name_of_disk_only_character_spawns_and_enters() {
+        let dir = unique_dir("diskname");
+        let mut app = test_app_in(&dir);
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let account_id = Uuid::new_v4();
+        let char_id = Uuid::new_v4();
+        app.world_mut().spawn(Account {
+            id: account_id,
+            identifier: "disk@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![char_id],
+            created_at: Utc::now(),
+        });
+        write_disk_char(
+            &dir,
+            &Character {
+                id: char_id,
+                name: "Disky".into(),
+                account_id,
+                created_at: Utc::now(),
+                last_room: None,
+                roles: Vec::new(),
+            },
+        );
+
+        let conn = spawn_conn(&mut app, 1);
+        app.world_mut().spawn(Client::new(conn));
+
+        // No in-world entity for Disky yet.
+        {
+            let mut q = app.world_mut().query::<(&Character, &GrimName)>();
+            assert!(q.iter(app.world()).all(|(_, n)| n.0 != "Disky"));
+        }
+
+        for line in ["Disky", "password"] {
+            app.world_mut().write_message(ConnectionInput {
+                connection: conn,
+                text: line.into(),
+            });
+            app.update();
+        }
+
+        // An entity was spawned and the client is at the MOTD, in the world.
+        let mut q = app.world_mut().query::<(&Character, &GrimName, &Player)>();
+        let matches: Vec<_> = q
+            .iter(app.world())
+            .filter(|(_, n, _)| n.0 == "Disky")
+            .collect();
+        assert_eq!(matches.len(), 1, "exactly one Disky entity should exist");
+        assert!(matches[0].2.connection.is_some(), "should be connected");
+
+        let mut cq = app.world_mut().query::<&Client>();
+        let client = cq.iter(app.world()).find(|c| c.connection == conn).unwrap();
+        assert_eq!(client.state, ClientState::MotdPrompt);
+        assert!(client.character.is_some());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The character menu lists a disk-only character (plain, no online/linkdead
+    /// suffix), and selecting it enters the world.
+    #[test]
+    fn menu_lists_and_selects_disk_only_character() {
+        let dir = unique_dir("diskmenu");
+        let mut app = test_app_in(&dir);
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let account_id = Uuid::new_v4();
+        let char_id = Uuid::new_v4();
+        app.world_mut().spawn(Account {
+            id: account_id,
+            identifier: "menu@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![char_id],
+            created_at: Utc::now(),
+        });
+        write_disk_char(
+            &dir,
+            &Character {
+                id: char_id,
+                name: "Diskette".into(),
+                account_id,
+                created_at: Utc::now(),
+                last_room: None,
+                roles: Vec::new(),
+            },
+        );
+
+        let conn = spawn_conn(&mut app, 1);
+        app.world_mut().spawn(Client::new(conn));
+
+        for line in ["menu@example.com", "password"] {
+            app.world_mut().write_message(ConnectionInput {
+                connection: conn,
+                text: line.into(),
+            });
+            app.update();
+        }
+
+        // Menu shows the disk-only character, with no residency suffix.
+        {
+            let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+            let mut cursor = msgs.get_cursor();
+            let text: String = cursor
+                .read(msgs)
+                .filter(|o| o.connection == conn)
+                .map(|o| o.text.clone())
+                .collect();
+            assert!(
+                text.contains("Diskette"),
+                "menu should list it; got:\n{text}"
+            );
+            assert!(!text.contains("(online)") && !text.contains("(linkdead)"));
+        }
+
+        // Select it → spawns and enters.
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "1".into(),
+        });
+        app.update();
+
+        let mut q = app.world_mut().query::<(&Character, &GrimName)>();
+        assert_eq!(
+            q.iter(app.world())
+                .filter(|(_, n)| n.0 == "Diskette")
+                .count(),
+            1,
+            "selecting a disk-only character should spawn exactly one entity"
+        );
+        let mut cq = app.world_mut().query::<&Client>();
+        let client = cq.iter(app.world()).find(|c| c.connection == conn).unwrap();
+        assert_eq!(client.state, ClientState::MotdPrompt);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Logging into a character that is already online kicks the old session
+    /// (message + disconnect) and hands the entity to the new connection.
+    #[test]
+    fn online_character_is_taken_over() {
+        let dir = unique_dir("takeover");
+        let mut app = test_app_in(&dir);
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let account_id = Uuid::new_v4();
+        let char_id = Uuid::new_v4();
+        app.world_mut().spawn(Account {
+            id: account_id,
+            identifier: "take@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![char_id],
+            created_at: Utc::now(),
+        });
+
+        // The character is already online on `old_conn`.
+        let old_conn = spawn_conn(&mut app, 1);
+        let char_entity = app
+            .world_mut()
+            .spawn((
+                Character {
+                    id: char_id,
+                    name: "Twinsie".into(),
+                    account_id,
+                    created_at: Utc::now(),
+                    last_room: None,
+                    roles: Vec::new(),
+                },
+                GrimName("Twinsie".into()),
+                Description("Already online.".into()),
+                InRoom { room },
+                Player {
+                    connection: Some(old_conn),
+                },
+                OutputHistory::with_max(100),
+            ))
+            .id();
+
+        // A second connection logs in as the same character by name.
+        let new_conn = spawn_conn(&mut app, 2);
+        app.world_mut().spawn(Client::new(new_conn));
+        for line in ["Twinsie", "password"] {
+            app.world_mut().write_message(ConnectionInput {
+                connection: new_conn,
+                text: line.into(),
+            });
+            app.update();
+        }
+
+        // Old session was told + disconnected.
+        {
+            let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+            let mut cursor = msgs.get_cursor();
+            assert!(
+                cursor
+                    .read(msgs)
+                    .any(|o| o.connection == old_conn && o.text.contains("Someone else")),
+                "old session should be notified"
+            );
+        }
+        let dc = app.world().resource::<Messages<DisconnectRequest>>();
+        assert!(
+            dc.get_cursor().read(dc).any(|d| d.connection == old_conn),
+            "old session should be disconnected"
+        );
+
+        // Entity handed to the new connection; still exactly one entity.
+        let mut q = app.world_mut().query::<(Entity, &GrimName)>();
+        assert_eq!(
+            q.iter(app.world())
+                .filter(|(_, n)| n.0 == "Twinsie")
+                .count(),
+            1,
+            "takeover must not duplicate the entity"
+        );
+        let mut pq = app.world_mut().query::<&Player>();
+        assert_eq!(
+            pq.get(app.world(), char_entity).unwrap().connection,
+            Some(new_conn)
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Reconnecting a linkdead character by name reuses the existing entity —
+    /// it is not duplicated by a stray disk load.
+    #[test]
+    fn linkdead_reconnect_reuses_entity_not_duplicated() {
+        let dir = unique_dir("ldnodup");
+        let mut app = test_app_in(&dir);
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let account_id = Uuid::new_v4();
+        let char_id = Uuid::new_v4();
+        app.world_mut().spawn(Account {
+            id: account_id,
+            identifier: "ld@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![char_id],
+            created_at: Utc::now(),
+        });
+        // Also present on disk (as save-on-disconnect would leave it) to prove
+        // reconnect reuses the resident entity rather than spawning a disk copy.
+        let ch = Character {
+            id: char_id,
+            name: "Linky".into(),
+            account_id,
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+        };
+        write_disk_char(&dir, &ch);
+        let char_entity = app
+            .world_mut()
+            .spawn((
+                ch,
+                GrimName("Linky".into()),
+                Description("A linkdead character.".into()),
+                InRoom { room },
+                Player { connection: None },
+                Linkdead,
+                OutputHistory::with_max(100),
+            ))
+            .id();
+
+        let conn = spawn_conn(&mut app, 1);
+        app.world_mut().spawn(Client::new(conn));
+        for line in ["Linky", "password"] {
+            app.world_mut().write_message(ConnectionInput {
+                connection: conn,
+                text: line.into(),
+            });
+            app.update();
+        }
+
+        let mut q = app.world_mut().query::<(Entity, &GrimName, &Character)>();
+        let entities: Vec<Entity> = q
+            .iter(app.world())
+            .filter(|(_, n, _)| n.0 == "Linky")
+            .map(|(e, _, _)| e)
+            .collect();
+        assert_eq!(entities, vec![char_entity], "must reuse the same entity");
+
+        let mut ld = app.world_mut().query::<&Linkdead>();
+        assert!(ld.get(app.world(), char_entity).is_err());
+        let mut pq = app.world_mut().query::<&Player>();
+        assert!(pq
+            .get(app.world(), char_entity)
+            .unwrap()
+            .connection
+            .is_some());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
