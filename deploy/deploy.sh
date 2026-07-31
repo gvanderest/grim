@@ -36,18 +36,23 @@ mv -f "$STAGED" "$BIN"
 chmod +x "$BIN"
 
 # Sync the systemd unit. Render `User=` to the deploy user so signalling the
-# process needs no privilege. `unit_changed` is the adoption signal: if the unit
-# changed we cold-restart below (the running instance only adopts the new unit on
-# restart); if it is unchanged the running instance is already under it, so a
-# copyover is safe.
-unit_changed=0
+# process needs no privilege.
+#
+# Adoption is tracked with a PERSISTENT marker, not just an in-run flag: the
+# running process only adopts a new unit when it restarts, so between "unit
+# installed + daemon-reloaded" and "restarted" there is a window where the unit
+# on disk is new but the live process is still under the old one. If the deploy
+# is interrupted in that window, a later run would see the unit unchanged and
+# wrongly copyover into a process running the old (e.g. Type=simple) lifecycle.
+# The marker survives that interruption and forces the pending cold restart.
+PENDING="$APP_DIR/.unit-restart-pending"
 rendered="$(mktemp)"
 sed "s#^User=.*#User=$(id -un)#" "$UNIT_SRC" > "$rendered"
 if ! sudo cmp -s "$rendered" "$UNIT_DST" 2>/dev/null; then
     log "installing/updating systemd unit at $UNIT_DST"
     sudo cp "$rendered" "$UNIT_DST"
     sudo systemctl daemon-reload
-    unit_changed=1
+    touch "$PENDING"   # a restart is now owed; persists until one succeeds
 fi
 rm -f "$rendered"
 # Ensure the service is enabled for boot on EVERY deploy (idempotent), not just
@@ -59,11 +64,13 @@ sudo systemctl enable grim >/dev/null
 if ! systemctl is-active --quiet grim; then
     log "server down — cold start"
     sudo systemctl start grim
-elif [[ "$unit_changed" -eq 1 ]]; then
-    # The live process is still under the OLD unit's semantics; a copyover can't
-    # take effect until it restarts under the new unit. One-time on a unit change.
-    log "unit changed — cold restart so the running instance adopts the new unit"
+    rm -f "$PENDING"
+elif [[ -f "$PENDING" ]]; then
+    # A unit change hasn't been adopted yet (this run's, or an interrupted prior
+    # run's). Cold restart so the running instance picks it up before any copyover.
+    log "unit change pending adoption — cold restart"
     sudo systemctl restart grim
+    rm -f "$PENDING"
 else
     pid="$(systemctl show -p MainPID --value grim 2>/dev/null || true)"
     if [[ -n "$pid" && "$pid" != 0 ]]; then
