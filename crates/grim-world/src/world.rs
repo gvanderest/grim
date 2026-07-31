@@ -106,11 +106,11 @@ pub enum RoomLookup {
 /// `goto` and (later) other targeting. See `docs/adr/0001`.
 ///
 /// Precedence, most specific first: an **entity id** (`Entity::to_bits` as a
-/// decimal, boot-local), then a **grim id** (seam only — ids are still `GrimId`;
-/// wired when the base62 Grim ID work lands), then a **slug** (`friendly_id`).
-/// An address is either `<area>:<room>` — each side independently an entity id
-/// or slug, and the area side may also be an entity id — or a bare room token.
-/// A bare slug that matches rooms in several areas is [`Ambiguous`](RoomLookup::Ambiguous).
+/// decimal, boot-local), then a **grim id** (globally unique), then a **slug**
+/// (`friendly_id`). An address is either `<area>:<room>` — each side
+/// independently an entity id, grim id, or slug — or a bare room token. A bare
+/// slug that matches rooms in several areas is [`Ambiguous`](RoomLookup::Ambiguous)
+/// (grim ids never are).
 pub fn resolve_room_address(
     input: &str,
     rooms: &Query<(Entity, &Room)>,
@@ -133,10 +133,14 @@ pub fn resolve_room_address(
         if rooms.get(e).is_ok() {
             return RoomLookup::Found(e);
         }
-        // A numeric token that isn't a live room falls through to slug — a grim
-        // id could in principle be all digits — rather than hard-failing.
+        // A numeric token that isn't a live room falls through — a grim id
+        // could in principle be all digits — rather than hard-failing.
     }
-    // Grim ID tier: seam. Ids are still `GrimId`, so nothing to match yet.
+
+    // Grim ID: globally unique, so an exact match wins outright.
+    if let Some((e, _)) = rooms.iter().find(|(_, r)| r.id.as_str() == input) {
+        return RoomLookup::Found(e);
+    }
 
     // Slug: a room `friendly_id`, which is unique only within its area.
     let mut hits = rooms
@@ -157,6 +161,10 @@ fn resolve_area(tok: &str, areas: &Query<(Entity, &Area)>) -> Option<Entity> {
             return Some(e);
         }
     }
+    // Grim id (globally unique) before slug.
+    if let Some((e, _)) = areas.iter().find(|(_, a)| a.id.as_str() == tok) {
+        return Some(e);
+    }
     areas
         .iter()
         .find(|(_, a)| a.friendly_id.eq_ignore_ascii_case(tok))
@@ -169,6 +177,13 @@ fn resolve_room_in_area(tok: &str, area: Entity, rooms: &Query<(Entity, &Room)>)
         if rooms.get(e).map(|(_, r)| r.area == area).unwrap_or(false) {
             return RoomLookup::Found(e);
         }
+    }
+    // Grim id (globally unique) before slug.
+    if let Some((e, _)) = rooms
+        .iter()
+        .find(|(_, r)| r.area == area && r.id.as_str() == tok)
+    {
+        return RoomLookup::Found(e);
     }
     match rooms
         .iter()
@@ -678,6 +693,31 @@ mod tests {
         let start = spawn_room(&mut app, "town", "square", Exits::default());
         let actor = spawn_actor_in(&mut app, start, true);
         send_goto(&mut app, actor, &dest.to_bits().to_string());
+        assert_eq!(room_of(&app, actor), dest);
+    }
+
+    #[test]
+    fn goto_by_room_grim_id_moves() {
+        let mut app = test_app();
+        let dest = spawn_room(&mut app, "town", "market", Exits::default());
+        let start = spawn_room(&mut app, "town", "square", Exits::default());
+        let actor = spawn_actor_in(&mut app, start, true);
+        let gid = app.world().get::<Room>(dest).unwrap().id.to_string();
+        send_goto(&mut app, actor, &gid);
+        assert_eq!(room_of(&app, actor), dest);
+    }
+
+    #[test]
+    fn goto_by_area_grim_id_and_room_slug() {
+        let mut app = test_app();
+        let dest = spawn_room(&mut app, "town", "market", Exits::default());
+        let start = spawn_room(&mut app, "forest", "clearing", Exits::default());
+        let actor = spawn_actor_in(&mut app, start, true);
+        let area_gid = {
+            let area = app.world().get::<Room>(dest).unwrap().area;
+            app.world().get::<Area>(area).unwrap().id.to_string()
+        };
+        send_goto(&mut app, actor, &format!("{area_gid}:market"));
         assert_eq!(room_of(&app, actor), dest);
     }
 
