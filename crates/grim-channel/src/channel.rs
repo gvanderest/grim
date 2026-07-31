@@ -1,7 +1,7 @@
 use grim_text::tr;
 
 use bevy::prelude::*;
-use grim_engine_types::components::{InRoom, Name, Player, Room};
+use grim_engine_types::components::{InRoom, LastWhisperFrom, Name, Player, Room};
 use grim_engine_types::events::{
     Command, EngineCommand, InfoMessage, OocEvent, SayEvent, YellEvent,
 };
@@ -17,20 +17,58 @@ impl Plugin for ChannelPlugin {
             .add_message::<SayEvent>()
             .add_message::<YellEvent>()
             .add_message::<OocEvent>()
-            .add_systems(Update, (handle_say, handle_yell, handle_ooc, handle_tell));
+            .add_systems(
+                Update,
+                (
+                    handle_say,
+                    handle_yell,
+                    handle_ooc,
+                    handle_tell,
+                    handle_reply,
+                ),
+            );
+    }
+}
+
+/// Deliver one whisper: echo `You tell <Name> '<text>'` to the sender, and —
+/// for a distinct recipient — `<Sender> tells you '<text>'` plus record the
+/// sender as the recipient's [`LastWhisperFrom`] so they can `reply`. A whisper
+/// to `self` echoes only the "You tell …" line.
+fn deliver_whisper(
+    actor: Entity,
+    recipient: Entity,
+    text: &str,
+    names: &Query<&Name>,
+    info: &mut MessageWriter<InfoMessage>,
+    commands: &mut Commands,
+) {
+    let recipient_name = names
+        .get(recipient)
+        .map(|n| n.0.clone())
+        .unwrap_or_default();
+    info.write(InfoMessage {
+        target: actor,
+        text: format!("You tell {recipient_name} '{text}'\n"),
+    });
+    if recipient != actor {
+        let sender_name = names.get(actor).map(|n| n.0.clone()).unwrap_or_default();
+        info.write(InfoMessage {
+            target: recipient,
+            text: format!("{sender_name} tells you '{text}'\n"),
+        });
+        commands.entity(recipient).insert(LastWhisperFrom(actor));
     }
 }
 
 /// `tell <target> <text>` (alias `whisper`): a private message to one player.
 /// `target` is fuzzy-matched (case-insensitive name prefix) among connected
-/// players; `self` targets the sender. The sender always sees
-/// `You tell <Name> '<text>'`; a distinct recipient also sees
-/// `<Sender> tells you '<text>'`.
+/// players; `self` targets the sender.
 fn handle_tell(
     mut engine: MessageReader<EngineCommand>,
     players: Query<(Entity, &Name, &Player)>,
     names: Query<&Name>,
     mut info: MessageWriter<InfoMessage>,
+    mut commands: Commands,
 ) {
     for cmd in engine.read() {
         let Command::Tell { target, text } = &cmd.command else {
@@ -42,10 +80,10 @@ fn handle_tell(
             Some(actor)
         } else {
             let want = target.to_ascii_lowercase();
+            // Match any player in the world, including linkdead ones — a whisper
+            // to a linkdead player is fine; they'll see it when they return.
             players
                 .iter()
-                // Only players with a live connection can receive a tell.
-                .filter(|(_, _, p)| p.connection.is_some())
                 .find(|(_, n, _)| n.0.to_ascii_lowercase().starts_with(&want))
                 .map(|(e, _, _)| e)
         };
@@ -58,22 +96,44 @@ fn handle_tell(
             continue;
         };
 
-        let recipient_name = names
-            .get(recipient)
-            .map(|n| n.0.clone())
-            .unwrap_or_default();
-        info.write(InfoMessage {
-            target: actor,
-            text: format!("You tell {recipient_name} '{text}'\n"),
-        });
-        // `tell self` shows only the "You tell …" line — don't also notify.
-        if recipient != actor {
-            let sender_name = names.get(actor).map(|n| n.0.clone()).unwrap_or_default();
+        deliver_whisper(actor, recipient, text, &names, &mut info, &mut commands);
+    }
+}
+
+/// `reply <text>`: whisper the last player who whispered you
+/// ([`LastWhisperFrom`]). Fails gracefully if no one has, or if they've left.
+fn handle_reply(
+    mut engine: MessageReader<EngineCommand>,
+    last: Query<&LastWhisperFrom>,
+    players: Query<&Player>,
+    names: Query<&Name>,
+    mut info: MessageWriter<InfoMessage>,
+    mut commands: Commands,
+) {
+    for cmd in engine.read() {
+        let Command::Reply { text } = &cmd.command else {
+            continue;
+        };
+        let actor = cmd.client;
+
+        let Ok(&LastWhisperFrom(target)) = last.get(actor) else {
             info.write(InfoMessage {
-                target: recipient,
-                text: format!("{sender_name} tells you '{text}'\n"),
+                target: actor,
+                text: "You have no one to reply to.\n".into(),
             });
+            continue;
+        };
+        // Linkdead is fine (they'll see it on return); only a target that has
+        // fully left the world (no longer a player entity) can't be replied to.
+        if players.get(target).is_err() {
+            info.write(InfoMessage {
+                target: actor,
+                text: "They are no longer here to reply to.\n".into(),
+            });
+            continue;
         }
+
+        deliver_whisper(actor, target, text, &names, &mut info, &mut commands);
     }
 }
 
@@ -241,12 +301,15 @@ mod tests {
     }
 
     #[test]
-    fn tell_skips_linkdead_players() {
-        // A player with no live connection can't be told.
+    fn tell_reaches_linkdead_player() {
+        // A linkdead player is still in the world and can be told; they'll see
+        // it when they return.
         let mut app = test_app();
         let alice = spawn_player(&mut app, "Alice");
-        app.world_mut()
-            .spawn((Name("Bob".into()), Player { connection: None }));
+        let bob = app
+            .world_mut()
+            .spawn((Name("Bob".into()), Player { connection: None }))
+            .id();
         app.world_mut().write_message(EngineCommand {
             client: alice,
             command: Command::Tell {
@@ -256,8 +319,75 @@ mod tests {
         });
         app.update();
         let msgs = infos(&app);
+        assert!(msgs.contains(&(alice, "You tell Bob 'hi'\n".to_string())));
+        assert!(msgs.contains(&(bob, "Alice tells you 'hi'\n".to_string())));
+    }
+
+    #[test]
+    fn reply_answers_last_whisperer() {
+        let mut app = test_app();
+        let alice = spawn_player(&mut app, "Alice");
+        let bob = spawn_player(&mut app, "Bob");
+        // Alice whispers Bob → sets Bob's LastWhisperFrom = Alice.
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Command::Tell {
+                target: "Bob".into(),
+                text: "hi".into(),
+            },
+        });
+        app.update(); // flush the deferred LastWhisperFrom insert
+        app.world_mut().write_message(EngineCommand {
+            client: bob,
+            command: Command::Reply { text: "hey".into() },
+        });
+        app.update();
+        let msgs = infos(&app);
+        assert!(msgs.contains(&(bob, "You tell Alice 'hey'\n".to_string())));
+        assert!(msgs.contains(&(alice, "Bob tells you 'hey'\n".to_string())));
+    }
+
+    #[test]
+    fn reply_with_no_prior_whisper_is_reported() {
+        let mut app = test_app();
+        let alice = spawn_player(&mut app, "Alice");
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Command::Reply { text: "hi".into() },
+        });
+        app.update();
+        let msgs = infos(&app);
         assert_eq!(msgs.len(), 1);
-        assert!(msgs[0].1.contains("No one named 'Bob'"));
+        assert!(msgs[0].1.contains("no one to reply to"));
+    }
+
+    #[test]
+    fn reply_to_departed_player_is_reported() {
+        let mut app = test_app();
+        let alice = spawn_player(&mut app, "Alice");
+        let bob = spawn_player(&mut app, "Bob");
+        // Bob whispers Alice → Alice's LastWhisperFrom = Bob.
+        app.world_mut().write_message(EngineCommand {
+            client: bob,
+            command: Command::Tell {
+                target: "Alice".into(),
+                text: "hi".into(),
+            },
+        });
+        app.update();
+        // Bob fully leaves the world (quit → despawn).
+        app.world_mut().despawn(bob);
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Command::Reply {
+                text: "you there?".into(),
+            },
+        });
+        app.update();
+        let msgs = infos(&app);
+        assert!(msgs
+            .iter()
+            .any(|(t, txt)| *t == alice && txt.contains("no longer here")));
     }
 
     #[test]
