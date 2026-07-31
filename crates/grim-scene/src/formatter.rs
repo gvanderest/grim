@@ -122,6 +122,7 @@ pub fn format_commands() -> String {
         "'<text>             — Shortcut for say",
         "yell <text>         — Shout to everyone in the area",
         "ooc <text>          — Out-of-character global chat",
+        "tell <who> <text>   — Private message a player (alias: whisper)",
         "north / n           — Move north",
         "east / e            — Move east",
         "south / s           — Move south",
