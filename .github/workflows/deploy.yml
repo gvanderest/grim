@@ -69,6 +69,7 @@ jobs:
         run: |
           scp -i ~/.ssh/id_deploy dist/grim "$TARGET:/opt/grim/bin/grim.new"
           scp -i ~/.ssh/id_deploy deploy/deploy.sh "$TARGET:/opt/grim/bin/"
+          scp -i ~/.ssh/id_deploy deploy/grim.service "$TARGET:/opt/grim/bin/"
 
       - name: Run deploy
         env:

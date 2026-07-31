@@ -53,33 +53,20 @@ countdown in-game with `shutdown <seconds>`; see below.)
 On Amazon Linux the deploy connects as `ec2-user`, which already has passwordless
 sudo, so it also runs the service — no separate service user needed.
 
+**`deploy.sh` manages the systemd unit** (`deploy/grim.service`): it installs/updates
+it on every deploy — rendering `User=` to the deploy user — and `daemon-reload`s +
+cold-restarts once whenever the unit changes. So the box just needs the directory
+and the user's sudo; the first deploy installs and starts the service:
+
 ```bash
 sudo mkdir -p /opt/grim/bin /opt/grim/data
 sudo chown -R ec2-user:ec2-user /opt/grim
-
-sudo tee /etc/systemd/system/grim.service >/dev/null <<'EOF'
-[Unit]
-Description=GRIM MUD server
-After=network.target
-
-[Service]
-Type=notify
-NotifyAccess=all
-User=ec2-user
-WorkingDirectory=/opt/grim
-ExecStart=/opt/grim/bin/grim
-Restart=on-failure
-RestartSec=2
-KillSignal=SIGTERM
-TimeoutStopSec=45
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable grim
 ```
+
+The unit is **`Type=notify` + `NotifyAccess=all`** — this is what makes copyover
+work. Under a stale `Type=simple` unit, a copyover looks like the main process
+dying, so systemd stops the service (you'd see the in-game "restarting in 30s"
+countdown); `deploy.sh` syncing the unit prevents that drift.
 
 `deploy/grim.service` in the repo is the same unit with `User=grim`; edit the
 `User=` line if you run it under a dedicated user with a non-default deploy

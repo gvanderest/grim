@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
 #
-# Runs ON the EC2 host. Swaps in a freshly-uploaded binary and rolls the server
-# to it:
+# Runs ON the EC2 host. Keeps the systemd unit in sync, swaps in the new binary,
+# and rolls the server to it:
 #
-#   - server UP   → **copyover** (SIGUSR2): the running process execs the new
-#                   binary and hands over its live sockets, so connected players
-#                   stay connected. Nothing is shut down or restarted.
-#   - server DOWN → cold start.
+#   - unit changed → install it + one cold restart (the running instance must be
+#                    under the new unit before a copyover can work).
+#   - server UP    → **copyover** (SIGUSR2): the running process execs the new
+#                    binary and hands over its live sockets; players stay
+#                    connected. Nothing is stopped or restarted.
+#   - server DOWN  → cold start.
 #
-# Expects the new binary staged at $STAGED (uploaded by the CI job).
+# deploy.sh owning the unit is deliberate: a stale `Type=simple` unit makes a
+# copyover look like the main process dying, so systemd stops the service (the
+# in-game "restarting in 30s" countdown). Syncing the unit here stops that drift.
 set -euo pipefail
 
 APP_DIR=/opt/grim
 BIN="$APP_DIR/bin/grim"
 STAGED="$APP_DIR/bin/grim.new"
+UNIT_SRC="$APP_DIR/bin/grim.service"          # uploaded by CI alongside the binary
+UNIT_DST=/etc/systemd/system/grim.service
 
 log() { echo "[deploy] $*"; }
 
@@ -25,27 +31,41 @@ log "swapping binary into place"
 mv -f "$STAGED" "$BIN"
 chmod +x "$BIN"
 
-if systemctl is-active --quiet grim; then
-    # Copyover only. Signal the process directly (the service runs as this user,
-    # so no privilege needed). The successor claims MAINPID + sends READY, so
-    # systemd keeps tracking the service across the handoff — this is NOT a
-    # restart, and the service is never stopped. Do not second-guess it with a
-    # health re-check that could race the handoff and spuriously start a second
-    # instance; if the copyover fails, the old process just keeps serving.
+# Sync the systemd unit. Render `User=` to the deploy user so signalling the
+# process needs no privilege. Only touch systemd if the unit actually changed.
+unit_changed=0
+if [[ -f "$UNIT_SRC" ]]; then
+    rendered="$(mktemp)"
+    sed "s#^User=.*#User=$(id -un)#" "$UNIT_SRC" > "$rendered"
+    if ! sudo cmp -s "$rendered" "$UNIT_DST" 2>/dev/null; then
+        log "installing/updating systemd unit at $UNIT_DST"
+        sudo cp "$rendered" "$UNIT_DST"
+        sudo systemctl daemon-reload
+        sudo systemctl enable grim >/dev/null 2>&1 || true
+        unit_changed=1
+    fi
+    rm -f "$rendered"
+else
+    log "warning: no grim.service uploaded — leaving the existing unit in place"
+fi
+
+if ! systemctl is-active --quiet grim; then
+    log "server down — cold start"
+    sudo systemctl start grim
+elif [[ "$unit_changed" -eq 1 ]]; then
+    # The live process is still under the OLD unit's semantics; a copyover can't
+    # take effect until it restarts under the new unit. One-time on a unit change.
+    log "unit changed — cold restart so the running instance adopts the new unit"
+    sudo systemctl restart grim
+else
     pid="$(systemctl show -p MainPID --value grim 2>/dev/null || true)"
     if [[ -n "$pid" && "$pid" != 0 ]]; then
         log "server up — copyover via SIGUSR2 -> $pid (players stay connected)"
         kill -USR2 "$pid"
     else
-        # Odd: reported active but no MainPID (e.g. the process exited between the
-        # is-active and show queries). Don't silently report success — ensure the
-        # new binary is actually running. `start` is a no-op if it's genuinely up.
         log "server active but MainPID unavailable — ensuring it is started"
         sudo systemctl start grim
     fi
-else
-    log "server down — cold start"
-    sudo systemctl start grim
 fi
 
 log "done"
