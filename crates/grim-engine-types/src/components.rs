@@ -204,6 +204,25 @@ pub struct Linkdead;
 #[derive(Resource, Debug)]
 pub struct StartingRoom(pub Entity);
 
+/// Server config: character-name prefixes that may not be used (a new character's
+/// canonical name may not begin with any, case-insensitive — see
+/// [`crate::validation::is_name_reserved`]). Defaults to
+/// [`crate::validation::DEFAULT_RESERVED_NAME_PREFIXES`]; an author overrides or
+/// extends it by inserting this resource before adding the scene plugin.
+#[derive(Resource, Clone, Debug)]
+pub struct ReservedNamePrefixes(pub Vec<String>);
+
+impl Default for ReservedNamePrefixes {
+    fn default() -> Self {
+        Self(
+            crate::validation::DEFAULT_RESERVED_NAME_PREFIXES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
