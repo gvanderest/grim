@@ -41,10 +41,14 @@ if [[ -f "$UNIT_SRC" ]]; then
         log "installing/updating systemd unit at $UNIT_DST"
         sudo cp "$rendered" "$UNIT_DST"
         sudo systemctl daemon-reload
-        sudo systemctl enable grim >/dev/null 2>&1 || true
         unit_changed=1
     fi
     rm -f "$rendered"
+    # Ensure the service is enabled for boot on EVERY deploy (idempotent), not
+    # just when the unit changed — otherwise an already-installed-but-disabled
+    # unit leaves GRIM down after the next host reboot. Not suppressed: a real
+    # enable failure should fail the deploy, not report success.
+    sudo systemctl enable grim >/dev/null
 else
     log "warning: no grim.service uploaded — leaving the existing unit in place"
 fi
