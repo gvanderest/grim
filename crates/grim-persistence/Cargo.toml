@@ -8,9 +8,7 @@ grim-engine-types = { path = "../grim-engine-types" }
 grim-networking = { path = "../grim-networking" }
 bevy = { workspace = true, default-features = false }
 serde_json = { workspace = true }
-uuid = { workspace = true }
 chrono = { workspace = true }
 
 [dev-dependencies]
-uuid = { workspace = true }
 chrono = { workspace = true }

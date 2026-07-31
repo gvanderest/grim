@@ -10,5 +10,4 @@ bevy = { workspace = true, default-features = false }
 signal-hook = { workspace = true }
 
 [dev-dependencies]
-uuid = { workspace = true }
 chrono = { workspace = true }

@@ -17,12 +17,12 @@ use grim_engine_types::validation::{
     hash_password, is_name_reserved, normalize_character_name, validate_character_name,
     validate_identifier, validate_password, verify_password,
 };
+use grim_engine_types::GrimId;
 use grim_networking::{
     ConnectionEstablished, ConnectionInput, ConnectionOutput, ConnectionResumed, DisconnectRequest,
 };
 use grim_persistence::{load_account_characters, load_character_by_name, PersistenceConfig};
 use std::collections::VecDeque;
-use uuid::Uuid;
 
 mod formatter;
 mod parser;
@@ -305,7 +305,7 @@ fn handle_client_input(
                 // name), else read from disk — both by the canonical name.
                 let trimmed = text.trim();
                 let canonical = normalize_character_name(trimmed);
-                let resolved: Option<(Uuid, String)> = (!canonical.is_empty())
+                let resolved: Option<(GrimId, String)> = (!canonical.is_empty())
                     .then(|| {
                         characters
                             .iter()
@@ -406,7 +406,7 @@ fn handle_client_input(
                     match validate_password(text.trim()) {
                         Ok(()) => {
                             let account = Account {
-                                id: Uuid::new_v4(),
+                                id: GrimId::new(),
                                 identifier: identifier.clone(),
                                 password_hash: hash_password(text.trim()),
                                 characters: vec![],
@@ -606,7 +606,7 @@ fn handle_client_input(
                         let Ok((_, mut account)) = accounts.get_mut(account_entity) else {
                             continue;
                         };
-                        let char_id = Uuid::new_v4();
+                        let char_id = GrimId::new();
                         let character = Character {
                             id: char_id,
                             name: name.clone(),
@@ -849,7 +849,7 @@ fn handle_client_input(
 /// character has no ECS entity, so `resident` is `None` and it lives only on
 /// disk; a resident entity (in-world / linkdead) carries `Some(entity)`.
 struct CharEntry {
-    id: Uuid,
+    id: GrimId,
     name: String,
     resident: Option<Entity>,
 }
@@ -900,7 +900,7 @@ fn account_character_list(
 fn enter_world_by_name(
     conn: Entity,
     client: &mut Client,
-    account_id: Uuid,
+    account_id: GrimId,
     name: &str,
     commands: &mut Commands,
     characters: &Query<(Entity, &Character, &GrimName)>,
@@ -1455,11 +1455,11 @@ mod tests {
     use chrono::Utc;
     use grim_channel::ChannelPlugin;
     use grim_engine_types::components::*;
+    use grim_engine_types::GrimId;
     use grim_networking::Connection;
     use grim_persistence::PersistencePlugin;
     use grim_world::WorldPlugin;
     use std::net::SocketAddr;
-    use uuid::Uuid;
 
     fn test_app() -> App {
         // Clean up persisted data to avoid cross-test contamination
@@ -1481,7 +1481,7 @@ mod tests {
         app.world_mut()
             .spawn((
                 Room {
-                    id: Uuid::new_v4(),
+                    id: GrimId::new(),
                     friendly_id: "room1".into(),
                     name: "Room".into(),
                     description: "A room.".into(),
@@ -1513,7 +1513,7 @@ mod tests {
         app.world_mut().spawn(Client::new(conn));
 
         let account = Account {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             identifier: "test@example.com".into(),
             password_hash: hash_password("password"),
             characters: vec![],
@@ -1522,7 +1522,7 @@ mod tests {
         let account_id = account.id;
         let _account_entity = app.world_mut().spawn(account).id();
 
-        let char_uuid = Uuid::new_v4();
+        let char_uuid = GrimId::new();
         let character = Character {
             id: char_uuid,
             name: "Test".into(),
@@ -1619,9 +1619,9 @@ mod tests {
 
         app.world_mut().spawn(Client::new(conn));
 
-        let char_uuid = Uuid::new_v4();
+        let char_uuid = GrimId::new();
         let account = Account {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             identifier: "test@example.com".into(),
             password_hash: hash_password("password"),
             characters: vec![char_uuid],
@@ -1743,7 +1743,7 @@ mod tests {
             .id();
         app.world_mut().spawn(Client::new(conn));
 
-        let account_uuid = Uuid::new_v4();
+        let account_uuid = GrimId::new();
         let account = Account {
             id: account_uuid,
             identifier: "test@example.com".into(),
@@ -1754,7 +1754,7 @@ mod tests {
         app.world_mut().spawn(account);
 
         // Entity A: stale — loaded from disk, no Linkdead
-        let stale_uuid = Uuid::new_v4();
+        let stale_uuid = GrimId::new();
         app.world_mut().spawn((
             Character {
                 id: stale_uuid,
@@ -1773,7 +1773,7 @@ mod tests {
             .world_mut()
             .spawn((
                 Character {
-                    id: Uuid::new_v4(),
+                    id: GrimId::new(),
                     name: "Test".into(),
                     account_id: account_uuid,
                     created_at: Utc::now(),
@@ -1852,9 +1852,9 @@ mod tests {
             .id();
         app.world_mut().spawn(Client::new(conn));
 
-        let account_uuid = Uuid::new_v4();
-        let real_uuid = Uuid::new_v4();
-        let stale_uuid = Uuid::new_v4();
+        let account_uuid = GrimId::new();
+        let real_uuid = GrimId::new();
+        let stale_uuid = GrimId::new();
         let account = Account {
             id: account_uuid,
             identifier: "test@example.com".into(),
@@ -1983,7 +1983,7 @@ mod tests {
             .world_mut()
             .spawn((
                 Room {
-                    id: Uuid::new_v4(),
+                    id: GrimId::new(),
                     friendly_id: "room1".into(),
                     name: "Room".into(),
                     description: "A room.".into(),
@@ -2292,7 +2292,7 @@ mod tests {
         app.world_mut().spawn(Client::new(conn));
 
         let account = Account {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             identifier: "test@example.com".into(),
             password_hash: hash_password("password"),
             characters: vec![],
@@ -2364,7 +2364,7 @@ mod tests {
         app.world_mut().spawn(Client::new(conn));
 
         let account = Account {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             identifier: "test@example.com".into(),
             password_hash: hash_password("password"),
             characters: vec![],
@@ -2540,8 +2540,8 @@ mod tests {
             .id();
         app.world_mut().spawn(Client::new(conn));
 
-        let account_id = Uuid::new_v4();
-        let char_ids = vec![Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+        let account_id = GrimId::new();
+        let char_ids = vec![GrimId::new(), GrimId::new(), GrimId::new()];
         let account = Account {
             id: account_id,
             identifier: "test@example.com".into(),
@@ -2622,8 +2622,8 @@ mod tests {
             .id();
         app.world_mut().spawn(Client::new(conn));
 
-        let account_id = Uuid::new_v4();
-        let char_uuid = Uuid::new_v4();
+        let account_id = GrimId::new();
+        let char_uuid = GrimId::new();
         let account = Account {
             id: account_id,
             identifier: "test@example.com".into(),
@@ -2690,8 +2690,8 @@ mod tests {
         app.world_mut().insert_resource(StartingRoom(room));
 
         // Account A already exists with a character.
-        let account_a_id = Uuid::new_v4();
-        let char_a = Uuid::new_v4();
+        let account_a_id = GrimId::new();
+        let char_a = GrimId::new();
         app.world_mut().spawn(Account {
             id: account_a_id,
             identifier: "a@example.com".into(),
@@ -2972,9 +2972,9 @@ mod tests {
 
     fn make_character(roles: Vec<Role>) -> Character {
         Character {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             name: "Hero".into(),
-            account_id: Uuid::new_v4(),
+            account_id: GrimId::new(),
             created_at: Utc::now(),
             last_room: None,
             roles,
@@ -3223,8 +3223,8 @@ mod tests {
         let room = spawn_room(&mut app);
         app.world_mut().insert_resource(StartingRoom(room));
 
-        let account_id = Uuid::new_v4();
-        let char_id = Uuid::new_v4();
+        let account_id = GrimId::new();
+        let char_id = GrimId::new();
         app.world_mut().spawn(Account {
             id: account_id,
             identifier: "disk@example.com".into(),
@@ -3289,8 +3289,8 @@ mod tests {
         let room = spawn_room(&mut app);
         app.world_mut().insert_resource(StartingRoom(room));
 
-        let account_id = Uuid::new_v4();
-        let char_id = Uuid::new_v4();
+        let account_id = GrimId::new();
+        let char_id = GrimId::new();
         app.world_mut().spawn(Account {
             id: account_id,
             identifier: "menu@example.com".into(),
@@ -3368,8 +3368,8 @@ mod tests {
         let room = spawn_room(&mut app);
         app.world_mut().insert_resource(StartingRoom(room));
 
-        let account_id = Uuid::new_v4();
-        let char_id = Uuid::new_v4();
+        let account_id = GrimId::new();
+        let char_id = GrimId::new();
         app.world_mut().spawn(Account {
             id: account_id,
             identifier: "take@example.com".into(),
@@ -3456,8 +3456,8 @@ mod tests {
         let room = spawn_room(&mut app);
         app.world_mut().insert_resource(StartingRoom(room));
 
-        let account_id = Uuid::new_v4();
-        let char_id = Uuid::new_v4();
+        let account_id = GrimId::new();
+        let char_id = GrimId::new();
         app.world_mut().spawn(Account {
             id: account_id,
             identifier: "ld@example.com".into(),
@@ -3529,7 +3529,7 @@ mod tests {
         let account_entity = app
             .world_mut()
             .spawn(Account {
-                id: Uuid::new_v4(),
+                id: GrimId::new(),
                 identifier: "r@example.com".into(),
                 password_hash: hash_password("password"),
                 characters: vec![],

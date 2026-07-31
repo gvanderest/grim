@@ -8,4 +8,5 @@ default-run = "example-mud"
 [dependencies]
 grim = { path = "../grim" }
 bevy = { workspace = true, default-features = false }
-uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
