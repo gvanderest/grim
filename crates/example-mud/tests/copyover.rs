@@ -234,7 +234,37 @@ fn copyover_keeps_player_connected_and_resumes_last_room() {
         .status()
         .expect("send SIGUSR2 to group");
     assert!(status.success(), "second kill -USR2 failed");
-    expect(&mut stream, "world was reloaded", Duration::from_secs(60));
+    {
+        // DIAGNOSTIC: dump the (multi-generation) server log if the chained
+        // copyover produces nothing.
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut acc = String::new();
+        let mut b = [0u8; 4096];
+        let mut ok = false;
+        while Instant::now() < deadline {
+            match stream.read(&mut b) {
+                Ok(0) => break,
+                Ok(n) => {
+                    acc.push_str(&String::from_utf8_lossy(&b[..n]));
+                    if acc.contains("world was reloaded") {
+                        ok = true;
+                        break;
+                    }
+                }
+                Err(ref e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut => {}
+                Err(e) => panic!("read err: {e}"),
+            }
+        }
+        if !ok {
+            let log = std::fs::read_to_string(dir.join("srv.log")).unwrap_or_default();
+            panic!("no 2nd reload; saw {acc:?}\n--- SERVER LOG ---\n{log}");
+        }
+    }
     std::thread::sleep(Duration::from_millis(1500));
     send(&mut stream, "look");
     expect(&mut stream, "Town Square", Duration::from_secs(20));
