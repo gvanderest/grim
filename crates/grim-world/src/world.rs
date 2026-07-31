@@ -106,7 +106,7 @@ pub enum RoomLookup {
 /// `goto` and (later) other targeting. See `docs/adr/0001`.
 ///
 /// Precedence, most specific first: an **entity id** (`Entity::to_bits` as a
-/// decimal, boot-local), then a **grim id** (seam only — ids are still `Uuid`;
+/// decimal, boot-local), then a **grim id** (seam only — ids are still `GrimId`;
 /// wired when the base62 Grim ID work lands), then a **slug** (`friendly_id`).
 /// An address is either `<area>:<room>` — each side independently an entity id
 /// or slug, and the area side may also be an entity id — or a bare room token.
@@ -136,7 +136,7 @@ pub fn resolve_room_address(
         // A numeric token that isn't a live room falls through to slug — a grim
         // id could in principle be all digits — rather than hard-failing.
     }
-    // Grim ID tier: seam. Ids are still `Uuid`, so nothing to match yet.
+    // Grim ID tier: seam. Ids are still `GrimId`, so nothing to match yet.
 
     // Slug: a room `friendly_id`, which is unique only within its area.
     let mut hits = rooms
@@ -503,11 +503,11 @@ mod tests {
     /// are the stable storage keys `last_room` records.
     fn spawn_room(app: &mut App, area_fid: &str, room_fid: &str, exits: Exits) -> Entity {
         use grim_engine_types::components::{Area, Room};
-        use uuid::Uuid;
+        use grim_engine_types::GrimId;
         let area = app
             .world_mut()
             .spawn(Area {
-                id: Uuid::new_v4(),
+                id: GrimId::new(),
                 friendly_id: area_fid.into(),
                 name: area_fid.into(),
             })
@@ -515,7 +515,7 @@ mod tests {
         app.world_mut()
             .spawn((
                 Room {
-                    id: Uuid::new_v4(),
+                    id: GrimId::new(),
                     friendly_id: room_fid.into(),
                     name: room_fid.into(),
                     description: String::new(),
@@ -529,7 +529,7 @@ mod tests {
     #[test]
     fn move_updates_character_last_room_to_destination_friendly_ids() {
         use grim_engine_types::components::Character;
-        use uuid::Uuid;
+        use grim_engine_types::GrimId;
         let mut app = test_app();
         let room2 = spawn_room(&mut app, "town", "market", Exits::default());
         let mut exits = Exits::default();
@@ -540,9 +540,9 @@ mod tests {
             .spawn((
                 InRoom { room: room1 },
                 Character {
-                    id: Uuid::new_v4(),
+                    id: GrimId::new(),
                     name: "Walker".into(),
-                    account_id: Uuid::new_v4(),
+                    account_id: GrimId::new(),
                     created_at: chrono::Utc::now(),
                     last_room: None,
                     roles: Vec::new(),
@@ -591,15 +591,15 @@ mod tests {
 
     fn spawn_actor_in(app: &mut App, room: Entity, admin: bool) -> Entity {
         use grim_engine_types::components::{Character, Role};
-        use uuid::Uuid;
+        use grim_engine_types::GrimId;
         let roles = if admin { vec![Role::Admin] } else { Vec::new() };
         app.world_mut()
             .spawn((
                 InRoom { room },
                 Character {
-                    id: Uuid::new_v4(),
+                    id: GrimId::new(),
                     name: "Admin".into(),
-                    account_id: Uuid::new_v4(),
+                    account_id: GrimId::new(),
                     created_at: chrono::Utc::now(),
                     last_room: None,
                     roles,

@@ -4,6 +4,7 @@ use grim_engine_types::components::{
     Account, Area, Character, Client, InRoom, Linkdead, OutputHistory, Player, Room, RoomLocation,
 };
 use grim_engine_types::events::{LinkdeadAnnounce, MoveEvent};
+use grim_engine_types::GrimId;
 use grim_networking::{Connection, ConnectionClosed};
 use std::fs;
 use std::path::PathBuf;
@@ -74,10 +75,7 @@ fn load_persisted_data(mut commands: Commands, config: Res<PersistenceConfig>) {
 
 /// Read every character on disk belonging to `account_id`. Used to lazily bring
 /// an account's characters into the world at login. Missing dir → empty.
-pub fn load_account_characters(
-    config: &PersistenceConfig,
-    account_id: uuid::Uuid,
-) -> Vec<Character> {
+pub fn load_account_characters(config: &PersistenceConfig, account_id: GrimId) -> Vec<Character> {
     let dir = config.characters_dir();
     let mut out = Vec::new();
     if let Ok(entries) = fs::read_dir(&dir) {
@@ -235,8 +233,8 @@ fn save_on_move(
 mod tests {
     use super::*;
     use chrono::Utc;
+    use grim_engine_types::GrimId;
     use std::sync::{LazyLock, Mutex};
-    use uuid::Uuid;
 
     /// Serialises filesystem-touching tests: all load/save tests use
     /// `data/` paths, so running them in parallel races.
@@ -255,7 +253,7 @@ mod tests {
         let _guard = FS_LOCK.lock().unwrap();
         let _ = fs::remove_dir_all("data/accounts");
         let _ = fs::remove_dir_all("data/characters");
-        let account_id = Uuid::new_v4();
+        let account_id = GrimId::new();
         let account = Account {
             id: account_id,
             identifier: "testuser".into(),
@@ -294,9 +292,9 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join("characters")).unwrap();
 
-        let account_id = Uuid::new_v4();
+        let account_id = GrimId::new();
         let mine = Character {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             name: "TestHero".into(),
             account_id,
             created_at: Utc::now(),
@@ -304,9 +302,9 @@ mod tests {
             roles: Vec::new(),
         };
         let other = Character {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             name: "Stranger".into(),
-            account_id: Uuid::new_v4(), // a different account
+            account_id: GrimId::new(), // a different account
             created_at: Utc::now(),
             last_room: None,
             roles: Vec::new(),
@@ -357,7 +355,7 @@ mod tests {
         let _ = fs::create_dir_all("data/characters");
 
         let account = Account {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             identifier: "dualuser".into(),
             password_hash: "hash".into(),
             characters: vec![],
@@ -367,7 +365,7 @@ mod tests {
         fs::write(&acct_path, serde_json::to_string(&account).unwrap()).unwrap();
 
         let character = Character {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             name: "DualHero".into(),
             account_id: account.id,
             created_at: Utc::now(),
@@ -491,7 +489,7 @@ mod tests {
         let conn = make_connection(&mut app, 1);
 
         let account = Account {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             identifier: "acctonly".into(),
             password_hash: "hash".into(),
             characters: vec![],
@@ -539,9 +537,9 @@ mod tests {
         let conn = make_connection(&mut app, 1);
 
         let character = Character {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             name: "NoAccountHero".into(),
-            account_id: Uuid::new_v4(), // orphan — no Account entity spawned
+            account_id: GrimId::new(), // orphan — no Account entity spawned
             created_at: Utc::now(),
             last_room: None,
             roles: Vec::new(),
@@ -585,7 +583,7 @@ mod tests {
         let conn = make_connection(&mut app, 1);
 
         let account = Account {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             identifier: "fullsave".into(),
             password_hash: "hash".into(),
             characters: vec![],
@@ -594,7 +592,7 @@ mod tests {
         let acct_e = app.world_mut().spawn(account.clone()).id();
 
         let character = Character {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             name: "FullSaveHero".into(),
             account_id: account.id,
             created_at: Utc::now(),
@@ -659,14 +657,14 @@ mod tests {
             .world_mut()
             .spawn((
                 Room {
-                    id: Uuid::new_v4(),
+                    id: GrimId::new(),
                     friendly_id: "test_room".into(),
                     name: "Test Room".into(),
                     description: "".into(),
                     area: Entity::PLACEHOLDER,
                 },
                 Area {
-                    id: Uuid::new_v4(),
+                    id: GrimId::new(),
                     friendly_id: "test_area".into(),
                     name: "Test Area".into(),
                 },
@@ -674,7 +672,7 @@ mod tests {
             .id();
         // Patch room.area to point to itself
         app.world_mut().entity_mut(room_e).insert(Room {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             friendly_id: "test_room".into(),
             name: "Test Room".into(),
             description: "".into(),
@@ -682,7 +680,7 @@ mod tests {
         });
 
         let account = Account {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             identifier: "roomtest".into(),
             password_hash: "hash".into(),
             characters: vec![],
@@ -691,7 +689,7 @@ mod tests {
         let acct_e = app.world_mut().spawn(account.clone()).id();
 
         let character = Character {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             name: "RoomHero".into(),
             account_id: account.id,
             created_at: Utc::now(),
@@ -740,7 +738,7 @@ mod tests {
         app.world_mut().entity_mut(conn).insert(history.clone());
 
         let account = Account {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             identifier: "historytest".into(),
             password_hash: "hash".into(),
             characters: vec![],
@@ -749,7 +747,7 @@ mod tests {
         let acct_e = app.world_mut().spawn(account.clone()).id();
 
         let character = Character {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             name: "HistoryHero".into(),
             account_id: account.id,
             created_at: Utc::now(),
@@ -791,7 +789,7 @@ mod tests {
         let conn = make_connection(&mut app, 1);
 
         let account = Account {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             identifier: "errortest".into(),
             password_hash: "hash".into(),
             characters: vec![],
@@ -881,9 +879,9 @@ mod tests {
 
         // Seed a character file in the configured dir → it must load from there.
         let seeded = Character {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             name: "CfgHero".into(),
-            account_id: Uuid::new_v4(),
+            account_id: GrimId::new(),
             created_at: Utc::now(),
             last_room: None,
             roles: Vec::new(),
@@ -913,7 +911,7 @@ mod tests {
         // Save: disconnect an account; the file must land in the configured dir.
         let conn = make_connection(&mut app, 1);
         let account = Account {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             identifier: "cfguser".into(),
             password_hash: "hash".into(),
             characters: vec![],
@@ -966,9 +964,9 @@ mod tests {
         // grim-world's move handler (simulated here by setting it directly).
         let room = app.world_mut().spawn(()).id();
         let character = Character {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             name: "Rover".into(),
-            account_id: Uuid::new_v4(),
+            account_id: GrimId::new(),
             created_at: Utc::now(),
             last_room: Some(RoomLocation {
                 area: "haven".into(),

@@ -1,3 +1,8 @@
 target/
 coverage/
-data/
+# Player/runtime saves are not committed; committed world content lives in
+# data/areas (see crates/example-mud/src/seed.rs).
+/data/*
+!/data/areas/
+# Per-crate test scratch data dirs.
+crates/*/data/

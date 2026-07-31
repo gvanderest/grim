@@ -9,4 +9,3 @@ grim-text = { path = "../grim-text" }
 bevy = { workspace = true, default-features = false }
 
 [dev-dependencies]
-uuid = { workspace = true }

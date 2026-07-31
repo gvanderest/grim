@@ -3,10 +3,10 @@ use std::collections::{HashMap, VecDeque};
 use bevy::prelude::*;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::cardinal::Cardinal;
 use crate::events::Command;
+use crate::id::GrimId;
 
 // ─── Session ────────────────────────────────────────────────────────
 
@@ -66,15 +66,15 @@ pub enum ClientState {
 
 // ─── Account / Character ────────────────────────────────────────────
 
-/// An account — persists across sessions. Saved to `data/accounts/<uuid>.json`.
+/// An account — persists across sessions. Saved to `data/accounts/<id>.json`.
 #[derive(Component, Serialize, Deserialize, Clone, Debug)]
 pub struct Account {
-    pub id: Uuid,
+    pub id: GrimId,
     /// The user-facing identifier (username or email, normalized lowercase).
     pub identifier: String,
     pub password_hash: String,
-    /// UUIDs of characters owned by this account.
-    pub characters: Vec<Uuid>,
+    /// Grim IDs of characters owned by this account.
+    pub characters: Vec<GrimId>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -91,9 +91,9 @@ pub enum Role {
 /// Saved to `data/characters/<name>.json`.
 #[derive(Component, Serialize, Deserialize, Clone, Debug)]
 pub struct Character {
-    pub id: Uuid,
+    pub id: GrimId,
     pub name: String,
-    pub account_id: Uuid,
+    pub account_id: GrimId,
     pub created_at: DateTime<Utc>,
     /// Last known room, persisted as (area_friendly_id, room_friendly_id).
     #[serde(default)]
@@ -122,7 +122,7 @@ pub struct RoomLocation {
 /// An area — a collection of rooms. Friendly ID is filesystem-unique.
 #[derive(Component, Debug)]
 pub struct Area {
-    pub id: Uuid,
+    pub id: GrimId,
     pub friendly_id: String,
     pub name: String,
 }
@@ -130,7 +130,7 @@ pub struct Area {
 /// A room — belongs to an area, has exits.
 #[derive(Component, Debug)]
 pub struct Room {
-    pub id: Uuid,
+    pub id: GrimId,
     pub friendly_id: String,
     pub name: String,
     pub description: String,
@@ -226,13 +226,12 @@ impl Default for ReservedNamePrefixes {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::Uuid;
 
     fn character(roles: Vec<Role>) -> Character {
         Character {
-            id: Uuid::new_v4(),
+            id: GrimId::new(),
             name: "T".into(),
-            account_id: Uuid::new_v4(),
+            account_id: GrimId::new(),
             created_at: chrono::Utc::now(),
             last_room: None,
             roles,
@@ -256,8 +255,9 @@ mod tests {
 
     #[test]
     fn character_json_without_roles_defaults_empty() {
-        // Old character files, written before `roles` existed.
-        let json = r#"{"id":"00000000-0000-0000-0000-000000000000","name":"Old","account_id":"00000000-0000-0000-0000-000000000000","created_at":"2020-01-01T00:00:00Z"}"#;
+        // Old character files, written before `roles` existed. Ids are Grim IDs
+        // (base62 x12) — pre-GrimId UUID files must be migrated first.
+        let json = r#"{"id":"aaaaaaaaaaaa","name":"Old","account_id":"bbbbbbbbbbbb","created_at":"2020-01-01T00:00:00Z"}"#;
         let ch: Character = serde_json::from_str(json).unwrap();
         assert!(ch.roles.is_empty());
         assert!(ch.last_room.is_none());

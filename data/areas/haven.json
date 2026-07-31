@@ -1,0 +1,32 @@
+{
+  "slug": "haven",
+  "name": "Haven",
+  "canonical": true,
+  "starting_room": "tavern",
+  "rooms": [
+    {
+      "slug": "tavern",
+      "name": "The Rusted Anvil",
+      "description": "Smoke and the clang of hammer on steel fill the air. Sawdust covers the floor of this cozy tavern. A staircase leads up to the second floor, and a door leads north to the town square.",
+      "exits": { "north": "square" },
+      "npcs": [
+        {
+          "name": "Grimmok Ironhand",
+          "description": "A burly dwarf with a scorched beard and arms thick as tree trunks. He hammers rhythmically at a glowing blade, seemingly unaware of your presence."
+        }
+      ]
+    },
+    {
+      "slug": "square",
+      "name": "Town Square",
+      "description": "The cobblestone square bustles with activity. A fountain marks the center. The tavern is to the south, and the smithy is to the east.",
+      "exits": { "south": "tavern", "east": "forge" }
+    },
+    {
+      "slug": "forge",
+      "name": "Grimmok's Forge",
+      "description": "The heat from the forge is intense. Weapons and armor hang from the walls. The town square is to the west.",
+      "exits": { "west": "square" }
+    }
+  ]
+}

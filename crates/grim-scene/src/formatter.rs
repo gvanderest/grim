@@ -5,7 +5,7 @@ use grim_text::tr;
 pub struct RoomDebugIds<'a> {
     /// Boot-local entity id (`Entity::to_bits`).
     pub entity: u64,
-    /// Stable grim id. (Today this is the room's `Uuid`; becomes the base62
+    /// Stable grim id. (Today this is the room's `GrimId`; becomes the base62
     /// Grim ID once that lands — see `docs/adr/0001`.)
     pub grim: &'a str,
     /// Human-facing slug (`friendly_id`).

@@ -11,7 +11,6 @@ grim-text = { path = "../grim-text" }
 grim-color = { path = "../grim-color" }
 grim-persistence = { path = "../grim-persistence" }
 bevy = { workspace = true, default-features = false }
-uuid = { workspace = true }
 chrono = { workspace = true }
 serde_json = { workspace = true }
 

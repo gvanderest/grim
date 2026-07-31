@@ -105,6 +105,7 @@ mod tests {
     use grim_engine_types::events::{
         Command, EngineCommand, InfoMessage, OocEvent, SayEvent, YellEvent,
     };
+    use grim_engine_types::GrimId;
 
     fn test_app() -> App {
         let mut app = App::new();
@@ -153,7 +154,7 @@ mod tests {
         let room = app
             .world_mut()
             .spawn(Room {
-                id: uuid::Uuid::new_v4(),
+                id: GrimId::new(),
                 friendly_id: "test".into(),
                 name: "Test Room".into(),
                 description: "".into(),

@@ -287,8 +287,8 @@ mod tests {
 
     use chrono::Utc;
     use grim_engine_types::components::Role;
+    use grim_engine_types::GrimId;
     use std::time::Duration;
-    use uuid::Uuid;
 
     fn test_app() -> App {
         let mut app = App::new();
@@ -302,9 +302,9 @@ mod tests {
     fn spawn_character(app: &mut App, roles: Vec<Role>) -> Entity {
         app.world_mut()
             .spawn(Character {
-                id: Uuid::new_v4(),
+                id: GrimId::new(),
                 name: "Tester".into(),
-                account_id: Uuid::new_v4(),
+                account_id: GrimId::new(),
                 created_at: Utc::now(),
                 last_room: None,
                 roles,
