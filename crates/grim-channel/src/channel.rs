@@ -1,7 +1,7 @@
 use grim_text::tr;
 
 use bevy::prelude::*;
-use grim_engine_types::components::{InRoom, Name, Room};
+use grim_engine_types::components::{InRoom, Name, Player, Room};
 use grim_engine_types::events::{
     Command, EngineCommand, InfoMessage, OocEvent, SayEvent, YellEvent,
 };
@@ -17,7 +17,63 @@ impl Plugin for ChannelPlugin {
             .add_message::<SayEvent>()
             .add_message::<YellEvent>()
             .add_message::<OocEvent>()
-            .add_systems(Update, (handle_say, handle_yell, handle_ooc));
+            .add_systems(Update, (handle_say, handle_yell, handle_ooc, handle_tell));
+    }
+}
+
+/// `tell <target> <text>` (alias `whisper`): a private message to one player.
+/// `target` is fuzzy-matched (case-insensitive name prefix) among connected
+/// players; `self` targets the sender. The sender always sees
+/// `You tell <Name> '<text>'`; a distinct recipient also sees
+/// `<Sender> tells you '<text>'`.
+fn handle_tell(
+    mut engine: MessageReader<EngineCommand>,
+    players: Query<(Entity, &Name, &Player)>,
+    names: Query<&Name>,
+    mut info: MessageWriter<InfoMessage>,
+) {
+    for cmd in engine.read() {
+        let Command::Tell { target, text } = &cmd.command else {
+            continue;
+        };
+        let actor = cmd.client;
+
+        let recipient = if target.eq_ignore_ascii_case("self") {
+            Some(actor)
+        } else {
+            let want = target.to_ascii_lowercase();
+            players
+                .iter()
+                // Only players with a live connection can receive a tell.
+                .filter(|(_, _, p)| p.connection.is_some())
+                .find(|(_, n, _)| n.0.to_ascii_lowercase().starts_with(&want))
+                .map(|(e, _, _)| e)
+        };
+
+        let Some(recipient) = recipient else {
+            info.write(InfoMessage {
+                target: actor,
+                text: format!("No one named '{target}' is here to tell.\n"),
+            });
+            continue;
+        };
+
+        let recipient_name = names
+            .get(recipient)
+            .map(|n| n.0.clone())
+            .unwrap_or_default();
+        info.write(InfoMessage {
+            target: actor,
+            text: format!("You tell {recipient_name} '{text}'\n"),
+        });
+        // `tell self` shows only the "You tell …" line — don't also notify.
+        if recipient != actor {
+            let sender_name = names.get(actor).map(|n| n.0.clone()).unwrap_or_default();
+            info.write(InfoMessage {
+                target: recipient,
+                text: format!("{sender_name} tells you '{text}'\n"),
+            });
+        }
     }
 }
 
@@ -101,7 +157,7 @@ fn handle_ooc(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_engine_types::components::{InRoom, Name, Room};
+    use grim_engine_types::components::{InRoom, Name, Player, Room};
     use grim_engine_types::events::{
         Command, EngineCommand, InfoMessage, OocEvent, SayEvent, YellEvent,
     };
@@ -111,6 +167,97 @@ mod tests {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins).add_plugins(ChannelPlugin);
         app
+    }
+
+    /// (target, text) of every InfoMessage emitted.
+    fn infos(app: &App) -> Vec<(Entity, String)> {
+        let m = app.world().resource::<Messages<InfoMessage>>();
+        let mut c = m.get_cursor();
+        c.read(m).map(|i| (i.target, i.text.clone())).collect()
+    }
+
+    fn spawn_player(app: &mut App, name: &str) -> Entity {
+        app.world_mut()
+            .spawn((
+                Name(name.into()),
+                Player {
+                    connection: Some(Entity::PLACEHOLDER),
+                },
+            ))
+            .id()
+    }
+
+    #[test]
+    fn tell_fuzzy_matches_and_messages_both_parties() {
+        let mut app = test_app();
+        let alice = spawn_player(&mut app, "Alice");
+        let wrack = spawn_player(&mut app, "Wrack");
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Command::Tell {
+                target: "wr".into(), // case-insensitive prefix
+                text: "hi".into(),
+            },
+        });
+        app.update();
+        let msgs = infos(&app);
+        assert!(msgs.contains(&(alice, "You tell Wrack 'hi'\n".to_string())));
+        assert!(msgs.contains(&(wrack, "Alice tells you 'hi'\n".to_string())));
+        assert_eq!(msgs.len(), 2);
+    }
+
+    #[test]
+    fn tell_self_only_echoes_to_sender() {
+        let mut app = test_app();
+        let alice = spawn_player(&mut app, "Alice");
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Command::Tell {
+                target: "self".into(),
+                text: "note".into(),
+            },
+        });
+        app.update();
+        let msgs = infos(&app);
+        assert_eq!(msgs, vec![(alice, "You tell Alice 'note'\n".to_string())]);
+    }
+
+    #[test]
+    fn tell_unknown_target_reports_to_sender() {
+        let mut app = test_app();
+        let alice = spawn_player(&mut app, "Alice");
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Command::Tell {
+                target: "nobody".into(),
+                text: "hi".into(),
+            },
+        });
+        app.update();
+        let msgs = infos(&app);
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].0, alice);
+        assert!(msgs[0].1.contains("No one named 'nobody'"));
+    }
+
+    #[test]
+    fn tell_skips_linkdead_players() {
+        // A player with no live connection can't be told.
+        let mut app = test_app();
+        let alice = spawn_player(&mut app, "Alice");
+        app.world_mut()
+            .spawn((Name("Bob".into()), Player { connection: None }));
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Command::Tell {
+                target: "Bob".into(),
+                text: "hi".into(),
+            },
+        });
+        app.update();
+        let msgs = infos(&app);
+        assert_eq!(msgs.len(), 1);
+        assert!(msgs[0].1.contains("No one named 'Bob'"));
     }
 
     #[test]

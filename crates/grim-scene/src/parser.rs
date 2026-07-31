@@ -32,6 +32,19 @@ pub fn command_registry() -> CommandRegistry<Command> {
     r
 }
 
+/// Parse `<target> <message>` for `tell`/`whisper`. Both parts required.
+fn parse_tell(rest: &str) -> Option<Command> {
+    let (target, text) = rest.split_once(' ')?;
+    let (target, text) = (target.trim(), text.trim());
+    if target.is_empty() || text.is_empty() {
+        return None;
+    }
+    Some(Command::Tell {
+        target: target.to_string(),
+        text: text.to_string(),
+    })
+}
+
 fn build_registry() -> CommandRegistry<Command> {
     let mut r = CommandRegistry::new();
 
@@ -72,6 +85,10 @@ fn build_registry() -> CommandRegistry<Command> {
             })
         }
     });
+    // `tell <target> <message>` (alias: `whisper`). Needs both a target and a
+    // non-empty message; a bare `tell` or `tell name` is rejected.
+    r.register("tell", parse_tell);
+    r.register("whisper", parse_tell);
 
     // ── Game actions ─────────────────────────────────────────────
     r.register("look", |rest| {
@@ -318,6 +335,35 @@ mod tests {
     #[test]
     fn test_ooc_empty_is_none() {
         assert_eq!(parse("ooc"), None);
+    }
+
+    #[test]
+    fn test_tell_with_target_and_message() {
+        assert_eq!(
+            parse("tell Wrack hello there"),
+            Some(Command::Tell {
+                target: "Wrack".to_string(),
+                text: "hello there".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn test_whisper_is_alias_for_tell() {
+        assert_eq!(
+            parse("whisper self hi"),
+            Some(Command::Tell {
+                target: "self".to_string(),
+                text: "hi".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn test_tell_without_message_is_none() {
+        assert_eq!(parse("tell"), None);
+        assert_eq!(parse("tell Wrack"), None);
+        assert_eq!(parse("tell Wrack   "), None);
     }
 
     // ── Look ──────────────────────────────────────────────────────
