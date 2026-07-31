@@ -4,13 +4,21 @@ After=network.target
 
 [Service]
 # notify: the server sends READY=1 once its listener is up. This is also what
-# makes copyover work — the successor process sends MAINPID=<its pid> so systemd
+# makes copyover work — the predecessor + successor send MAINPID so systemd
 # follows the handoff instead of treating the predecessor's exit as a crash.
+# WITHOUT Type=notify (e.g. a stale Type=simple unit) a copyover looks like the
+# main process dying, and systemd stops the service (SIGTERM → the in-game 30s
+# countdown). deploy.sh keeps this file in sync so the box can't drift back.
 Type=notify
 NotifyAccess=all
+# `User=` is rendered by deploy.sh to the deploy/SSH user (so signalling the
+# process needs no privilege); the value here is a placeholder.
 User=grim
 WorkingDirectory=/opt/grim
 ExecStart=/opt/grim/bin/grim
+# Lets `systemctl reload grim` trigger a copyover too (deploy.sh uses a direct
+# SIGUSR2 to avoid needing privileged systemctl, but this keeps the idiom available).
+ExecReload=/bin/kill -USR2 $MAINPID
 # Clean exit (code 0, from an admin `shutdown` or the SIGTERM countdown) stays
 # down so a cold deploy can swap the binary. Only a crash (non-zero) restarts.
 Restart=on-failure
