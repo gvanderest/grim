@@ -97,9 +97,9 @@ pub enum RoomLookup {
     Found(Entity),
     /// Nothing matched the address.
     NotFound,
-    /// A bare slug matched rooms in more than one area — the caller should ask
-    /// for an `<area>:<room>` address to disambiguate.
-    Ambiguous,
+    /// A slug matched more than one room (e.g. several instances of an area).
+    /// Carries every candidate so the caller can list them for disambiguation.
+    Ambiguous(Vec<Entity>),
 }
 
 /// Resolve a room *address* to a room entity — the shared lookup behind admin
@@ -143,14 +143,20 @@ pub fn resolve_room_address(
     }
 
     // Slug: a room `friendly_id`, which is unique only within its area.
-    let mut hits = rooms
+    let hits: Vec<Entity> = rooms
         .iter()
         .filter(|(_, r)| r.friendly_id.eq_ignore_ascii_case(input))
-        .map(|(e, _)| e);
-    match (hits.next(), hits.next()) {
-        (Some(e), None) => RoomLookup::Found(e),
-        (Some(_), Some(_)) => RoomLookup::Ambiguous,
-        (None, _) => RoomLookup::NotFound,
+        .map(|(e, _)| e)
+        .collect();
+    classify(hits)
+}
+
+/// Turn a list of slug candidates into a lookup outcome.
+fn classify(mut hits: Vec<Entity>) -> RoomLookup {
+    match hits.len() {
+        0 => RoomLookup::NotFound,
+        1 => RoomLookup::Found(hits.remove(0)),
+        _ => RoomLookup::Ambiguous(hits),
     }
 }
 
@@ -185,13 +191,13 @@ fn resolve_room_in_area(tok: &str, area: Entity, rooms: &Query<(Entity, &Room)>)
     {
         return RoomLookup::Found(e);
     }
-    match rooms
+    // Slug within the area — may match multiple instances of the same room.
+    let hits: Vec<Entity> = rooms
         .iter()
-        .find(|(_, r)| r.area == area && r.friendly_id.eq_ignore_ascii_case(tok))
-    {
-        Some((e, _)) => RoomLookup::Found(e),
-        None => RoomLookup::NotFound,
-    }
+        .filter(|(_, r)| r.area == area && r.friendly_id.eq_ignore_ascii_case(tok))
+        .map(|(e, _)| e)
+        .collect();
+    classify(hits)
 }
 
 /// Parse an entity-id token (`Entity::to_bits` decimal) into a well-formed
@@ -330,14 +336,35 @@ fn handle_goto(
                     text: format!("No room matches '{target}'.\n"),
                 });
             }
-            RoomLookup::Ambiguous => {
+            RoomLookup::Ambiguous(candidates) => {
+                // List every candidate with its distinguishing ids so the admin
+                // can re-issue `goto` against a unique one (an entity or grim id).
+                let mut text = String::from("Select an option...\n");
+                for e in candidates {
+                    if let Ok((_, r)) = rooms.get(e) {
+                        text.push_str(&room_ident_line(e, r));
+                        text.push('\n');
+                    }
+                }
                 info.write(InfoMessage {
                     target: actor,
-                    text: format!("Several rooms match '{target}'. Use <area>:<room>.\n"),
+                    text,
                 });
             }
         }
     }
+}
+
+/// One disambiguation line for a room: `Name (entity:… grim:… slug:…)`. Matches
+/// the admin room-title debug format. (A future instance id would slot in here.)
+fn room_ident_line(entity: Entity, room: &Room) -> String {
+    format!(
+        "{} (entity:{} grim:{} slug:{})",
+        room.name,
+        entity.to_bits(),
+        room.id,
+        room.friendly_id
+    )
 }
 
 /// `quit`: request a clean disconnect of the actor's underlying connection.
@@ -366,6 +393,7 @@ mod tests {
     use grim_engine_types::events::{
         Command, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent,
     };
+    use grim_engine_types::GrimId;
 
     macro_rules! count_messages {
         ($app:expr, $t:ty) => {{
@@ -675,7 +703,7 @@ mod tests {
     }
 
     #[test]
-    fn goto_bare_slug_matching_two_areas_is_ambiguous() {
+    fn goto_bare_slug_matching_two_areas_lists_candidates() {
         let mut app = test_app();
         spawn_room(&mut app, "town", "market", Exits::default());
         spawn_room(&mut app, "forest", "market", Exits::default());
@@ -683,7 +711,117 @@ mod tests {
         let actor = spawn_actor_in(&mut app, start, true);
         send_goto(&mut app, actor, "market");
         assert_eq!(room_of(&app, actor), start, "ambiguous goto must not move");
-        assert!(info_texts(&app).iter().any(|t| t.contains("Several rooms")));
+        let text = info_texts(&app).join("");
+        assert!(text.contains("Select an option..."));
+        // One detail line per candidate, each carrying its ids.
+        let lines: Vec<&str> = text.lines().filter(|l| l.contains("entity:")).collect();
+        assert_eq!(lines.len(), 2, "expected two candidates, got:\n{text}");
+        assert!(lines
+            .iter()
+            .all(|l| l.contains("grim:") && l.contains("slug:market")));
+    }
+
+    #[test]
+    fn goto_area_room_all_token_permutations_resolve() {
+        // area side ∈ {entity, grim, slug} × room side ∈ {entity, grim, slug}.
+        let mut app = test_app();
+        let market = spawn_room(&mut app, "town", "market", Exits::default());
+        let start = spawn_room(&mut app, "forest", "clearing", Exits::default());
+        let actor = spawn_actor_in(&mut app, start, true);
+
+        let area = app.world().get::<Room>(market).unwrap().area;
+        let area_tokens = [
+            area.to_bits().to_string(),
+            app.world().get::<Area>(area).unwrap().id.to_string(),
+            "town".to_string(),
+        ];
+        let room_tokens = [
+            market.to_bits().to_string(),
+            app.world().get::<Room>(market).unwrap().id.to_string(),
+            "market".to_string(),
+        ];
+        for a in &area_tokens {
+            for r in &room_tokens {
+                app.world_mut().get_mut::<InRoom>(actor).unwrap().room = start;
+                send_goto(&mut app, actor, &format!("{a}:{r}"));
+                assert_eq!(
+                    room_of(&app, actor),
+                    market,
+                    "address {a}:{r} should resolve"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn goto_bare_all_token_forms_resolve() {
+        // bare room token ∈ {entity, grim, slug}.
+        let mut app = test_app();
+        let market = spawn_room(&mut app, "town", "market", Exits::default());
+        let start = spawn_room(&mut app, "town", "square", Exits::default());
+        let actor = spawn_actor_in(&mut app, start, true);
+        let tokens = [
+            market.to_bits().to_string(),
+            app.world().get::<Room>(market).unwrap().id.to_string(),
+            "market".to_string(),
+        ];
+        for t in &tokens {
+            app.world_mut().get_mut::<InRoom>(actor).unwrap().room = start;
+            send_goto(&mut app, actor, t);
+            assert_eq!(
+                room_of(&app, actor),
+                market,
+                "bare token {t} should resolve"
+            );
+        }
+    }
+
+    #[test]
+    fn goto_area_room_slug_ambiguous_within_area_lists_candidates() {
+        // Two rooms sharing a slug in the SAME area (e.g. instanced) → the
+        // `<area>:<room>` slug path is itself ambiguous and lists both.
+        let mut app = test_app();
+        let a = spawn_room(&mut app, "town", "market", Exits::default());
+        let area = app.world().get::<Room>(a).unwrap().area;
+        // A second "market" room in the very same area.
+        app.world_mut().spawn((
+            Room {
+                id: GrimId::new(),
+                friendly_id: "market".into(),
+                name: "Town Square".into(),
+                description: String::new(),
+                area,
+            },
+            Name("Town Square".into()),
+            Exits::default(),
+        ));
+        let start = spawn_room(&mut app, "forest", "clearing", Exits::default());
+        let actor = spawn_actor_in(&mut app, start, true);
+        send_goto(&mut app, actor, "town:market");
+        assert_eq!(
+            room_of(&app, actor),
+            start,
+            "ambiguous area:room must not move"
+        );
+        let text = info_texts(&app).join("");
+        assert!(text.contains("Select an option..."));
+        assert_eq!(text.lines().filter(|l| l.contains("entity:")).count(), 2);
+    }
+
+    #[test]
+    fn goto_area_room_not_found_variants() {
+        let mut app = test_app();
+        spawn_room(&mut app, "town", "market", Exits::default());
+        let start = spawn_room(&mut app, "town", "square", Exits::default());
+        let actor = spawn_actor_in(&mut app, start, true);
+        for addr in ["nowhere:market", "town:nowhere"] {
+            app.world_mut().get_mut::<InRoom>(actor).unwrap().room = start;
+            send_goto(&mut app, actor, addr);
+            assert_eq!(room_of(&app, actor), start, "{addr} must not move");
+        }
+        assert!(info_texts(&app)
+            .iter()
+            .any(|t| t.contains("No room matches")));
     }
 
     #[test]

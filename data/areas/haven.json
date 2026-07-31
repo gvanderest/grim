@@ -1,14 +1,16 @@
 {
+  "id": "tC411g4XUysf",
   "slug": "haven",
   "name": "Haven",
   "canonical": true,
-  "starting_room": "tavern",
+  "starting_room": "C7Ee6NQVAfBr",
   "rooms": [
     {
+      "id": "C7Ee6NQVAfBr",
       "slug": "tavern",
       "name": "The Rusted Anvil",
       "description": "Smoke and the clang of hammer on steel fill the air. Sawdust covers the floor of this cozy tavern. A staircase leads up to the second floor, and a door leads north to the town square.",
-      "exits": { "north": "square" },
+      "exits": { "north": "y0vjzSNtWQo3" },
       "npcs": [
         {
           "name": "Grimmok Ironhand",
@@ -17,16 +19,18 @@
       ]
     },
     {
+      "id": "y0vjzSNtWQo3",
       "slug": "square",
       "name": "Town Square",
       "description": "The cobblestone square bustles with activity. A fountain marks the center. The tavern is to the south, and the smithy is to the east.",
-      "exits": { "south": "tavern", "east": "forge" }
+      "exits": { "south": "C7Ee6NQVAfBr", "east": "dSWS6Y77CtwJ" }
     },
     {
+      "id": "dSWS6Y77CtwJ",
       "slug": "forge",
       "name": "Grimmok's Forge",
       "description": "The heat from the forge is intense. Weapons and armor hang from the walls. The town square is to the west.",
-      "exits": { "west": "square" }
+      "exits": { "west": "y0vjzSNtWQo3" }
     }
   ]
 }

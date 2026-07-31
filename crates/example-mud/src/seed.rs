@@ -8,9 +8,12 @@
 //!
 //! On startup every blueprint with `"canonical": true` is loaded — `canonical`
 //! is, for now, simply the flag that gates startup loading (see
-//! `docs/adr/0001-area-identity-and-instancing.md`). Each loaded area and room
-//! is assigned a fresh [`GrimId`]; ids are not persisted for areas, so a restart
-//! reseeds them.
+//! `docs/adr/0001-area-identity-and-instancing.md`).
+//!
+//! Every area and room carries a stable [`GrimId`] (`id`) in the file, and all
+//! references — a room's `exits` and the area's `starting_room` — point at those
+//! **ids**, never slugs. Slugs are only a human alias, so renaming a room's slug
+//! never breaks a link.
 
 use std::collections::HashMap;
 
@@ -27,14 +30,16 @@ const AREA_BLUEPRINTS: &[&str] = &[include_str!("../../../data/areas/haven.json"
 /// An area definition on disk: the area itself plus its rooms.
 #[derive(Deserialize)]
 struct AreaBlueprint {
+    /// Stable Grim ID — the identity that references point at.
+    id: GrimId,
     slug: String,
     name: String,
     /// Only `canonical` areas are stamped into the world at startup.
     #[serde(default)]
     canonical: bool,
-    /// Slug of the room new characters (and the ultimate fallback) start in.
+    /// Grim ID of the room new characters (and the ultimate fallback) start in.
     #[serde(default)]
-    starting_room: Option<String>,
+    starting_room: Option<GrimId>,
     #[serde(default)]
     rooms: Vec<RoomBlueprint>,
 }
@@ -42,12 +47,15 @@ struct AreaBlueprint {
 /// A room definition within an [`AreaBlueprint`].
 #[derive(Deserialize)]
 struct RoomBlueprint {
+    /// Stable Grim ID — what `exits`/`starting_room` reference.
+    id: GrimId,
     slug: String,
     name: String,
     description: String,
-    /// direction name (`"north"`) -> destination room slug, within this area.
+    /// direction name (`"north"`) -> destination room **Grim ID** (not slug),
+    /// so renaming a room's slug never breaks the link.
     #[serde(default)]
-    exits: HashMap<String, String>,
+    exits: HashMap<String, GrimId>,
     #[serde(default)]
     npcs: Vec<NpcBlueprint>,
 }
@@ -94,19 +102,19 @@ pub fn seed_world(mut commands: Commands) {
 fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
     let area = commands
         .spawn(Area {
-            id: GrimId::new(),
+            id: bp.id,
             friendly_id: bp.slug.clone(),
             name: bp.name.clone(),
         })
         .id();
 
-    // Pass 1: spawn rooms and record slug -> entity so exits can resolve.
-    let mut room_ents: HashMap<&str, Entity> = HashMap::new();
+    // Pass 1: spawn rooms and record Grim ID -> entity so exits can resolve.
+    let mut room_ents: HashMap<GrimId, Entity> = HashMap::new();
     for r in &bp.rooms {
         let entity = commands
             .spawn((
                 Room {
-                    id: GrimId::new(),
+                    id: r.id,
                     friendly_id: r.slug.clone(),
                     name: r.name.clone(),
                     description: r.description.clone(),
@@ -116,14 +124,14 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
                 Exits::default(),
             ))
             .id();
-        if room_ents.insert(&r.slug, entity).is_some() {
-            warn!("area '{}': duplicate room slug '{}'", bp.slug, r.slug);
+        if room_ents.insert(r.id, entity).is_some() {
+            warn!("area '{}': duplicate room id {}", bp.slug, r.id);
         }
     }
 
-    // Pass 2: wire exits (within this area) and place NPCs.
+    // Pass 2: wire exits (by Grim ID, within this area) and place NPCs.
     for r in &bp.rooms {
-        let Some(&from) = room_ents.get(r.slug.as_str()) else {
+        let Some(&from) = room_ents.get(&r.id) else {
             continue;
         };
         let mut exits = HashMap::new();
@@ -135,14 +143,14 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
                 );
                 continue;
             };
-            match room_ents.get(target.as_str()) {
+            match room_ents.get(target) {
                 Some(&to) => {
                     exits.insert(cardinal, to);
                 }
                 // Cross-area / unknown targets are not wired yet — log and skip
                 // rather than fail (see ADR-0001 dangling-exit handling).
                 None => warn!(
-                    "area '{}' room '{}': exit '{dir}' -> unknown room '{target}', skipped",
+                    "area '{}' room '{}': exit '{dir}' -> unknown room id {target}, skipped",
                     bp.slug, r.slug
                 ),
             }
@@ -160,8 +168,7 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
     }
 
     bp.starting_room
-        .as_deref()
-        .and_then(|slug| room_ents.get(slug).copied())
+        .and_then(|gid| room_ents.get(&gid).copied())
 }
 
 #[cfg(test)]
@@ -169,12 +176,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn haven_blueprint_parses() {
+    fn haven_blueprint_parses_and_references_by_grim_id() {
         let bp: AreaBlueprint = serde_json::from_str(AREA_BLUEPRINTS[0]).unwrap();
         assert_eq!(bp.slug, "haven");
         assert!(bp.canonical);
-        assert_eq!(bp.starting_room.as_deref(), Some("tavern"));
         assert_eq!(bp.rooms.len(), 3);
+
+        let tavern = &bp.rooms[0];
+        let square = &bp.rooms[1];
+        assert_eq!(tavern.slug, "tavern");
+        // starting_room references the tavern by Grim ID, not slug.
+        assert_eq!(bp.starting_room, Some(tavern.id));
+        // The tavern's north exit references the square by Grim ID.
+        assert_eq!(tavern.exits.get("north"), Some(&square.id));
     }
 
     #[test]
