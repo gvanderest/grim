@@ -12,20 +12,26 @@ the binary.
 1. **build** — `cargo build --release --target x86_64-unknown-linux-musl`. The
    musl target produces a fully static binary (assets are `include_str!`-baked,
    so it needs no files beside it). Uploaded as an artifact named `grim`.
-2. **deploy** — `scp`s the binary to `/opt/grim/bin/grim.new` plus
-   `deploy/deploy.sh`, then runs the script over SSH.
+2. **deploy** — `scp`s the binary to `/opt/grim/bin/grim.new`, plus
+   `deploy/deploy.sh` and `deploy/grim.service`, then runs the script over SSH.
 
 `deploy/deploy.sh` (on the host):
 
 - **Swap `grim.new` into `grim` first.** On copyover the running process re-execs
   its own path, so that path must already hold the new binary.
-- If the server is **up**: `kill -USR2 <MainPID>` — a **copyover** (hot restart).
-  The process execs the new binary and hands its live listener + player sockets
-  to the successor over a unix socket (SCM_RIGHTS); the successor reloads the
-  world from disk and drops each player back into the room they were in, with **no
-  disconnect and no re-login**. Signalling directly needs no privilege (the
-  service runs as the deploy user).
-- If the server is **down**: `systemctl start grim` (cold start).
+- **Sync the systemd unit** from the uploaded `grim.service` (rendering `User=` to
+  the deploy user); `daemon-reload` + `enable`. Track whether the unit *changed*.
+- Then pick one:
+  - server **down** → `systemctl start grim` (cold start).
+  - server **up** but the **unit changed** → `systemctl restart grim` (one cold
+    restart, so the running instance adopts the new unit — a copyover can't take
+    effect until it does).
+  - server **up** and unit **unchanged** → `kill -USR2 <MainPID>` — a **copyover**
+    (hot restart). The process execs the new binary and hands its live listener +
+    player sockets to the successor over a unix socket (SCM_RIGHTS); the successor
+    reloads the world from disk and drops each player back into the room they were
+    in, with **no disconnect and no re-login**. Signalling directly needs no
+    privilege (the service runs as the deploy user).
 
 ### How copyover survives systemd
 
@@ -68,9 +74,10 @@ work. Under a stale `Type=simple` unit, a copyover looks like the main process
 dying, so systemd stops the service (you'd see the in-game "restarting in 30s"
 countdown); `deploy.sh` syncing the unit prevents that drift.
 
-`deploy/grim.service` in the repo is the same unit with `User=grim`; edit the
-`User=` line if you run it under a dedicated user with a non-default deploy
-account instead.
+The service runs as the **deploy/SSH user**: `deploy.sh` rewrites the unit's
+`User=` line to `$(id -un)` on install, so the `User=` value committed in
+`deploy/grim.service` is just a placeholder — editing it has no effect. To run
+under a dedicated service user instead, change how `deploy.sh` renders `User=`.
 
 First-ever start fails until the first deploy lands the binary — expected. Don't
 `systemctl start` by hand; let the deploy do it.

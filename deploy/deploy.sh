@@ -23,7 +23,11 @@ UNIT_DST=/etc/systemd/system/grim.service
 
 log() { echo "[deploy] $*"; }
 
+# Both artifacts are required up front. Bail BEFORE swapping the binary if the
+# unit is missing (a broken upload), so we never install a new binary under a
+# stale/absent unit.
 [[ -f "$STAGED" ]] || { log "no staged binary at $STAGED"; exit 1; }
+[[ -f "$UNIT_SRC" ]] || { log "no unit at $UNIT_SRC (broken upload)"; exit 1; }
 
 # Swap the new binary into place FIRST: on copyover the running process re-execs
 # its own path (`current_exe`), so that path must already point at the new bytes.
@@ -32,26 +36,25 @@ mv -f "$STAGED" "$BIN"
 chmod +x "$BIN"
 
 # Sync the systemd unit. Render `User=` to the deploy user so signalling the
-# process needs no privilege. Only touch systemd if the unit actually changed.
+# process needs no privilege. `unit_changed` is the adoption signal: if the unit
+# changed we cold-restart below (the running instance only adopts the new unit on
+# restart); if it is unchanged the running instance is already under it, so a
+# copyover is safe.
 unit_changed=0
-if [[ -f "$UNIT_SRC" ]]; then
-    rendered="$(mktemp)"
-    sed "s#^User=.*#User=$(id -un)#" "$UNIT_SRC" > "$rendered"
-    if ! sudo cmp -s "$rendered" "$UNIT_DST" 2>/dev/null; then
-        log "installing/updating systemd unit at $UNIT_DST"
-        sudo cp "$rendered" "$UNIT_DST"
-        sudo systemctl daemon-reload
-        unit_changed=1
-    fi
-    rm -f "$rendered"
-    # Ensure the service is enabled for boot on EVERY deploy (idempotent), not
-    # just when the unit changed — otherwise an already-installed-but-disabled
-    # unit leaves GRIM down after the next host reboot. Not suppressed: a real
-    # enable failure should fail the deploy, not report success.
-    sudo systemctl enable grim >/dev/null
-else
-    log "warning: no grim.service uploaded — leaving the existing unit in place"
+rendered="$(mktemp)"
+sed "s#^User=.*#User=$(id -un)#" "$UNIT_SRC" > "$rendered"
+if ! sudo cmp -s "$rendered" "$UNIT_DST" 2>/dev/null; then
+    log "installing/updating systemd unit at $UNIT_DST"
+    sudo cp "$rendered" "$UNIT_DST"
+    sudo systemctl daemon-reload
+    unit_changed=1
 fi
+rm -f "$rendered"
+# Ensure the service is enabled for boot on EVERY deploy (idempotent), not just
+# when the unit changed — otherwise an already-installed-but-disabled unit leaves
+# GRIM down after the next host reboot. Not suppressed: a real enable failure
+# should fail the deploy, not report success.
+sudo systemctl enable grim >/dev/null
 
 if ! systemctl is-active --quiet grim; then
     log "server down — cold start"
