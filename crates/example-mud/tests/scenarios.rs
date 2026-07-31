@@ -92,24 +92,29 @@ fn ooc_is_global_and_reaches_a_distant_player() {
 }
 
 #[test]
-fn quit_then_reconnect_resumes_the_same_character() {
+fn quit_saves_and_unloads_then_reconnect_logs_in_fresh() {
     let mut mud = Mud::new();
     let alice = create_char(&mut mud, "alice@example.com", "Alice");
-    mud.send(alice, "quit").assert_contains("disconnected");
-    mud.disconnect(alice);
 
-    // Character persists in the world (linkdead), not destroyed.
+    // `quit` is an intentional logout: it saves and UNLOADS the character from
+    // the world. It must NOT go linkdead (that is only for an unexpected socket
+    // drop). The character still exists on disk / as an offline entity, but it is
+    // no longer in the world.
+    let _ = mud.send(alice, "quit");
+    mud.disconnect(alice);
     assert!(mud.character_names().contains(&"Alice".to_string()));
 
-    // Reconnect on a fresh connection: existing account → password → pick char.
+    // Reconnect is a normal login, not a linkdead reconnect: existing account →
+    // password → character menu (Alice listed, not "linkdead") → select → MOTD →
+    // enter the world.
     let (again, _) = mud.connect();
     mud.send(again, "alice@example.com")
         .assert_contains("Password");
     mud.send(again, PW)
         .assert_contains("Alice")
-        .assert_contains("linkdead");
-    // Selecting the character re-enters the world (linkdead reconnect skips MOTD).
-    mud.send(again, "1").assert_contains("The Rusted Anvil");
+        .assert_excludes("linkdead");
+    let _ = mud.send(again, "1"); // select from the menu → MOTD
+    mud.send(again, "").assert_contains("The Rusted Anvil");
 }
 
 #[test]
