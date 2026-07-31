@@ -19,7 +19,7 @@ impl Plugin for WorldPlugin {
             .add_message::<MoveEvent>()
             .add_message::<InfoMessage>()
             .add_message::<DisconnectRequest>()
-            .add_systems(Update, (handle_look, handle_move, handle_quit));
+            .add_systems(Update, (handle_look, handle_move, handle_quit, handle_goto));
     }
 }
 
@@ -90,6 +90,124 @@ pub fn room_location(
     })
 }
 
+/// Outcome of resolving a room [address](resolve_room_address).
+#[derive(Debug, PartialEq, Eq)]
+pub enum RoomLookup {
+    /// Exactly one room matched.
+    Found(Entity),
+    /// Nothing matched the address.
+    NotFound,
+    /// A bare slug matched rooms in more than one area — the caller should ask
+    /// for an `<area>:<room>` address to disambiguate.
+    Ambiguous,
+}
+
+/// Resolve a room *address* to a room entity — the shared lookup behind admin
+/// `goto` and (later) other targeting. See `docs/adr/0001`.
+///
+/// Precedence, most specific first: an **entity id** (`Entity::to_bits` as a
+/// decimal, boot-local), then a **grim id** (seam only — ids are still `Uuid`;
+/// wired when the base62 Grim ID work lands), then a **slug** (`friendly_id`).
+/// An address is either `<area>:<room>` — each side independently an entity id
+/// or slug, and the area side may also be an entity id — or a bare room token.
+/// A bare slug that matches rooms in several areas is [`Ambiguous`](RoomLookup::Ambiguous).
+pub fn resolve_room_address(
+    input: &str,
+    rooms: &Query<(Entity, &Room)>,
+    areas: &Query<(Entity, &Area)>,
+) -> RoomLookup {
+    let input = input.trim();
+    if input.is_empty() {
+        return RoomLookup::NotFound;
+    }
+
+    if let Some((area_tok, room_tok)) = input.split_once(':') {
+        let Some(area) = resolve_area(area_tok.trim(), areas) else {
+            return RoomLookup::NotFound;
+        };
+        return resolve_room_in_area(room_tok.trim(), area, rooms);
+    }
+
+    // Bare token. Entity id is most specific.
+    if let Some(e) = parse_entity(input) {
+        if rooms.get(e).is_ok() {
+            return RoomLookup::Found(e);
+        }
+        // A numeric token that isn't a live room falls through to slug — a grim
+        // id could in principle be all digits — rather than hard-failing.
+    }
+    // Grim ID tier: seam. Ids are still `Uuid`, so nothing to match yet.
+
+    // Slug: a room `friendly_id`, which is unique only within its area.
+    let mut hits = rooms
+        .iter()
+        .filter(|(_, r)| r.friendly_id.eq_ignore_ascii_case(input))
+        .map(|(e, _)| e);
+    match (hits.next(), hits.next()) {
+        (Some(e), None) => RoomLookup::Found(e),
+        (Some(_), Some(_)) => RoomLookup::Ambiguous,
+        (None, _) => RoomLookup::NotFound,
+    }
+}
+
+/// Resolve the area side of an `<area>:<room>` address to an area entity.
+fn resolve_area(tok: &str, areas: &Query<(Entity, &Area)>) -> Option<Entity> {
+    if let Some(e) = parse_entity(tok) {
+        if areas.get(e).is_ok() {
+            return Some(e);
+        }
+    }
+    areas
+        .iter()
+        .find(|(_, a)| a.friendly_id.eq_ignore_ascii_case(tok))
+        .map(|(e, _)| e)
+}
+
+/// Resolve the room side of an `<area>:<room>` address within a known area.
+fn resolve_room_in_area(tok: &str, area: Entity, rooms: &Query<(Entity, &Room)>) -> RoomLookup {
+    if let Some(e) = parse_entity(tok) {
+        if rooms.get(e).map(|(_, r)| r.area == area).unwrap_or(false) {
+            return RoomLookup::Found(e);
+        }
+    }
+    match rooms
+        .iter()
+        .find(|(_, r)| r.area == area && r.friendly_id.eq_ignore_ascii_case(tok))
+    {
+        Some((e, _)) => RoomLookup::Found(e),
+        None => RoomLookup::NotFound,
+    }
+}
+
+/// Parse an entity-id token (`Entity::to_bits` decimal) into a well-formed
+/// entity, or `None` if it is not a valid bit pattern. Whether it is *live* is
+/// the caller's check.
+fn parse_entity(tok: &str) -> Option<Entity> {
+    tok.parse::<u64>().ok().and_then(Entity::try_from_bits)
+}
+
+/// The single seam every "put actor in room X" path routes through: set the
+/// actor's `InRoom` and refresh their persisted location. Per ADR-0001 the
+/// location update is a property of the *destination*, not of how the actor
+/// arrived, so walk and `goto` (and, later, summon/recall/login) share it. `loc`
+/// is the destination's persisted [`RoomLocation`], precomputed by the caller.
+fn place_actor(
+    actor: Entity,
+    to: Entity,
+    loc: Option<RoomLocation>,
+    inroom: &mut Query<&mut InRoom>,
+    characters: &mut Query<&mut Character>,
+) {
+    if let Ok(mut ir) = inroom.get_mut(actor) {
+        ir.room = to;
+    }
+    if let Some(loc) = loc {
+        if let Ok(mut character) = characters.get_mut(actor) {
+            character.last_room = Some(loc);
+        }
+    }
+}
+
 /// `move <direction>`: traverse an exit, emitting a movement event and an
 /// automatic look at the destination. Also refreshes the character's persisted
 /// `last_room` so a restart/copyover resumes them where they walked to.
@@ -117,17 +235,11 @@ fn handle_move(
         match exits.get(from) {
             Ok(room_exits) => match room_exits.exits.get(&direction).copied() {
                 Some(to) => {
-                    if let Ok(mut ir) = inroom.get_mut(actor) {
-                        ir.room = to;
-                    }
                     // Keep the persisted location current on every step so an
                     // unexpected restart or copyover resumes the character in the
                     // room they actually walked to, not a stale one.
-                    if let Ok(mut character) = characters.get_mut(actor) {
-                        if let Some(loc) = room_location(to, &rooms, &areas) {
-                            character.last_room = Some(loc);
-                        }
-                    }
+                    let loc = room_location(to, &rooms, &areas);
+                    place_actor(actor, to, loc, &mut inroom, &mut characters);
                     move_ev.write(MoveEvent {
                         actor,
                         from,
@@ -150,6 +262,63 @@ fn handle_move(
                 info.write(InfoMessage {
                     target: actor,
                     text: "You can't go that way.\n".into(),
+                });
+            }
+        }
+    }
+}
+
+/// `goto <address>`: admin-only teleport. Resolves the address through
+/// [`resolve_room_address`] and places the actor via the shared [`place_actor`]
+/// seam, then shows the destination room.
+///
+/// Admin-gated here as defense in depth: the dispatcher already masks `goto` as
+/// an unknown command for non-admins, so a well-behaved session never sends this
+/// for one. A `goto` from a non-client source with no admin character is refused
+/// silently (emitting anything would leak that the command exists).
+#[allow(clippy::too_many_arguments)]
+fn handle_goto(
+    mut engine: MessageReader<EngineCommand>,
+    mut inroom: Query<&mut InRoom>,
+    rooms: Query<(Entity, &Room)>,
+    areas: Query<(Entity, &Area)>,
+    mut characters: Query<&mut Character>,
+    mut look_room: MessageWriter<LookRoom>,
+    mut info: MessageWriter<InfoMessage>,
+) {
+    for cmd in engine.read() {
+        let Command::Goto { target } = &cmd.command else {
+            continue;
+        };
+        let actor = cmd.client;
+        let is_admin = characters.get(actor).map(|c| c.is_admin()).unwrap_or(false);
+        if !is_admin {
+            continue;
+        }
+        match resolve_room_address(target, &rooms, &areas) {
+            RoomLookup::Found(to) => {
+                let loc = rooms.get(to).ok().and_then(|(_, r)| {
+                    areas.get(r.area).ok().map(|(_, a)| RoomLocation {
+                        area: a.friendly_id.clone(),
+                        room: r.friendly_id.clone(),
+                    })
+                });
+                place_actor(actor, to, loc, &mut inroom, &mut characters);
+                look_room.write(LookRoom {
+                    target: actor,
+                    room: to,
+                });
+            }
+            RoomLookup::NotFound => {
+                info.write(InfoMessage {
+                    target: actor,
+                    text: format!("No room matches '{target}'.\n"),
+                });
+            }
+            RoomLookup::Ambiguous => {
+                info.write(InfoMessage {
+                    target: actor,
+                    text: format!("Several rooms match '{target}'. Use <area>:<room>.\n"),
                 });
             }
         }
@@ -416,5 +585,154 @@ mod tests {
         });
         app.update();
         assert_eq!(app.world().get::<InRoom>(actor).unwrap().room, room2);
+    }
+
+    // ── goto / resolve_room_address ──────────────────────────────────
+
+    fn spawn_actor_in(app: &mut App, room: Entity, admin: bool) -> Entity {
+        use grim_engine_types::components::{Character, Role};
+        use uuid::Uuid;
+        let roles = if admin { vec![Role::Admin] } else { Vec::new() };
+        app.world_mut()
+            .spawn((
+                InRoom { room },
+                Character {
+                    id: Uuid::new_v4(),
+                    name: "Admin".into(),
+                    account_id: Uuid::new_v4(),
+                    created_at: chrono::Utc::now(),
+                    last_room: None,
+                    roles,
+                },
+            ))
+            .id()
+    }
+
+    fn send_goto(app: &mut App, actor: Entity, target: &str) {
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Goto {
+                target: target.into(),
+            },
+        });
+        app.update();
+    }
+
+    fn info_texts(app: &App) -> Vec<String> {
+        let messages = app.world().resource::<Messages<InfoMessage>>();
+        let mut cursor = messages.get_cursor();
+        cursor.read(messages).map(|m| m.text.clone()).collect()
+    }
+
+    fn room_of(app: &App, actor: Entity) -> Entity {
+        app.world().get::<InRoom>(actor).unwrap().room
+    }
+
+    #[test]
+    fn goto_bare_slug_moves_admin_and_updates_last_room() {
+        use grim_engine_types::components::Character;
+        let mut app = test_app();
+        let dest = spawn_room(&mut app, "town", "market", Exits::default());
+        let start = spawn_room(&mut app, "town", "square", Exits::default());
+        let actor = spawn_actor_in(&mut app, start, true);
+        send_goto(&mut app, actor, "market");
+        assert_eq!(room_of(&app, actor), dest);
+        assert_eq!(look_room_count(&app), 1);
+        let loc = app
+            .world()
+            .get::<Character>(actor)
+            .unwrap()
+            .last_room
+            .clone()
+            .expect("goto should refresh last_room");
+        assert_eq!((loc.area.as_str(), loc.room.as_str()), ("town", "market"));
+    }
+
+    #[test]
+    fn goto_area_room_slug_disambiguates() {
+        let mut app = test_app();
+        let _town_market = spawn_room(&mut app, "town", "market", Exits::default());
+        let forest_market = spawn_room(&mut app, "forest", "market", Exits::default());
+        let start = spawn_room(&mut app, "town", "square", Exits::default());
+        let actor = spawn_actor_in(&mut app, start, true);
+        send_goto(&mut app, actor, "forest:market");
+        assert_eq!(room_of(&app, actor), forest_market);
+    }
+
+    #[test]
+    fn goto_bare_slug_matching_two_areas_is_ambiguous() {
+        let mut app = test_app();
+        spawn_room(&mut app, "town", "market", Exits::default());
+        spawn_room(&mut app, "forest", "market", Exits::default());
+        let start = spawn_room(&mut app, "town", "square", Exits::default());
+        let actor = spawn_actor_in(&mut app, start, true);
+        send_goto(&mut app, actor, "market");
+        assert_eq!(room_of(&app, actor), start, "ambiguous goto must not move");
+        assert!(info_texts(&app).iter().any(|t| t.contains("Several rooms")));
+    }
+
+    #[test]
+    fn goto_by_entity_id_moves() {
+        let mut app = test_app();
+        let dest = spawn_room(&mut app, "town", "market", Exits::default());
+        let start = spawn_room(&mut app, "town", "square", Exits::default());
+        let actor = spawn_actor_in(&mut app, start, true);
+        send_goto(&mut app, actor, &dest.to_bits().to_string());
+        assert_eq!(room_of(&app, actor), dest);
+    }
+
+    #[test]
+    fn goto_unknown_slug_reports_not_found() {
+        let mut app = test_app();
+        let start = spawn_room(&mut app, "town", "square", Exits::default());
+        let actor = spawn_actor_in(&mut app, start, true);
+        send_goto(&mut app, actor, "nowhere");
+        assert_eq!(room_of(&app, actor), start);
+        assert!(info_texts(&app)
+            .iter()
+            .any(|t| t.contains("No room matches 'nowhere'")));
+    }
+
+    #[test]
+    fn goto_numeric_that_is_not_a_live_room_falls_through() {
+        // A well-formed but dead entity id parses, misses the live-room check,
+        // and falls through to the (also-missing) slug lookup → NotFound.
+        let mut app = test_app();
+        let start = spawn_room(&mut app, "town", "square", Exits::default());
+        let ghost = app.world_mut().spawn(()).id();
+        let bits = ghost.to_bits();
+        app.world_mut().despawn(ghost);
+        let actor = spawn_actor_in(&mut app, start, true);
+        send_goto(&mut app, actor, &bits.to_string());
+        assert_eq!(room_of(&app, actor), start);
+        assert!(info_texts(&app)
+            .iter()
+            .any(|t| t.contains("No room matches")));
+    }
+
+    #[test]
+    fn goto_empty_target_reports_not_found() {
+        let mut app = test_app();
+        let start = spawn_room(&mut app, "town", "square", Exits::default());
+        let actor = spawn_actor_in(&mut app, start, true);
+        send_goto(&mut app, actor, "");
+        assert_eq!(room_of(&app, actor), start);
+        assert!(!info_texts(&app).is_empty());
+    }
+
+    #[test]
+    fn goto_is_ignored_for_non_admin() {
+        let mut app = test_app();
+        let dest = spawn_room(&mut app, "town", "market", Exits::default());
+        let start = spawn_room(&mut app, "town", "square", Exits::default());
+        let _ = dest;
+        let actor = spawn_actor_in(&mut app, start, false);
+        send_goto(&mut app, actor, "market");
+        assert_eq!(room_of(&app, actor), start, "non-admin goto must not move");
+        assert_eq!(look_room_count(&app), 0);
+        assert!(
+            info_texts(&app).is_empty(),
+            "non-admin goto must stay silent"
+        );
     }
 }
