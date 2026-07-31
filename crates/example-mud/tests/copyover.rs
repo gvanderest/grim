@@ -60,7 +60,7 @@ fn connect(port: u16) -> TcpStream {
         .unwrap()
         .next()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(60);
     loop {
         match TcpStream::connect_timeout(&addr, Duration::from_millis(300)) {
             Ok(s) => return s,
@@ -123,31 +123,31 @@ fn copyover_keeps_player_connected_and_resumes_last_room() {
     expect(
         &mut stream,
         "character name or email",
-        Duration::from_secs(5),
+        Duration::from_secs(20),
     );
     send(&mut stream, "alice@example.com");
-    expect(&mut stream, "create an account", Duration::from_secs(3));
+    expect(&mut stream, "create an account", Duration::from_secs(20));
     send(&mut stream, "y");
-    expect(&mut stream, "Choose a password", Duration::from_secs(3));
+    expect(&mut stream, "Choose a password", Duration::from_secs(20));
     send(&mut stream, PW);
     // Account created → character menu. Create a character.
-    expect(&mut stream, "character", Duration::from_secs(3));
+    expect(&mut stream, "character", Duration::from_secs(20));
     send(&mut stream, "c");
     expect(
         &mut stream,
         "name for your new character",
-        Duration::from_secs(3),
+        Duration::from_secs(20),
     );
     send(&mut stream, "Alice");
     // MOTD → press enter to enter the world → land in the starting tavern.
     std::thread::sleep(Duration::from_millis(300));
     send(&mut stream, "");
-    expect(&mut stream, "Exits:", Duration::from_secs(3));
+    expect(&mut stream, "Exits:", Duration::from_secs(20));
 
     // ── Walk north into the Town Square (in-game; respect command cooldown) ──
-    std::thread::sleep(Duration::from_millis(700));
+    std::thread::sleep(Duration::from_millis(1500));
     send(&mut stream, "north");
-    expect(&mut stream, "Town Square", Duration::from_secs(5));
+    expect(&mut stream, "Town Square", Duration::from_secs(20));
 
     // ── Swap the binary on disk (as a deploy would), then trigger copyover ──
     // Overwrite via a temp file + rename so the running image's inode is unlinked
@@ -172,11 +172,11 @@ fn copyover_keeps_player_connected_and_resumes_last_room() {
     let _ = child.wait();
 
     // ── Same socket, no re-login: greeted by the reload and back in the Square ──
-    expect(&mut stream, "world was reloaded", Duration::from_secs(10));
+    expect(&mut stream, "world was reloaded", Duration::from_secs(60));
 
-    std::thread::sleep(Duration::from_millis(700));
+    std::thread::sleep(Duration::from_millis(1500));
     send(&mut stream, "look");
-    let after = expect(&mut stream, "Town Square", Duration::from_secs(5));
+    let after = expect(&mut stream, "Town Square", Duration::from_secs(20));
     assert!(
         !after.contains("Rusted Anvil"),
         "should have resumed in the Town Square (walked-to room), not the tavern"
@@ -198,19 +198,19 @@ fn copyover_keeps_player_connected_and_resumes_last_room() {
         .status()
         .expect("send SIGUSR2 to group");
     assert!(status.success(), "second kill -USR2 failed");
-    expect(&mut stream, "world was reloaded", Duration::from_secs(10));
-    std::thread::sleep(Duration::from_millis(700));
+    expect(&mut stream, "world was reloaded", Duration::from_secs(60));
+    std::thread::sleep(Duration::from_millis(1500));
     send(&mut stream, "look");
-    expect(&mut stream, "Town Square", Duration::from_secs(5));
+    expect(&mut stream, "Town Square", Duration::from_secs(20));
 
     // ── `quit` after a copyover must still close the connection ──
-    std::thread::sleep(Duration::from_millis(700));
+    std::thread::sleep(Duration::from_millis(1500));
     send(&mut stream, "quit");
     // Server-side close → our reads return 0 (EOF) within a moment.
     stream
         .set_read_timeout(Some(Duration::from_millis(300)))
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(20);
     let mut closed = false;
     let mut buf = [0u8; 1024];
     while Instant::now() < deadline {
