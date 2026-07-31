@@ -182,6 +182,59 @@ fn copyover_keeps_player_connected_and_resumes_last_room() {
         "should have resumed in the Town Square (walked-to room), not the tavern"
     );
 
+    // ── Second, chained copyover (successor → successor) ──
+    // The original process is gone; signal the whole process group so whichever
+    // process is currently serving receives it.
+    let staged2 = dir.join("grim-server.new2");
+    std::fs::copy(env!("CARGO_BIN_EXE_copyover_fixture"), &staged2).unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&staged2, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    std::fs::rename(&staged2, &bin).unwrap();
+    let status = Command::new("kill")
+        .arg("-USR2")
+        .arg(format!("-{pgid}"))
+        .status()
+        .expect("send SIGUSR2 to group");
+    assert!(status.success(), "second kill -USR2 failed");
+    expect(&mut stream, "world was reloaded", Duration::from_secs(10));
+    std::thread::sleep(Duration::from_millis(700));
+    send(&mut stream, "look");
+    expect(&mut stream, "Town Square", Duration::from_secs(5));
+
+    // ── `quit` after a copyover must still close the connection ──
+    std::thread::sleep(Duration::from_millis(700));
+    send(&mut stream, "quit");
+    // Server-side close → our reads return 0 (EOF) within a moment.
+    stream
+        .set_read_timeout(Some(Duration::from_millis(300)))
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut closed = false;
+    let mut buf = [0u8; 1024];
+    while Instant::now() < deadline {
+        match stream.read(&mut buf) {
+            Ok(0) => {
+                closed = true;
+                break;
+            }
+            Ok(_) => {}
+            Err(ref e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut => {}
+            Err(_) => {
+                closed = true;
+                break;
+            }
+        }
+    }
+    assert!(
+        closed,
+        "`quit` after a (chained) copyover must disconnect the socket — a \
+         non-CLOEXEC fd inherited across the fork+exec previously kept it open"
+    );
+
     // _cleanup drops here, killing the successor.
     let _ = std::fs::remove_dir_all(&dir);
 }

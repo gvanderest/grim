@@ -29,3 +29,4 @@ sha2 = "0.10"
 signal-hook = "0.3"
 sendfd = "0.4"
 sd-notify = "0.5"
+rustix = { version = "1", features = ["fs"] }

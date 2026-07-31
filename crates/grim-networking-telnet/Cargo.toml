@@ -13,3 +13,4 @@ serde_json = { workspace = true }
 signal-hook = { workspace = true }
 sendfd = { workspace = true }
 sd-notify = { workspace = true }
+rustix = { workspace = true }

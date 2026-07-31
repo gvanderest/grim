@@ -28,8 +28,12 @@ const COPYOVER_SOCK_ENV: &str = "GRIM_COPYOVER_SOCK";
 
 struct Conn {
     write_tx: tokio::sync::mpsc::Sender<Vec<u8>>,
-    #[allow(dead_code)]
+    /// Both task handles are aborted on disconnect so *both* halves of the split
+    /// socket drop and the fd actually closes. Dropping `write_tx` alone does not
+    /// reliably end the write task across a chained copyover, which left the
+    /// socket open (the client never saw EOF on `quit`).
     read_handle: tokio::task::JoinHandle<()>,
+    write_handle: tokio::task::JoinHandle<()>,
     /// Raw fd of the underlying socket, recorded at accept/adopt time. Stays
     /// valid while the socket lives; sent (dup'd) to the successor on copyover.
     raw_fd: RawFd,
@@ -285,7 +289,10 @@ fn start_telnet_server(port: Res<TelnetPort>, done: Res<CopyoverDone>, mut comma
                                 }
                                 NetworkCommand::Disconnect { conn_id } => {
                                     if let Some(conn) = conns.lock().unwrap().remove(&conn_id) {
+                                        // Abort both tasks so both halves of the
+                                        // split socket drop and the fd closes.
                                         conn.read_handle.abort();
+                                        conn.write_handle.abort();
                                     }
                                 }
                                 NetworkCommand::Copyover { conns: list } => {
@@ -413,16 +420,7 @@ fn register_connection(
         }
     });
 
-    conns.lock().unwrap().insert(
-        conn_id,
-        Conn {
-            write_tx,
-            read_handle,
-            raw_fd,
-        },
-    );
-
-    tokio::spawn(async move {
+    let write_handle = tokio::spawn(async move {
         if handshake {
             // IAC WILL ECHO, IAC WILL SUPPRESS_GO_AHEAD.
             let _ = write_half.write_all(&[255, 253, 1, 255, 253, 3]).await;
@@ -433,6 +431,16 @@ fn register_connection(
             }
         }
     });
+
+    conns.lock().unwrap().insert(
+        conn_id,
+        Conn {
+            write_tx,
+            read_handle,
+            write_handle,
+            raw_fd,
+        },
+    );
 }
 
 /// Live sockets received from a predecessor during a copyover.
@@ -491,6 +499,14 @@ fn read_handoff(stream: &UnixStream) -> std::io::Result<(HandoverManifest, RawFd
             std::io::ErrorKind::InvalidData,
             "copyover handoff carried no listener fd",
         ));
+    }
+    // fds delivered via SCM_RIGHTS arrive WITHOUT close-on-exec. Set it now, or
+    // they'd be inherited by *this* process's own future copyover successor
+    // (fork+exec) as leaked duplicates — a second fd on the same socket that
+    // never closes, so the client never sees EOF across a chained copyover.
+    for fd in &fds[..fd_count] {
+        let borrowed = unsafe { std::os::fd::BorrowedFd::borrow_raw(*fd) };
+        let _ = rustix::io::fcntl_setfd(borrowed, rustix::io::FdFlags::CLOEXEC);
     }
     let manifest: HandoverManifest = serde_json::from_slice(&buf[..n]).map_err(invalid_data)?;
     let listener_fd = fds[0];
