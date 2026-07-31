@@ -37,7 +37,11 @@ if systemctl is-active --quiet grim; then
         log "server up — copyover via SIGUSR2 -> $pid (players stay connected)"
         kill -USR2 "$pid"
     else
-        log "server active but MainPID unavailable — nothing to signal; skipping"
+        # Odd: reported active but no MainPID (e.g. the process exited between the
+        # is-active and show queries). Don't silently report success — ensure the
+        # new binary is actually running. `start` is a no-op if it's genuinely up.
+        log "server active but MainPID unavailable — ensuring it is started"
+        sudo systemctl start grim
     fi
 else
     log "server down — cold start"
