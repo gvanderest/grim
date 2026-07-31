@@ -25,6 +25,14 @@ fn main() {
         .unwrap_or(4000);
     let data = std::env::var("GRIM_TEST_DATA").unwrap_or_else(|_| "data".to_string());
 
+    // Each generation records its own PID so the test can signal the *current*
+    // server directly across copyovers — mirroring how the real deploy signals
+    // the systemd MainPID (which the MAINPID handoff keeps current), rather than
+    // relying on process-group signals to reach a reparented successor.
+    if let Ok(pidfile) = std::env::var("GRIM_TEST_PIDFILE") {
+        let _ = std::fs::write(pidfile, std::process::id().to_string());
+    }
+
     let mut app = App::new();
     app.add_plugins(MinimalPlugins);
     app.add_plugins(LogPlugin {
