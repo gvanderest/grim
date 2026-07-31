@@ -95,6 +95,7 @@ fn build_registry() -> CommandRegistry<Command> {
     });
     r.register("who", |_| Some(Command::Who));
     r.register("where", |_| Some(Command::Where));
+    r.register("areas", |_| Some(Command::Areas));
     r.register("commands", |_| Some(Command::Commands));
     r.register("help", |_| Some(Command::Commands));
     r.register("quit", |_| Some(Command::Quit));
@@ -106,6 +107,14 @@ fn build_registry() -> CommandRegistry<Command> {
     r.register("shutdown", |rest| {
         let seconds = rest.trim().parse::<u64>().unwrap_or(30);
         Some(Command::Shutdown { seconds })
+    });
+    // `goto <address>` — admin-gated + masked at dispatch (see grim-scene
+    // dispatcher). Rejected with no argument so a bare `goto` is unknown.
+    r.register("goto", |rest| {
+        let target = rest.trim();
+        (!target.is_empty()).then(|| Command::Goto {
+            target: target.to_string(),
+        })
     });
 
     // ── Cardinal directions (last = highest priority for single-char) ─
@@ -343,6 +352,27 @@ mod tests {
     #[test]
     fn test_where_cmd() {
         assert_eq!(parse("where"), Some(Command::Where));
+    }
+
+    #[test]
+    fn test_areas_cmd() {
+        assert_eq!(parse("areas"), Some(Command::Areas));
+    }
+
+    #[test]
+    fn test_goto_with_target() {
+        assert_eq!(
+            parse("goto haven:market-square"),
+            Some(Command::Goto {
+                target: "haven:market-square".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn test_goto_without_target_is_none() {
+        assert_eq!(parse("goto"), None);
+        assert_eq!(parse("goto   "), None);
     }
 
     #[test]

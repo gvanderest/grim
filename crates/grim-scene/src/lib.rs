@@ -760,6 +760,22 @@ fn handle_client_input(
                                 ..ConnectionOutput::new(conn, formatter::format_commands())
                             });
                         }
+                        Command::Areas => {
+                            let mut entries: Vec<(String, String)> = rooms
+                                .areas
+                                .iter()
+                                .map(|a| (a.friendly_id.clone(), a.name.clone()))
+                                .collect();
+                            entries.sort();
+                            entries.dedup();
+                            outputs.write(ConnectionOutput {
+                                echo: None,
+                                ..ConnectionOutput::new(
+                                    conn,
+                                    formatter::format_areas_list(&entries),
+                                )
+                            });
+                        }
                         Command::Shutdown { .. } => {
                             // Admin-gated. A non-admin must not be able to tell
                             // the command exists, so respond exactly as for an
@@ -767,6 +783,24 @@ fn handle_client_input(
                             // direct ConnectionOutput, no prepended newline). Routing
                             // this through the engine's InfoMessage path would
                             // add a leading newline and leak the difference.
+                            let is_admin = characters
+                                .get(char_entity)
+                                .map(|(_, c, _)| c.is_admin())
+                                .unwrap_or(false);
+                            if is_admin {
+                                client.input_queue.push_back(cmd);
+                            } else {
+                                outputs.write(ConnectionOutput {
+                                    echo: None,
+                                    ..ConnectionOutput::new(conn, tr!("error.unknown_command"))
+                                });
+                            }
+                        }
+                        Command::Goto { .. } => {
+                            // Admin-gated + masked identically to `shutdown`: a
+                            // non-admin must not learn the command exists, so
+                            // reply exactly as for an unknown command (same text,
+                            // same direct framing). Admins queue it for the engine.
                             let is_admin = characters
                                 .get(char_entity)
                                 .map(|(_, c, _)| c.is_admin())

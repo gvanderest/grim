@@ -141,6 +141,74 @@ what to do with it: telnet and SSH translate it to ANSI escape sequences,
 WebSocket passes it through for a browser client to interpret.
 _Avoid_: ANSI (that is one specific rendering of a colour code, not the concept).
 
+### Identity
+
+Four distinct identifiers, from most to least specific:
+
+**Entity ID**:
+A Bevy `Entity` — the runtime handle for one live thing. Truly unique, cannot
+collide, but only valid for the current boot (changes across reboots/copyover).
+Never persisted. The most specific way to address an **Instance** or a live room.
+
+**Grim ID**:
+The immutable identity of a persistent record — an account, character, or a
+**Blueprint**'s area and rooms. A short `nanoid` over a **base62** alphabet
+(`A-Za-z0-9`, length 12), generated once at creation, never changed. Globally
+unique. Persisted. A room's Grim ID lives in its Blueprint, so every **Instance**
+stamped from that Blueprint shares it. The base62 alphabet has no `-`/`_`, so a Grim
+ID never shares a shape with a **Slug** (which uses hyphens).
+_Avoid_: Uuid — replaced by the shorter nanoid.
+
+**Slug**:
+A human-readable, author-facing alias, usually the filename (`haven`,
+`market-square`). NOT unique — many Instances of one Blueprint share a Slug, and it
+can be renamed. Lower-case, web-style. Was called "Friendly ID".
+_Avoid_: Friendly ID (retired), Name (a character's Name is really its Slug, but the
+word Name stays for display).
+
+**Instance ID**:
+Distinguishes one non-**Canonical** **Instance** of a Blueprint from another.
+Generated at instance creation, same shape as a **Grim ID** (base62, length 12,
+globally unique) but a different role — Grim ID is the *record/Blueprint* identity
+(shared by every copy), Instance ID is *this live copy's* identity. Persisted (it is
+the `instances/<instance-id>.json` filename and the area part of a character's
+`last_room`). The **Canonical** Instance carries none — its Blueprint area Grim ID
+already resolves to it. So an instanced area holds both: the shared Blueprint area
+Grim ID and its own unique Instance ID.
+
+**Address**:
+How input (e.g. the admin `goto` command) names a target room. One of:
+- an **Entity ID** (single boot-local token), or
+- `<area>:<room>`, where each side is independently a **Grim ID** or a **Slug** (any
+  combination), and the area side may also be an Entity ID, or
+- a bare room token (**Grim ID** or **Slug**).
+Resolution precedence when a bare/slug token is ambiguous is an implementation
+concern, not glossary — see ADR (to be written).
+
+### World instancing
+
+**Blueprint**:
+The on-disk definition of an area (and its rooms), e.g. `haven.json`. Not in the
+world — it is stamped into the world to produce **Instances**. A Blueprint is
+addressed by its **Slug** or **Grim ID** (see Identity).
+_Avoid_: Template — that is a **Catalog** entry (author-facing text), an unrelated
+concept. _Avoid_: Prototype, Definition — settled on Blueprint.
+
+**Instance**:
+A live copy of a **Blueprint** in the ECS. Every area in the running world is an
+Instance, whether one exists or many. An Instance has an **Entity** and, if it is
+not the **Canonical** one, an **Instance ID**.
+_Avoid_: "concrete area" as a distinct kind — it just means the Canonical Instance.
+
+**Canonical**:
+The single **Instance** of a Blueprint that cross-area linkages resolve against. A
+marker, not a separate kind of thing — exactly one Canonical Instance per Blueprint.
+Exits between areas bind **Canonical → Canonical** only: they seek each other by
+Blueprint identity at load. A non-Canonical (instanced) copy still binds its
+*outbound* exits to Canonical targets, but no Canonical exit ever points *into* an
+instanced copy — walking back lands you in Canonical, not your instance, until
+explicit instance-aware exit logic exists (not yet).
+
 ## Flagged ambiguities
 
 **"Client" is retired.** It was carrying three unrelated meanings at once:

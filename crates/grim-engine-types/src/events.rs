@@ -30,6 +30,11 @@ pub enum Command {
     Where,
     /// `commands` — list all registered commands
     Commands,
+    /// `areas` — list every area in the world by its slug.
+    Areas,
+    /// `goto <address>` — admin-only. Teleport to a room resolved from an
+    /// address (an entity id, `<area>:<room>`, or a bare room slug/grim id).
+    Goto { target: String },
     /// `shutdown <seconds>` — admin-only. Schedules a graceful server shutdown
     /// after a countdown, broadcasting warnings to all connected players.
     Shutdown { seconds: u64 },

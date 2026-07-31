@@ -75,6 +75,19 @@ pub fn format_where_list(entries: &[(String, String)]) -> String {
     }
 }
 
+/// Format the `areas` list: each area's slug and display name, already sorted.
+#[allow(dead_code)]
+pub fn format_areas_list(entries: &[(String, String)]) -> String {
+    if entries.is_empty() {
+        return "No areas exist.\n".into();
+    }
+    let mut out = format!("Areas ({}):\n", entries.len());
+    for (slug, name) in entries {
+        out.push_str(&format!("  {} — {}\n", slug, name));
+    }
+    out
+}
+
 #[allow(dead_code)]
 /// Format the command list.
 pub fn format_commands() -> String {
@@ -93,6 +106,7 @@ pub fn format_commands() -> String {
         "down / d            — Move down",
         "who                 — List players online",
         "where               — Show who's in your area",
+        "areas               — List all areas in the world",
         "commands / help     — Show this list",
         "quit / exit         — Disconnect from the game",
     ];
@@ -120,6 +134,25 @@ pub fn format_linkdead(name: &str, reconnecting: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── format_areas_list ────────────────────────────────────────
+
+    #[test]
+    fn areas_list_empty() {
+        assert_eq!(format_areas_list(&[]), "No areas exist.\n");
+    }
+
+    #[test]
+    fn areas_list_lists_slug_and_name() {
+        let entries = vec![
+            ("haven".to_string(), "Haven".to_string()),
+            ("swamp".to_string(), "Southern Swamp".to_string()),
+        ];
+        let got = format_areas_list(&entries);
+        assert!(got.starts_with("Areas (2):\n"));
+        assert!(got.contains("  haven — Haven\n"));
+        assert!(got.contains("  swamp — Southern Swamp\n"));
+    }
 
     // ── format_room ──────────────────────────────────────────────
 
