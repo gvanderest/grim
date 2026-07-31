@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 #
 # Runs ON the EC2 host. Swaps in a freshly-uploaded binary and rolls the server
-# to it. If the server is up, it does a **copyover** (SIGUSR2): the running
-# process execs the new binary and hands over its live sockets, so connected
-# players stay connected across the upgrade. If the server is down, it cold-starts.
+# to it:
+#
+#   - server UP   → **copyover** (SIGUSR2): the running process execs the new
+#                   binary and hands over its live sockets, so connected players
+#                   stay connected. Nothing is shut down or restarted.
+#   - server DOWN → cold start.
 #
 # Expects the new binary staged at $STAGED (uploaded by the CI job).
 set -euo pipefail
@@ -23,25 +26,18 @@ mv -f "$STAGED" "$BIN"
 chmod +x "$BIN"
 
 if systemctl is-active --quiet grim; then
-    # Signal the process directly rather than via systemctl: the service runs as
-    # this same user, so `kill` needs no privilege, and copyover is a process-level
-    # operation (systemd keeps tracking it via the MAINPID handoff), not a restart.
+    # Copyover only. Signal the process directly (the service runs as this user,
+    # so no privilege needed). The successor claims MAINPID + sends READY, so
+    # systemd keeps tracking the service across the handoff — this is NOT a
+    # restart, and the service is never stopped. Do not second-guess it with a
+    # health re-check that could race the handoff and spuriously start a second
+    # instance; if the copyover fails, the old process just keeps serving.
     pid="$(systemctl show -p MainPID --value grim 2>/dev/null || true)"
     if [[ -n "$pid" && "$pid" != 0 ]]; then
         log "server up — copyover via SIGUSR2 -> $pid (players stay connected)"
         kill -USR2 "$pid"
-        # The successor claims MAINPID and sends READY; the service stays active
-        # throughout. Give it a moment, then confirm health.
-        sleep 3
-        if systemctl is-active --quiet grim; then
-            log "copyover complete; server still active"
-        else
-            log "service inactive after copyover — falling back to cold start"
-            sudo systemctl start grim
-        fi
     else
-        log "could not read MainPID — cold restart"
-        sudo systemctl restart grim
+        log "server active but MainPID unavailable — nothing to signal; skipping"
     fi
 else
     log "server down — cold start"
