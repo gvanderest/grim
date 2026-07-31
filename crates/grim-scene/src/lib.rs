@@ -13,7 +13,8 @@ use grim_engine_types::events::{
     LookEntity, LookRoom, MoveEvent, OocEvent, SayEvent, ServerBroadcast, YellEvent,
 };
 use grim_engine_types::validation::{
-    hash_password, validate_character_name, validate_identifier, validate_password, verify_password,
+    hash_password, normalize_character_name, validate_character_name, validate_identifier,
+    validate_password, verify_password,
 };
 use grim_networking::{
     ConnectionEstablished, ConnectionInput, ConnectionOutput, ConnectionResumed, DisconnectRequest,
@@ -283,19 +284,26 @@ fn handle_client_input(
                     });
                     continue;
                 }
-                // First, try as a character name. Resolve to (account_id, name)
-                // WITHOUT needing a resident entity: prefer a resident character
-                // (linkdead beats online for the same name), else read from disk.
+                // First, try as a character name. Normalize the raw input to the
+                // canonical name once (this is the login-input boundary), then
+                // resolve to (account_id, name) WITHOUT needing a resident entity:
+                // prefer a resident character (linkdead beats online for the same
+                // name), else read from disk — both by the canonical name.
                 let trimmed = text.trim();
-                let resolved: Option<(Uuid, String)> = characters
-                    .iter()
-                    .filter(|(_, _, n)| n.0.eq_ignore_ascii_case(trimmed))
-                    .max_by_key(|(e, _, _)| if linkdead.get(*e).is_ok() { 1 } else { 0 })
-                    .map(|(_, c, n)| (c.account_id, n.0.clone()))
-                    .or_else(|| {
-                        load_character_by_name(&res.persistence, trimmed)
-                            .map(|c| (c.account_id, c.name))
-                    });
+                let canonical = normalize_character_name(trimmed);
+                let resolved: Option<(Uuid, String)> = (!canonical.is_empty())
+                    .then(|| {
+                        characters
+                            .iter()
+                            .filter(|(_, _, n)| n.0 == canonical)
+                            .max_by_key(|(e, _, _)| if linkdead.get(*e).is_ok() { 1 } else { 0 })
+                            .map(|(_, c, n)| (c.account_id, n.0.clone()))
+                            .or_else(|| {
+                                load_character_by_name(&res.persistence, &canonical)
+                                    .map(|c| (c.account_id, c.name))
+                            })
+                    })
+                    .flatten();
                 if let Some((acct_id, name)) = resolved {
                     // Only enter the password flow if the owning account is known
                     // (accounts are all loaded at startup); otherwise fall through
@@ -3130,7 +3138,9 @@ mod tests {
             assert!(q.iter(app.world()).all(|(_, n)| n.0 != "Disky"));
         }
 
-        for line in ["Disky", "password"] {
+        // Type the name in the "wrong" case — login-by-name must be
+        // case-insensitive even for a disk-only character.
+        for line in ["disky", "password"] {
             app.world_mut().write_message(ConnectionInput {
                 connection: conn,
                 text: line.into(),

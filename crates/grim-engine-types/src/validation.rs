@@ -8,7 +8,16 @@ pub enum ValidationError {
     InvalidCharacters,
     InvalidEmail,
     InvalidFormat,
+    /// The name begins with a reserved word (e.g. `self`, `someone`).
+    Reserved,
 }
+
+/// Reserved name prefixes. A character name may not *begin* with any of these
+/// (case-insensitive) so it can never be confused with a targeting keyword — a
+/// command like `cast fire self` must unambiguously mean the caster, never a
+/// character named "Selfius". Prefix-based on purpose: "Selfius" is rejected but
+/// "Zself" is fine.
+pub const RESERVED_NAME_PREFIXES: &[&str] = &["self", "someone"];
 
 impl fmt::Display for ValidationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -19,6 +28,7 @@ impl fmt::Display for ValidationError {
             Self::InvalidCharacters => write!(f, "contains invalid characters"),
             Self::InvalidEmail => write!(f, "is not a valid email address"),
             Self::InvalidFormat => write!(f, "has an invalid format"),
+            Self::Reserved => write!(f, "starts with a reserved word"),
         }
     }
 }
@@ -51,46 +61,49 @@ fn validate_email(s: &str) -> Result<String, ValidationError> {
     Ok(s.to_string())
 }
 
-/// Validate and normalize a character name.
-/// Alphanumeric + spaces/hyphens/apostrophes, 3-20 chars, must start with a letter.
-/// Returns normalized (trimmed, title-cased).
+/// Validate and normalize a character name. Non-letters are stripped and the
+/// result title-cased (see [`normalize_character_name`]); the canonical name must
+/// be 3–20 letters and must not begin with a reserved word
+/// ([`RESERVED_NAME_PREFIXES`]).
 pub fn validate_character_name(input: &str) -> Result<String, ValidationError> {
-    let trimmed = input.trim();
-    if trimmed.is_empty() {
+    // Names are letters only, canonicalized (see `normalize_character_name`):
+    // non-letters are stripped rather than rejected, so validation is just a
+    // length check on the canonical result.
+    let name = normalize_character_name(input);
+    let len = name.chars().count();
+    if len == 0 {
         return Err(ValidationError::Empty);
     }
-    if trimmed.len() < 3 {
+    if len < 3 {
         return Err(ValidationError::TooShort(3));
     }
-    if trimmed.len() > 20 {
+    if len > 20 {
         return Err(ValidationError::TooLong(20));
     }
-    if !trimmed
-        .chars()
-        .all(|c| c.is_alphanumeric() || c == ' ' || c == '-' || c == '\'')
-    {
-        return Err(ValidationError::InvalidCharacters);
+    // Reject names beginning with a reserved targeting word (prefix match), so a
+    // name can never be mistaken for a keyword like `self`.
+    let lower = name.to_lowercase();
+    if RESERVED_NAME_PREFIXES.iter().any(|p| lower.starts_with(p)) {
+        return Err(ValidationError::Reserved);
     }
-    if !trimmed.chars().next().is_some_and(|c| c.is_alphabetic()) {
-        return Err(ValidationError::InvalidFormat);
-    }
-    Ok(title_case(trimmed))
+    Ok(name)
 }
 
-fn title_case(s: &str) -> String {
-    s.split_whitespace()
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                Some(first) => first
-                    .to_uppercase()
-                    .chain(chars.flat_map(|c| c.to_lowercase()))
-                    .collect::<String>(),
-                None => String::new(),
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+/// The canonical form of a character name: strip every non-letter (spaces,
+/// digits, punctuation), then capitalize the first letter and lowercase the rest
+/// (`"wR4cK the-great"` → `"Wrackthegreat"`, `"wrack"` → `"Wrack"`). Character
+/// names are stored canonical (creation runs this via [`validate_character_name`]),
+/// so the only other place it is applied is raw user input at a login prompt
+/// before looking a character up — everything downstream compares exact.
+pub fn normalize_character_name(s: &str) -> String {
+    let mut letters = s.chars().filter(|c| c.is_alphabetic());
+    match letters.next() {
+        Some(first) => first
+            .to_uppercase()
+            .chain(letters.flat_map(|c| c.to_lowercase()))
+            .collect(),
+        None => String::new(),
+    }
 }
 
 /// Normalize a string for use as a filename.
@@ -208,6 +221,7 @@ mod tests {
 
     #[test]
     fn validate_character_name_too_short() {
+        // "Ab" is 2 letters after normalization.
         assert_eq!(
             validate_character_name("Ab"),
             Err(ValidationError::TooShort(3))
@@ -215,8 +229,17 @@ mod tests {
     }
 
     #[test]
+    fn validate_character_name_empty_after_stripping() {
+        // Nothing but non-letters → empty canonical form.
+        assert_eq!(
+            validate_character_name("123 --"),
+            Err(ValidationError::Empty)
+        );
+    }
+
+    #[test]
     fn validate_character_name_too_long() {
-        let name = "Aaaaaaaaaaaaaaaaaaaaa"; // 21 chars
+        let name = "Aaaaaaaaaaaaaaaaaaaaa"; // 21 letters
         assert_eq!(name.len(), 21);
         assert_eq!(
             validate_character_name(name),
@@ -224,56 +247,48 @@ mod tests {
         );
     }
 
+    // Non-letters are stripped, not rejected — names are letters only.
     #[test]
-    fn validate_character_name_starts_with_non_letter() {
-        assert_eq!(
-            validate_character_name("1aragorn"),
-            Err(ValidationError::InvalidFormat)
-        );
+    fn validate_character_name_strips_leading_non_letters() {
+        assert_eq!(validate_character_name("1aragorn").unwrap(), "Aragorn");
+        assert_eq!(validate_character_name("-aragorn").unwrap(), "Aragorn");
     }
 
     #[test]
-    fn validate_character_name_starts_with_hyphen() {
-        assert_eq!(
-            validate_character_name("-aragorn"),
-            Err(ValidationError::InvalidFormat)
-        );
+    fn validate_character_name_strips_punctuation_and_digits() {
+        assert_eq!(validate_character_name("Aragorn!").unwrap(), "Aragorn");
+        assert_eq!(validate_character_name("Wr4ck").unwrap(), "Wrck");
+        assert_eq!(validate_character_name("O'Brian").unwrap(), "Obrian");
     }
 
     #[test]
-    fn validate_character_name_invalid_chars() {
-        assert_eq!(
-            validate_character_name("Aragorn!"),
-            Err(ValidationError::InvalidCharacters)
-        );
-    }
-
-    #[test]
-    fn validate_character_name_contains_space() {
-        assert_eq!(validate_character_name("Aragorn II").unwrap(), "Aragorn Ii");
-    }
-
-    #[test]
-    fn validate_character_name_contains_hyphen() {
-        assert_eq!(validate_character_name("Aragorn-II").unwrap(), "Aragorn-ii");
-    }
-
-    #[test]
-    fn validate_character_name_contains_apostrophe() {
-        assert_eq!(validate_character_name("O'Brian").unwrap(), "O'brian");
-    }
-
-    #[test]
-    fn validate_character_name_title_casing() {
+    fn validate_character_name_collapses_words_to_letters_only() {
         assert_eq!(
             validate_character_name("aragorn the great").unwrap(),
-            "Aragorn The Great"
+            "Aragornthegreat"
         );
+        assert_eq!(validate_character_name("Aragorn-II").unwrap(), "Aragornii");
     }
 
     #[test]
     fn validate_character_name_title_casing_mixed() {
         assert_eq!(validate_character_name("aRAGORN").unwrap(), "Aragorn");
+        assert_eq!(validate_character_name("wRaCk").unwrap(), "Wrack");
+    }
+
+    #[test]
+    fn validate_character_name_rejects_reserved_prefixes() {
+        // Exact reserved words and any name starting with one are rejected.
+        for n in ["self", "Self", "Selfius", "someone", "SomeoneElse"] {
+            assert_eq!(
+                validate_character_name(n),
+                Err(ValidationError::Reserved),
+                "{n} should be reserved"
+            );
+        }
+        // A reserved word not at the start is fine.
+        assert_eq!(validate_character_name("Zself").unwrap(), "Zself");
+        assert_eq!(validate_character_name("Bobself").unwrap(), "Bobself");
     }
 
     // ── normalize_filename ──
@@ -430,11 +445,12 @@ mod tests {
         assert_eq!(validate_character_name("   "), Err(ValidationError::Empty));
     }
 
-    // ── title_case: empty / whitespace-only input ──
+    // ── normalize_character_name: empty / non-letter input ──
 
     #[test]
-    fn test_title_case_empty_word() {
-        assert_eq!(title_case(""), "");
-        assert_eq!(title_case("   "), "");
+    fn normalize_character_name_empty_and_non_letter() {
+        assert_eq!(normalize_character_name(""), "");
+        assert_eq!(normalize_character_name("   "), "");
+        assert_eq!(normalize_character_name("123-'"), "");
     }
 }
