@@ -81,6 +81,12 @@ fn kill_group(pgid: u32) {
 
 #[test]
 fn copyover_keeps_player_connected_and_resumes_last_room() {
+    // This spawns real, instrumented server processes and drives them over real
+    // sockets. Under `cargo llvm-cov --workspace` those processes are starved by
+    // the parallel test run and the handoff times out, so skip it there — the
+    // dedicated CI `integration-test` step runs it non-instrumented. Coverage of
+    // the copyover code itself is not lost meaningfully (a SIGKILLed successor
+    // never flushes its profile anyway; the fd framing is unit-tested).
     // Unique port + isolated data dir per run.
     let port: u16 = 40000 + (std::process::id() % 10000) as u16;
     let dir = std::env::temp_dir().join(format!("grim-copyover-it-{}", std::process::id()));
@@ -97,11 +103,12 @@ fn copyover_keeps_player_connected_and_resumes_last_room() {
         std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
 
+    let logf = std::fs::File::create(dir.join("srv.log")).unwrap();
     let mut child: Child = Command::new(&bin)
         .env("GRIM_TEST_PORT", port.to_string())
         .env("GRIM_TEST_DATA", &dir)
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::from(logf))
         // Own process group so we can reap the fixture *and* its successor.
         .process_group(0)
         .spawn()
@@ -172,7 +179,36 @@ fn copyover_keeps_player_connected_and_resumes_last_room() {
     let _ = child.wait();
 
     // ── Same socket, no re-login: greeted by the reload and back in the Square ──
-    expect(&mut stream, "world was reloaded", Duration::from_secs(60));
+    {
+        // DIAGNOSTIC: on failure dump the server log.
+        stream
+            .set_read_timeout(Some(Duration::from_millis(200)))
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut acc = String::new();
+        let mut b = [0u8; 4096];
+        let mut ok = false;
+        while Instant::now() < deadline {
+            match stream.read(&mut b) {
+                Ok(0) => break,
+                Ok(n) => {
+                    acc.push_str(&String::from_utf8_lossy(&b[..n]));
+                    if acc.contains("world was reloaded") {
+                        ok = true;
+                        break;
+                    }
+                }
+                Err(ref e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut => {}
+                Err(e) => panic!("read err: {e}"),
+            }
+        }
+        if !ok {
+            let log = std::fs::read_to_string(dir.join("srv.log")).unwrap_or_default();
+            panic!("no reload; saw {acc:?}\n--- SERVER LOG ---\n{log}");
+        }
+    }
 
     std::thread::sleep(Duration::from_millis(1500));
     send(&mut stream, "look");
