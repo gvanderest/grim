@@ -6,7 +6,8 @@ use bevy::prelude::*;
 use chrono::Utc;
 use grim_engine_types::components::{
     Account, Area, Character, Client, ClientState, Description, Exits, InRoom, Linkdead,
-    Name as GrimName, OutputHistory, Player, Room, RoomLocation, StartingRoom,
+    Name as GrimName, OutputHistory, Player, ReservedNamePrefixes, Room, RoomLocation,
+    StartingRoom,
 };
 use grim_engine_types::events::{
     Command, EngineCommand, InfoMessage, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce,
@@ -14,7 +15,7 @@ use grim_engine_types::events::{
 };
 use grim_engine_types::validation::{
     hash_password, is_name_reserved, normalize_character_name, validate_character_name,
-    validate_identifier, validate_password, verify_password, DEFAULT_RESERVED_NAME_PREFIXES,
+    validate_identifier, validate_password, verify_password,
 };
 use grim_networking::{
     ConnectionEstablished, ConnectionInput, ConnectionOutput, ConnectionResumed, DisconnectRequest,
@@ -34,26 +35,6 @@ struct SessionRes<'w> {
     registry: Res<'w, grim_command::CommandRegistry<Command>>,
     persistence: Res<'w, grim_persistence::PersistenceConfig>,
     reserved: Res<'w, ReservedNamePrefixes>,
-}
-
-/// Configurable list of reserved character-name prefixes. A new character's
-/// (canonical) name may not begin with any of these — see
-/// [`grim_engine_types::validation::is_name_reserved`] and
-/// [`DEFAULT_RESERVED_NAME_PREFIXES`]. Defaults to the built-in list; a server
-/// author overrides it by inserting this resource before adding [`ScenePlugin`],
-/// e.g. `app.insert_resource(ReservedNamePrefixes(vec!["admin".into()]))`.
-#[derive(Resource, Clone, Debug)]
-pub struct ReservedNamePrefixes(pub Vec<String>);
-
-impl Default for ReservedNamePrefixes {
-    fn default() -> Self {
-        Self(
-            DEFAULT_RESERVED_NAME_PREFIXES
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-        )
-    }
 }
 
 /// Rooms + areas bundled so placement code can resolve a persisted
