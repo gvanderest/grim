@@ -498,13 +498,11 @@ fn handle_client_input(
                                         &characters,
                                         &players,
                                         &linkdead,
-                                        &player_chars,
                                         &mut histories,
                                         &rooms,
                                         res.starting.0,
                                         &res.persistence,
                                         &mut outputs,
-                                        &mut look_room,
                                         &mut announce_linkdead,
                                         &mut disconnect,
                                     );
@@ -599,13 +597,11 @@ fn handle_client_input(
                     &characters,
                     &players,
                     &linkdead,
-                    &player_chars,
                     &mut histories,
                     &rooms,
                     res.starting.0,
                     &res.persistence,
                     &mut outputs,
-                    &mut look_room,
                     &mut announce_linkdead,
                     &mut disconnect,
                 );
@@ -911,13 +907,11 @@ fn enter_world_by_name(
     characters: &Query<(Entity, &Character, &GrimName)>,
     players: &Query<&Player>,
     linkdead: &Query<&Linkdead>,
-    player_chars: &Query<(Entity, &GrimName, &InRoom, Option<&Character>)>,
     histories: &mut Query<&mut OutputHistory>,
     rooms: &RoomResolver,
     starting: Entity,
     persistence: &PersistenceConfig,
     outputs: &mut MessageWriter<ConnectionOutput>,
-    look_room: &mut MessageWriter<LookRoom>,
     announce_linkdead: &mut MessageWriter<LinkdeadAnnounce>,
     disconnect: &mut MessageWriter<DisconnectRequest>,
 ) {
@@ -960,20 +954,11 @@ fn enter_world_by_name(
                 echo: None,
                 ..ConnectionOutput::new(conn, "Reconnecting...\n")
             });
-            // Replay buffered output from before the disconnect.
+            // No playback for now: discard buffered output from before the
+            // disconnect and don't auto-look. The player just gets the
+            // reconnection notice; they can `look` themselves.
             if let Ok(mut history) = histories.get_mut(char_entity) {
-                for line in history.drain() {
-                    outputs.write(ConnectionOutput {
-                        echo: None,
-                        ..ConnectionOutput::new(conn, line)
-                    });
-                }
-            }
-            if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
-                look_room.write(LookRoom {
-                    target: char_entity,
-                    room: ir.room,
-                });
+                history.drain();
             }
             announce_linkdead.write(LinkdeadAnnounce {
                 name: name.to_string(),
@@ -1548,6 +1533,12 @@ mod tests {
                 OutputHistory::with_max(100),
             ))
             .id();
+        // Buffer some output from "before the disconnect" to prove reconnect
+        // does NOT replay it.
+        app.world_mut()
+            .get_mut::<OutputHistory>(char_entity)
+            .unwrap()
+            .push("STALE_BUFFERED_LINE\n");
 
         // Step 1: Send character name at login prompt
         app.world_mut().write_message(ConnectionInput {
@@ -1601,6 +1592,30 @@ mod tests {
         assert!(
             has_reconnect,
             "Should emit LinkdeadAnnounce with reconnecting=true"
+        );
+
+        // No playback: the reconnecting player gets the notice but NOT the
+        // buffered pre-disconnect output, and no auto-look.
+        let out = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut oc = out.get_cursor();
+        let text: String = oc
+            .read(out)
+            .filter(|o| o.connection == conn)
+            .map(|o| o.text.clone())
+            .collect();
+        assert!(
+            text.contains("Reconnecting..."),
+            "expected reconnect notice; got:\n{text}"
+        );
+        assert!(
+            !text.contains("STALE_BUFFERED_LINE"),
+            "must not replay buffered output; got:\n{text}"
+        );
+        let lr = app.world().resource::<Messages<LookRoom>>();
+        let mut lc = lr.get_cursor();
+        assert!(
+            lc.read(lr).all(|e| e.target != char_entity),
+            "reconnect must not auto-look the room"
         );
     }
 
