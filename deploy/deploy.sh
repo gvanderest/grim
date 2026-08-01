@@ -20,6 +20,8 @@ BIN="$APP_DIR/bin/grim"
 STAGED="$APP_DIR/bin/grim.new"
 UNIT_SRC="$APP_DIR/bin/grim.service"          # uploaded by CI alongside the binary
 UNIT_DST=/etc/systemd/system/grim.service
+AREAS_STAGED="$APP_DIR/bin/areas.staged"      # committed world content from CI
+AREAS_DST="$APP_DIR/data/areas"               # WorkingDirectory=/opt/grim, seed reads data/areas
 
 log() { echo "[deploy] $*"; }
 
@@ -34,6 +36,24 @@ log() { echo "[deploy] $*"; }
 log "swapping binary into place"
 mv -f "$STAGED" "$BIN"
 chmod +x "$BIN"
+
+# Sync committed world content (area blueprints) into data/areas BEFORE the roll:
+# the server reads them from disk at startup, and a copyover re-seeds, so they
+# must be current before we signal. data/ holds runtime player saves; only the
+# areas/ subdir is managed here. Missing staged dir → leave existing areas
+# untouched (don't wipe a working world over a partial upload).
+if [[ -d "$AREAS_STAGED" ]]; then
+    # Full mirror: wipe the whole dir and repopulate, so an area removed or
+    # renamed in the repo doesn't linger on the box. Only data/areas is cleared
+    # — sibling data/accounts and data/characters (runtime saves) are untouched.
+    log "replacing area blueprints in $AREAS_DST"
+    rm -rf "$AREAS_DST"
+    mkdir -p "$AREAS_DST"
+    cp "$AREAS_STAGED"/*.json "$AREAS_DST"/ 2>/dev/null || true
+    rm -rf "$AREAS_STAGED"
+else
+    log "no staged area blueprints — leaving $AREAS_DST as-is"
+fi
 
 # Sync the systemd unit. Render `User=` to the deploy user so signalling the
 # process needs no privilege.

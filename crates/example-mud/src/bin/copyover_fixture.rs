@@ -8,6 +8,7 @@
 //!
 //! - `GRIM_TEST_PORT` — TCP port to listen on (default 4000)
 //! - `GRIM_TEST_DATA` — persistence root directory (default `data`)
+//! - `GRIM_AREAS_DIR` — area blueprint directory (default `data/areas`)
 //!
 //! On copyover (`SIGUSR2`) this process execs itself again; the successor
 //! inherits the same environment, so it lands in the same data dir and adopts
@@ -15,7 +16,7 @@
 
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
-use example_mud::seed;
+use example_mud::seed::{self, AreaBlueprintDir};
 use grim::{GrimDefaultPlugins, PersistenceConfig};
 
 fn main() {
@@ -41,6 +42,11 @@ fn main() {
     });
     // Isolate persistence before the plugins init their default config.
     app.insert_resource(PersistenceConfig { dir: data.into() });
+    // Area blueprints load from the filesystem; the test points this at the
+    // repo's committed `data/areas` (default `data/areas` otherwise).
+    if let Ok(areas) = std::env::var("GRIM_AREAS_DIR") {
+        app.insert_resource(AreaBlueprintDir(areas.into()));
+    }
     app.add_plugins(GrimDefaultPlugins { telnet_port: port });
     app.add_systems(Startup, seed::seed_world);
     app.run();
