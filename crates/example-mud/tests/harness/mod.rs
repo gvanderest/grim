@@ -97,6 +97,11 @@ impl Mud {
         // deterministically in `pump`.
         app.init_resource::<Time>();
         app.add_plugins(GrimHeadlessPlugins);
+        // Area blueprints load from the filesystem; point at the repo's
+        // committed data/areas so the harness world matches what ships.
+        app.insert_resource(example_mud::seed::AreaBlueprintDir(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/areas"),
+        ));
         app.add_systems(Startup, example_mud::seed::seed_world);
 
         // Run startup (seed + persistence load) and grab an output cursor before

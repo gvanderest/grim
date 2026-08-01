@@ -70,6 +70,10 @@ jobs:
           scp -i ~/.ssh/id_deploy dist/grim "$TARGET:/opt/grim/bin/grim.new"
           scp -i ~/.ssh/id_deploy deploy/deploy.sh "$TARGET:/opt/grim/bin/"
           scp -i ~/.ssh/id_deploy deploy/grim.service "$TARGET:/opt/grim/bin/"
+          # Committed world content (area blueprints), read from disk at runtime.
+          # Staged next to the binary; deploy.sh syncs it into data/areas.
+          ssh -i ~/.ssh/id_deploy "$TARGET" 'rm -rf /opt/grim/bin/areas.staged'
+          scp -i ~/.ssh/id_deploy -r data/areas "$TARGET:/opt/grim/bin/areas.staged"
 
       - name: Run deploy
         env:

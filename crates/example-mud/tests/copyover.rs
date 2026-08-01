@@ -126,6 +126,12 @@ fn copyover_keeps_player_connected_and_resumes_last_room() {
         .env("GRIM_TEST_PORT", port.to_string())
         .env("GRIM_TEST_DATA", &dir)
         .env("GRIM_TEST_PIDFILE", &pidfile)
+        // Area blueprints load from the filesystem — point at the repo's
+        // committed data/areas. The successor inherits this env across copyover.
+        .env(
+            "GRIM_AREAS_DIR",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/areas"),
+        )
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         // Own process group so we can reap the fixture *and* its successor.

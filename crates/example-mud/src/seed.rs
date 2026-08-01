@@ -2,9 +2,11 @@
 //!
 //! Area/room definitions live in `data/areas/*.json` (committed world content),
 //! not in code. Each file is one area blueprint plus a `rooms` array of room
-//! blueprints. The files are baked into the binary with `include_str!` so the
-//! static musl build and the test harness need no runtime files; editing an
-//! area still means editing its JSON (and a rebuild).
+//! blueprints. They are read **from the filesystem at startup**, so a MUD author
+//! can edit an area's JSON and restart without recompiling. The directory is
+//! [`AreaBlueprintDir`] (default `data/areas`, resolved against the process's
+//! working directory — `/opt/grim` in production, where the deploy ships the
+//! `data/areas` folder alongside the binary).
 //!
 //! On startup every blueprint with `"canonical": true` is loaded — `canonical`
 //! is, for now, simply the flag that gates startup loading (see
@@ -16,6 +18,7 @@
 //! never breaks a link.
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 
 use bevy::log::{error, warn};
 use bevy::prelude::*;
@@ -24,8 +27,17 @@ use grim::prelude::{
 };
 use serde::Deserialize;
 
-/// Every committed area blueprint, baked in at build time.
-const AREA_BLUEPRINTS: &[&str] = &[include_str!("../../../data/areas/haven.json")];
+/// Directory the area blueprints (`*.json`) are read from at startup. Resolved
+/// against the process working directory when relative. Insert this resource
+/// before [`seed_world`] runs to override the default (`data/areas`).
+#[derive(Resource, Clone, Debug)]
+pub struct AreaBlueprintDir(pub PathBuf);
+
+impl Default for AreaBlueprintDir {
+    fn default() -> Self {
+        Self(PathBuf::from("data/areas"))
+    }
+}
 
 /// An area definition on disk: the area itself plus its rooms.
 #[derive(Deserialize)]
@@ -67,17 +79,41 @@ struct NpcBlueprint {
     description: String,
 }
 
-/// Seed the initial world from the baked area blueprints. Loads every
-/// `canonical` area, then sets [`StartingRoom`] from the first area that names a
+/// Seed the initial world by reading area blueprints from [`AreaBlueprintDir`]
+/// at startup. Loads every `canonical` area (in sorted filename order for
+/// determinism), then sets [`StartingRoom`] from the first area that names a
 /// resolvable one. Called once at startup.
-pub fn seed_world(mut commands: Commands) {
-    let mut starting: Option<Entity> = None;
+pub fn seed_world(mut commands: Commands, dir: Option<Res<AreaBlueprintDir>>) {
+    let dir = dir
+        .map(|d| d.0.clone())
+        .unwrap_or_else(|| AreaBlueprintDir::default().0);
 
-    for raw in AREA_BLUEPRINTS {
-        let blueprint: AreaBlueprint = match serde_json::from_str(raw) {
+    let mut files: Vec<PathBuf> = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json"))
+            .collect(),
+        Err(e) => {
+            error!("cannot read area blueprint dir {dir:?}: {e} — no areas loaded");
+            Vec::new()
+        }
+    };
+    files.sort(); // deterministic load order
+
+    let mut starting: Option<Entity> = None;
+    for path in &files {
+        let raw = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("cannot read area blueprint {path:?}: {e} — skipping");
+                continue;
+            }
+        };
+        let blueprint: AreaBlueprint = match serde_json::from_str(&raw) {
             Ok(bp) => bp,
             Err(e) => {
-                error!("skipping unparseable area blueprint: {e}");
+                error!("skipping unparseable area blueprint {path:?}: {e}");
                 continue;
             }
         };
@@ -92,7 +128,9 @@ pub fn seed_world(mut commands: Commands) {
 
     match starting {
         Some(room) => commands.insert_resource(StartingRoom(room)),
-        None => error!("no starting room resolved from area blueprints — logins will fail"),
+        None => {
+            error!("no starting room resolved from area blueprints in {dir:?} — logins will fail")
+        }
     }
 }
 
@@ -187,9 +225,16 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
 mod tests {
     use super::*;
 
+    /// The repo's committed area blueprints, resolved from this crate's manifest
+    /// dir so the test works regardless of the process working directory.
+    fn areas_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/areas")
+    }
+
     #[test]
     fn haven_blueprint_parses_and_references_by_grim_id() {
-        let bp: AreaBlueprint = serde_json::from_str(AREA_BLUEPRINTS[0]).unwrap();
+        let raw = std::fs::read_to_string(areas_dir().join("haven.json")).unwrap();
+        let bp: AreaBlueprint = serde_json::from_str(&raw).unwrap();
         assert_eq!(bp.slug, "haven");
         assert!(bp.canonical);
         assert_eq!(bp.rooms.len(), 3);
@@ -206,6 +251,7 @@ mod tests {
     #[test]
     fn seed_spawns_areas_rooms_exits_and_starting_room() {
         let mut app = App::new();
+        app.insert_resource(AreaBlueprintDir(areas_dir()));
         app.add_systems(Startup, seed_world);
         app.update();
 

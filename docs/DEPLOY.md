@@ -10,15 +10,22 @@ the binary.
 `.github/workflows/deploy.yml`:
 
 1. **build** — `cargo build --release --target x86_64-unknown-linux-musl`. The
-   musl target produces a fully static binary (assets are `include_str!`-baked,
-   so it needs no files beside it). Uploaded as an artifact named `grim`.
+   musl target produces a fully static binary. Most assets are `include_str!`-baked,
+   but **area blueprints (`data/areas/*.json`) are read from disk at runtime**, so
+   they ship alongside the binary (see below). Uploaded as an artifact named `grim`.
 2. **deploy** — `scp`s the binary to `/opt/grim/bin/grim.new`, plus
-   `deploy/deploy.sh` and `deploy/grim.service`, then runs the script over SSH.
+   `deploy/deploy.sh`, `deploy/grim.service`, and the committed `data/areas`
+   folder (to `/opt/grim/bin/areas.staged`), then runs the script over SSH.
 
 `deploy/deploy.sh` (on the host):
 
 - **Swap `grim.new` into `grim` first.** On copyover the running process re-execs
   its own path, so that path must already hold the new binary.
+- **Mirror the area blueprints** into `/opt/grim/data/areas`: the whole dir is
+  wiped and repopulated from `areas.staged`, so an area removed or renamed in the
+  repo doesn't linger. Only `data/areas` is touched — sibling `data/accounts` and
+  `data/characters` (runtime player saves) are left alone. The server reads these
+  at startup and re-reads on copyover, so they must be current before the roll.
 - **Sync the systemd unit** from the uploaded `grim.service` (rendering `User=` to
   the deploy user); `daemon-reload` + `enable`. Track whether the unit *changed*.
 - Then pick one:
