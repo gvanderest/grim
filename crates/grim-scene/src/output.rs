@@ -7,7 +7,8 @@ use grim_engine_types::components::{
     Character, Description, InRoom, Name as GrimName, OutputHistory, Player, Room,
 };
 use grim_engine_types::events::{
-    InfoMessage, LookEntity, LookRoom, MoveEvent, OocEvent, SayEvent, ServerBroadcast, YellEvent,
+    GlobalEcho, InfoMessage, LookEntity, LookRoom, MoveEvent, OocEvent, SayEvent, ServerBroadcast,
+    YellEvent,
 };
 use grim_networking::ConnectionOutput;
 
@@ -35,6 +36,7 @@ pub(crate) fn format_output(
     mut ooc_events: MessageReader<OocEvent>,
     mut move_events: MessageReader<MoveEvent>,
     mut info_events: MessageReader<InfoMessage>,
+    mut gecho_events: MessageReader<GlobalEcho>,
     mut announces: AnnounceReaders,
     rooms: Query<(Entity, &Room, &GrimName)>,
     room_occupants: Occupants,
@@ -90,6 +92,9 @@ pub(crate) fn format_output(
     }
     for ev in info_events.read() {
         emit_info(ev, &room_occupants, &mut outputs);
+    }
+    for ev in gecho_events.read() {
+        emit_gecho(ev, &names, &characters, &room_occupants, &mut outputs);
     }
 }
 
@@ -242,6 +247,45 @@ fn emit_ooc(
                 });
             }
         }
+    }
+}
+
+/// Admin `gecho`: broadcast to every connected player in the world, including
+/// the sender. Another admin sees it attributed (`Name> text`); the sender and
+/// non-admins see the raw text. Rendering is per-recipient, so this cannot be
+/// formatted once and broadcast.
+fn emit_gecho(
+    ev: &GlobalEcho,
+    names: &Query<&GrimName>,
+    characters: &Query<&Character>,
+    room_occupants: &Occupants,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+) {
+    let sender_name = names.get(ev.actor).ok().map(|n| n.0.clone());
+    let raw = formatter::format_gecho(None, &ev.text);
+    let attributed = sender_name
+        .as_deref()
+        .map(|n| formatter::format_gecho(Some(n), &ev.text));
+    for (entity, _, player, _) in room_occupants.iter() {
+        let Some(p) = player else {
+            continue;
+        };
+        let Some(conn) = p.connection else {
+            continue;
+        };
+        let is_other_admin = entity != ev.actor
+            && characters
+                .get(entity)
+                .map(Character::is_admin)
+                .unwrap_or(false);
+        let text = match (is_other_admin, &attributed) {
+            (true, Some(a)) => a.clone(),
+            _ => raw.clone(),
+        };
+        outputs.write(ConnectionOutput {
+            prepend_newline: true,
+            ..ConnectionOutput::new(conn, text)
+        });
     }
 }
 

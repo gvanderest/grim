@@ -141,6 +141,14 @@ fn build_registry() -> CommandRegistry<Command> {
             target: target.to_string(),
         })
     });
+    // `gecho <text>` — admin-gated + masked at dispatch. Rejected with no
+    // argument so a bare `gecho` is unknown.
+    r.register("gecho", |rest| {
+        let text = rest.trim();
+        (!text.is_empty()).then(|| Command::Gecho {
+            text: text.to_string(),
+        })
+    });
 
     // ── Cardinal directions (last = highest priority for single-char) ─
     r.register("north", |_| {
@@ -427,6 +435,22 @@ mod tests {
     fn test_goto_without_target_is_none() {
         assert_eq!(parse("goto"), None);
         assert_eq!(parse("goto   "), None);
+    }
+
+    #[test]
+    fn test_gecho_with_text() {
+        assert_eq!(
+            parse("gecho server reboot soon"),
+            Some(Command::Gecho {
+                text: "server reboot soon".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn test_gecho_without_text_is_none() {
+        assert_eq!(parse("gecho"), None);
+        assert_eq!(parse("gecho   "), None);
     }
 
     #[test]
