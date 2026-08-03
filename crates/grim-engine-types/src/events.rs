@@ -117,6 +117,10 @@ pub struct LogoutAnnounce {
 pub struct LinkdeadAnnounce {
     pub name: String,
     pub reconnecting: bool, // true = reconnecting, false = going linkdead
+    /// Connection entity to omit from the broadcast — the reconnecting player's
+    /// own connection, so they don't see "<name> has reconnected." about
+    /// themselves. `None` broadcasts to everyone (e.g. going linkdead).
+    pub exclude: Option<Entity>,
 }
 
 /// An out-of-band server message shown to every connected player, regardless of

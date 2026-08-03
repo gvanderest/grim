@@ -963,6 +963,9 @@ fn enter_world_by_name(
             announce_linkdead.write(LinkdeadAnnounce {
                 name: name.to_string(),
                 reconnecting: true,
+                // Don't echo "<name> has reconnected." back to the player who
+                // just reconnected — only the rest of the world sees it.
+                exclude: Some(conn),
             });
             info!("Character '{name}' reconnected");
             // Start fresh output capture on the new connection.
@@ -1183,6 +1186,7 @@ fn format_output(
             &format!("{} has connected.\n", ev.name),
             &room_occupants,
             &mut outputs,
+            None,
         );
     }
     for ev in announces.logout.read() {
@@ -1190,13 +1194,14 @@ fn format_output(
             &format!("{} has disconnected.\n", ev.name),
             &room_occupants,
             &mut outputs,
+            None,
         );
     }
 
     // ── Linkdead announce ──
     for ev in announces.linkdead.read() {
         let formatted = formatter::format_linkdead(&ev.name, ev.reconnecting);
-        broadcast_global(&formatted, &room_occupants, &mut outputs);
+        broadcast_global(&formatted, &room_occupants, &mut outputs, ev.exclude);
     }
 
     // ── Look room ──
@@ -1418,7 +1423,7 @@ fn format_server_broadcast(
     mut outputs: MessageWriter<ConnectionOutput>,
 ) {
     for ev in broadcasts.read() {
-        broadcast_global(&ev.text, &occupants, &mut outputs);
+        broadcast_global(&ev.text, &occupants, &mut outputs, None);
     }
 }
 
@@ -1426,10 +1431,14 @@ fn broadcast_global(
     text: &str,
     occupants: &Query<(Entity, &InRoom, Option<&Player>, &GrimName)>,
     outputs: &mut MessageWriter<ConnectionOutput>,
+    exclude: Option<Entity>,
 ) {
     for (_, _, player, _) in occupants.iter() {
         if let Some(p) = player {
             if let Some(conn) = p.connection {
+                if Some(conn) == exclude {
+                    continue;
+                }
                 outputs.write(ConnectionOutput {
                     prepend_newline: true,
                     ..ConnectionOutput::new(conn, text.to_string())
@@ -2280,6 +2289,7 @@ mod tests {
         app.world_mut().write_message(LinkdeadAnnounce {
             name: "Hero".into(),
             reconnecting: true,
+            exclude: None,
         });
         app.update();
 
@@ -2291,6 +2301,71 @@ mod tests {
                 .iter()
                 .any(|o| o.text.contains("Hero has reconnected")),
             "should announce reconnect"
+        );
+    }
+
+    /// A reconnecting player's own connection is excluded from the
+    /// "<name> has reconnected." broadcast; a bystander still sees it.
+    #[test]
+    fn format_output_linkdead_excludes_self() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let hero_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let other_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 2,
+                addr: "127.0.0.1:12346".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn((
+            GrimName("Hero".into()),
+            InRoom { room },
+            Player {
+                connection: Some(hero_conn),
+            },
+            OutputHistory::with_max(100),
+        ));
+        app.world_mut().spawn((
+            GrimName("Other".into()),
+            InRoom { room },
+            Player {
+                connection: Some(other_conn),
+            },
+            OutputHistory::with_max(100),
+        ));
+
+        app.world_mut().write_message(LinkdeadAnnounce {
+            name: "Hero".into(),
+            reconnecting: true,
+            exclude: Some(hero_conn),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
+        let reconnect_lines: Vec<&&ConnectionOutput> = outputs
+            .iter()
+            .filter(|o| o.text.contains("Hero has reconnected"))
+            .collect();
+        assert!(
+            reconnect_lines.iter().all(|o| o.connection != hero_conn),
+            "reconnecting player should not see own reconnect notice"
+        );
+        assert!(
+            reconnect_lines.iter().any(|o| o.connection == other_conn),
+            "bystander should see the reconnect notice"
         );
     }
 

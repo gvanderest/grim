@@ -194,6 +194,7 @@ fn save_on_disconnect(
                     announce_linkdead.write(LinkdeadAnnounce {
                         name: ch.name.clone(),
                         reconnecting: false,
+                        exclude: None,
                     });
                 }
             }
