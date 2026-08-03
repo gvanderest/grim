@@ -3,7 +3,7 @@ use grim_text::tr;
 use bevy::prelude::*;
 use grim_engine_types::components::{InRoom, LastWhisperFrom, Name, Player, Room};
 use grim_engine_types::events::{
-    Command, EngineCommand, InfoMessage, OocEvent, SayEvent, YellEvent,
+    Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
 };
 
 /// Handles `say` commands, emitting a `SayEvent` for room broadcast and an
@@ -17,12 +17,14 @@ impl Plugin for ChannelPlugin {
             .add_message::<SayEvent>()
             .add_message::<YellEvent>()
             .add_message::<OocEvent>()
+            .add_message::<GlobalEcho>()
             .add_systems(
                 Update,
                 (
                     handle_say,
                     handle_yell,
                     handle_ooc,
+                    handle_gecho,
                     handle_tell,
                     handle_reply,
                 ),
@@ -214,12 +216,28 @@ fn handle_ooc(
     }
 }
 
+/// Handles admin `gecho`, emitting a `GlobalEcho` for world-wide broadcast.
+/// Admin gating happens at dispatch (see the grim-scene dispatcher); by the
+/// time it reaches here the command is authorized. Rendering — including
+/// per-recipient attribution — is `format_output`'s job.
+fn handle_gecho(mut engine: MessageReader<EngineCommand>, mut echo: MessageWriter<GlobalEcho>) {
+    for cmd in engine.read() {
+        let Command::Gecho { text } = &cmd.command else {
+            continue;
+        };
+        echo.write(GlobalEcho {
+            actor: cmd.client,
+            text: text.clone(),
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use grim_engine_types::components::{InRoom, Name, Player, Room};
     use grim_engine_types::events::{
-        Command, EngineCommand, InfoMessage, OocEvent, SayEvent, YellEvent,
+        Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
     };
     use grim_engine_types::GrimId;
 
@@ -499,6 +517,26 @@ mod tests {
             assert_eq!(ev.text, "[OOC] You: hello everyone\n");
             assert!(iter.next().is_none(), "expected exactly one InfoMessage");
         }
+    }
+
+    #[test]
+    fn gecho_emits_global_echo() {
+        let mut app = test_app();
+        let actor = app.world_mut().spawn(()).id();
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Gecho {
+                text: "server reboot soon".into(),
+            },
+        });
+        app.update();
+        let messages = app.world().resource::<Messages<GlobalEcho>>();
+        let mut cursor = messages.get_cursor();
+        let mut iter = cursor.read(messages);
+        let ev = iter.next().expect("expected one GlobalEcho");
+        assert_eq!(ev.actor, actor);
+        assert_eq!(ev.text, "server reboot soon");
+        assert!(iter.next().is_none(), "expected exactly one GlobalEcho");
     }
 
     #[test]

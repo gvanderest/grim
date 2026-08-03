@@ -40,6 +40,10 @@ pub enum Command {
     /// `goto <address>` — admin-only. Teleport to a room resolved from an
     /// address (an entity id, `<area>:<room>`, or a bare room slug/grim id).
     Goto { target: String },
+    /// `gecho <text>` — admin-only. Echo a message to every player in the world,
+    /// including the sender. Other admins see it attributed (`Name> text`);
+    /// everyone else sees the raw text.
+    Gecho { text: String },
     /// `shutdown <seconds>` — admin-only. Schedules a graceful server shutdown
     /// after a countdown, broadcasting warnings to all connected players.
     Shutdown { seconds: u64 },
@@ -80,6 +84,15 @@ pub struct YellEvent {
 /// A character said something OOC (out of character). Broadcast globally.
 #[derive(Message, Debug)]
 pub struct OocEvent {
+    pub actor: Entity,
+    pub text: String,
+}
+
+/// An admin `gecho`. Broadcast to every player in the world, including the
+/// sender. Rendering is per-recipient (see `format_output`): another admin sees
+/// it attributed as `Name> text`; the sender and non-admins see the raw text.
+#[derive(Message, Debug)]
+pub struct GlobalEcho {
     pub actor: Entity,
     pub text: String,
 }

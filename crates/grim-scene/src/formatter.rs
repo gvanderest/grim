@@ -62,6 +62,16 @@ pub fn format_ooc(speaker: &str, text: &str) -> String {
     format!("[OOC] {}: {}\n", speaker, escape_codes(text))
 }
 
+/// Render an admin `gecho`. `sender: Some(name)` attributes it (`Name> text`)
+/// for other admins; `None` yields the raw text (sender + non-admins). Text is
+/// escaped so a broadcast can't inject colour codes.
+pub fn format_gecho(sender: Option<&str>, text: &str) -> String {
+    match sender {
+        Some(name) => format!("{}> {}\n", name, escape_codes(text)),
+        None => format!("{}\n", escape_codes(text)),
+    }
+}
+
 /// Format a movement broadcast.
 pub fn format_move(actor: &str, direction: &str, leaving: bool) -> String {
     if leaving {

@@ -75,7 +75,7 @@ pub(crate) fn handle_ingame(
                     ..ConnectionOutput::new(conn, format_areas(rooms))
                 });
             }
-            Command::Shutdown { .. } | Command::Goto { .. } => {
+            Command::Shutdown { .. } | Command::Goto { .. } | Command::Gecho { .. } => {
                 // Admin-gated + masked: a non-admin must not learn the command
                 // exists, so respond exactly as for an unknown command — same
                 // text, same framing (a direct ConnectionOutput, no prepended
