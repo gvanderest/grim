@@ -289,6 +289,7 @@ mod reconnect {
 
     /// Simulate email-based reconnect: type email, then password, then select
     /// character from menu. Character has Linkdead — should reconnect.
+    #[allow(clippy::too_many_lines)] // reason: end-to-end reconnect scenario; one linear flow reads clearer unsplit
     #[test]
     fn reconnect_by_email_on_linkdead_character() {
         let mut app = test_app();

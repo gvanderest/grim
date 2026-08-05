@@ -7,6 +7,7 @@
 
 mod character;
 mod command;
+mod creation;
 mod formatter;
 mod input;
 mod login;

@@ -15,6 +15,7 @@ use grim_text::tr;
 
 use crate::character;
 use crate::command;
+use crate::creation;
 use crate::login;
 use crate::params::{RoomResolver, SessionRes};
 
@@ -34,7 +35,9 @@ pub(crate) fn handle_connection_established(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+// A flat dispatch: one match arm per ClientState, each delegating to its handler.
+// Long by nature (a state table, like parser::build_registry) — waived, not split.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub(crate) fn handle_client_input(
     mut inputs: MessageReader<ConnectionInput>,
     mut clients: Query<(Entity, &mut Client)>,
@@ -123,15 +126,15 @@ pub(crate) fn handle_client_input(
                 &mut disconnect,
             ),
             ClientState::CreateCharacter => {
-                character::create_character(&mut client, conn, text, &res, &mut outputs);
+                creation::create_character(&mut client, conn, text, &res, &mut outputs);
             }
             ClientState::SelectGender { name } => {
-                character::select_gender(&mut client, conn, text, name, &res, &mut outputs);
+                creation::select_gender(&mut client, conn, text, name, &res, &mut outputs);
             }
             ClientState::SelectRace { name, gender } => {
-                character::select_race(&mut client, conn, text, name, gender, &res, &mut outputs);
+                creation::select_race(&mut client, conn, text, name, gender, &res, &mut outputs);
             }
-            ClientState::SelectClass { name, gender, race } => character::select_class(
+            ClientState::SelectClass { name, gender, race } => creation::select_class(
                 &mut client,
                 conn,
                 text,
