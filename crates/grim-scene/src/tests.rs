@@ -89,6 +89,8 @@ fn make_character(roles: Vec<Role>) -> Character {
         race: String::new(),
         class: String::new(),
         level: 1,
+        title: None,
+        restrings: std::collections::HashMap::new(),
     }
 }
 
@@ -188,6 +190,8 @@ mod reconnect {
             race: "human".into(),
             class: "warrior".into(),
             level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
         };
         let char_entity = app
             .world_mut()
@@ -330,6 +334,8 @@ mod reconnect {
             race: "human".into(),
             class: "warrior".into(),
             level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
         };
         let char_entity = app
             .world_mut()
@@ -446,21 +452,27 @@ mod reconnect {
         };
         app.world_mut().spawn(account);
 
+        // Both copies share the character shape and differ only by id + build —
+        // build them from one closure to keep the test flat.
+        let make_char = |id: GrimId, race: &str, class: &str| Character {
+            id,
+            name: "Test".into(),
+            account_id: account_uuid,
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: race.into(),
+            class: class.into(),
+            level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
+        };
+
         // Entity A: stale — loaded from disk, no Linkdead
         let stale_uuid = GrimId::new();
         app.world_mut().spawn((
-            Character {
-                id: stale_uuid,
-                name: "Test".into(),
-                account_id: account_uuid,
-                created_at: Utc::now(),
-                last_room: None,
-                roles: Vec::new(),
-                gender: Gender::Neutral,
-                race: "human".into(),
-                class: "warrior".into(),
-                level: 1,
-            },
+            make_char(stale_uuid, "human", "warrior"),
             GrimName("Test".into()),
             Description("Stale copy.".into()),
         ));
@@ -469,18 +481,7 @@ mod reconnect {
         let real_entity = app
             .world_mut()
             .spawn((
-                Character {
-                    id: GrimId::new(),
-                    name: "Test".into(),
-                    account_id: account_uuid,
-                    created_at: Utc::now(),
-                    last_room: None,
-                    roles: Vec::new(),
-                    gender: Gender::Neutral,
-                    race: String::new(),
-                    class: String::new(),
-                    level: 1,
-                },
+                make_char(GrimId::new(), "", ""),
                 GrimName("Test".into()),
                 Description("Real character.".into()),
                 InRoom { room },
@@ -565,20 +566,26 @@ mod reconnect {
         };
         app.world_mut().spawn(account);
 
+        // Both entities share the same character shape (name/account/build) and
+        // differ only by id — build them from one closure to keep the test flat.
+        let make_char = |id: GrimId| Character {
+            id,
+            name: "Test".into(),
+            account_id: account_uuid,
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: "human".into(),
+            class: "warrior".into(),
+            level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
+        };
+
         // Entity A: stale (no Linkdead)
         app.world_mut().spawn((
-            Character {
-                id: stale_uuid,
-                name: "Test".into(),
-                account_id: account_uuid,
-                created_at: Utc::now(),
-                last_room: None,
-                roles: Vec::new(),
-                gender: Gender::Neutral,
-                race: "human".into(),
-                class: "warrior".into(),
-                level: 1,
-            },
+            make_char(stale_uuid),
             GrimName("Test".into()),
             Description("Stale copy.".into()),
         ));
@@ -587,18 +594,7 @@ mod reconnect {
         let real_entity = app
             .world_mut()
             .spawn((
-                Character {
-                    id: real_uuid,
-                    name: "Test".into(),
-                    account_id: account_uuid,
-                    created_at: Utc::now(),
-                    last_room: None,
-                    roles: Vec::new(),
-                    gender: Gender::Neutral,
-                    race: "human".into(),
-                    class: "warrior".into(),
-                    level: 1,
-                },
+                make_char(real_uuid),
                 GrimName("Test".into()),
                 Description("Real character.".into()),
                 InRoom { room },
@@ -685,6 +681,8 @@ mod reconnect {
             race: "human".into(),
             class: "warrior".into(),
             level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
         };
         write_disk_char(&dir, &ch);
         let char_entity = app
@@ -952,6 +950,8 @@ mod output_format {
                     race: String::new(),
                     class: String::new(),
                     level: 1,
+                    title: None,
+                    restrings: std::collections::HashMap::new(),
                 },
             )
         };
@@ -976,6 +976,8 @@ mod output_format {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             },
         ));
 
@@ -1628,6 +1630,8 @@ mod character_select {
                     race: "human".into(),
                     class: "warrior".into(),
                     level: 1,
+                    title: None,
+                    restrings: std::collections::HashMap::new(),
                 },
                 GrimName(format!("C{}", i + 1)),
                 Description(format!("Character {}.", i + 1)),
@@ -1713,6 +1717,8 @@ mod character_select {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             },
             GrimName("Linky".into()),
             Description("A linkdead character.".into()),
@@ -1782,6 +1788,8 @@ mod character_select {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             },
             GrimName("Aragorn".into()),
             Description("Heir of Isildur.".into()),
@@ -2202,6 +2210,8 @@ mod disk_lifecycle {
                 race: "human".into(),
                 class: "warrior".into(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             },
         );
 
@@ -2272,6 +2282,8 @@ mod disk_lifecycle {
                 race: "human".into(),
                 class: "warrior".into(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             },
         );
 
@@ -2359,6 +2371,8 @@ mod disk_lifecycle {
                     race: String::new(),
                     class: String::new(),
                     level: 1,
+                    title: None,
+                    restrings: std::collections::HashMap::new(),
                 },
                 GrimName("Twinsie".into()),
                 Description("Already online.".into()),
@@ -2575,6 +2589,8 @@ mod character_creation {
             race: "elf".into(),
             class: "warrior".into(),
             level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
         };
         std::fs::create_dir_all(dir.join("characters")).unwrap();
         std::fs::write(
@@ -2677,6 +2693,8 @@ mod legacy_backfill {
                 race: race.into(),
                 class: class.into(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             },
         );
 
@@ -2785,6 +2803,8 @@ mod legacy_backfill {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             },
         );
 
@@ -2833,6 +2853,8 @@ mod legacy_backfill {
             race: String::new(),
             class: String::new(),
             level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
         };
         write_disk_char(&dir, &legacy);
         // Resident but linkdead (as after a crash): entity exists, empty build.

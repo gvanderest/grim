@@ -13,7 +13,8 @@
 use bevy::prelude::*;
 use chrono::Utc;
 use grim_engine_types::components::{
-    Account, Character, Client, ClientState, Description, Gender, InRoom, Name as GrimName, Player,
+    Account, Character, Client, ClientState, ConnectedAt, Description, Gender, InRoom,
+    Name as GrimName, Player,
 };
 use grim_engine_types::GrimId;
 use grim_networking::ConnectionOutput;
@@ -170,6 +171,8 @@ pub(crate) fn finalize_character(
         race,
         class,
         level: 1,
+        title: None,
+        restrings: std::collections::HashMap::new(),
     };
     // Save character to disk immediately.
     let path = res
@@ -188,6 +191,7 @@ pub(crate) fn finalize_character(
             Player {
                 connection: Some(conn),
             },
+            ConnectedAt(Utc::now()),
             InRoom {
                 room: res.starting.0,
             },

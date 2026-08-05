@@ -137,6 +137,18 @@ pub struct Character {
     /// JSON level 1 rather than 0.
     #[serde(default = "default_level")]
     pub level: u32,
+    /// An optional self-set descriptor shown after the name in the WHO list.
+    /// Capped at 60 chars by the `title` command. `#[serde(default)]` keeps old
+    /// JSON (written before titles existed) loading cleanly.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// Persisted per-character display overrides, keyed by a recognized name.
+    /// The WHO renderer honours `who_level`, `who_gender`, `who_race`,
+    /// `who_class`, `who_guild` (each overrides one stat column) and `who`
+    /// (replaces the whole stat block). No in-game setter yet — edited on disk.
+    /// `#[serde(default)]` keeps old JSON loading cleanly.
+    #[serde(default)]
+    pub restrings: HashMap<String, String>,
 }
 
 /// The level every new (or pre-level-field) character starts at.
@@ -243,6 +255,14 @@ pub struct LastWhisperFrom(pub Entity);
 #[derive(Component, Debug)]
 pub struct Npc;
 
+/// When the character's current session entered the world. Transient (NOT
+/// persisted): stamped with `Utc::now()` wherever a character gets its live
+/// `Player` — fresh login, takeover, spawn-from-disk, linkdead reconnect, and
+/// copyover resume. The WHO list uses it as the connect-time sort tiebreak
+/// (oldest connection first among characters of equal level).
+#[derive(Component, Debug, Clone, Copy)]
+pub struct ConnectedAt(pub DateTime<Utc>);
+
 /// Character is still in-world but the player disconnected (linkdead).
 #[derive(Component, Debug)]
 pub struct Linkdead;
@@ -285,6 +305,8 @@ mod tests {
             race: String::new(),
             class: String::new(),
             level: 1,
+            title: None,
+            restrings: HashMap::new(),
         }
     }
 
@@ -321,6 +343,20 @@ mod tests {
     }
 
     #[test]
+    fn character_round_trips_title_and_restrings() {
+        let mut ch = character(vec![]);
+        ch.title = Some("the Bold".into());
+        ch.restrings.insert("who_class".into(), "God".into());
+        let json = serde_json::to_string(&ch).unwrap();
+        let back: Character = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.title.as_deref(), Some("the Bold"));
+        assert_eq!(
+            back.restrings.get("who_class").map(String::as_str),
+            Some("God")
+        );
+    }
+
+    #[test]
     fn character_json_without_roles_defaults_empty() {
         // Old character files, written before `roles` existed. Ids are Grim IDs
         // (base62 x12) — pre-GrimId UUID files must be migrated first.
@@ -333,5 +369,8 @@ mod tests {
         assert!(ch.race.is_empty());
         assert!(ch.class.is_empty());
         assert_eq!(ch.level, 1);
+        // Titles/restrings default cleanly for pre-existing JSON.
+        assert!(ch.title.is_none());
+        assert!(ch.restrings.is_empty());
     }
 }
