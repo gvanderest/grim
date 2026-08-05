@@ -9,4 +9,4 @@
 
 pub mod channel;
 
-pub use channel::ChannelPlugin;
+pub use channel::{ChannelPlugin, LastWhisperFrom};

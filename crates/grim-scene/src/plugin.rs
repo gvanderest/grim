@@ -3,19 +3,20 @@
 
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::prelude::*;
-use grim_engine_types::components::{ClassRegistry, RaceRegistry, ReservedNamePrefixes};
 use grim_engine_types::events::{
     EngineCommand, GlobalEcho, InfoMessage, LinkdeadAnnounce, LookEntity, LookRoom, MoveEvent,
     OocEvent, SayEvent, ServerBroadcast, YellEvent,
 };
 use grim_engine_types::events::{LoginAnnounce, LogoutAnnounce};
 use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
+use grim_world::{ClassRegistry, RaceRegistry};
 
 use crate::command::process_command_queue;
 use crate::input::{handle_client_input, handle_connection_established};
 use crate::output::{capture_output, format_output, format_server_broadcast};
 use crate::parser;
 use crate::resume::handle_connection_resumed;
+use crate::validation::ReservedNamePrefixes;
 
 pub struct ScenePlugin;
 impl Plugin for ScenePlugin {
@@ -85,7 +86,7 @@ fn validate_registries(races: Res<RaceRegistry>, classes: Res<ClassRegistry>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_engine_types::components::{ClassRegistry, RaceRegistry};
+    use grim_world::{ClassRegistry, RaceRegistry};
 
     #[test]
     #[should_panic(expected = "RaceRegistry is empty")]

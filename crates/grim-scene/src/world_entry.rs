@@ -5,8 +5,8 @@
 use bevy::prelude::*;
 use chrono::Utc;
 use grim_engine_types::components::{
-    Character, Client, ClientState, ConnectedAt, Description, InRoom, Linkdead, Name as GrimName,
-    OutputHistory, Player,
+    Character, Client, ClientState, Description, InRoom, Linkdead, Name as GrimName, OutputHistory,
+    Player,
 };
 use grim_engine_types::events::LinkdeadAnnounce;
 use grim_engine_types::GrimId;
@@ -16,6 +16,7 @@ use grim_text::tr;
 
 use crate::formatter;
 use crate::params::RoomResolver;
+use crate::session::ConnectedAt;
 
 /// Enter the world as a named character owned by the just-authed account. Used
 /// by both the login-by-name auto-select path and the character-menu selection,

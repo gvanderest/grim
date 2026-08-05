@@ -17,9 +17,14 @@ mod params;
 mod parser;
 mod plugin;
 mod resume;
+mod session;
 mod world_entry;
+
+pub mod validation;
 
 #[cfg(test)]
 mod tests;
 
 pub use plugin::ScenePlugin;
+pub use session::ConnectedAt;
+pub use validation::ReservedNamePrefixes;

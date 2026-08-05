@@ -10,17 +10,17 @@ use grim_engine_types::components::*;
 use grim_engine_types::events::*;
 // Explicit named import shadows the glob'd `bevy::prelude::Command` trait.
 use grim_engine_types::events::Command;
-use grim_engine_types::validation::hash_password;
 use grim_engine_types::GrimId;
 use grim_networking::{
     Connection, ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest,
 };
 use grim_persistence::{PersistenceConfig, PersistencePlugin};
-use grim_world::WorldPlugin;
+use grim_world::{ClassRegistry, RaceRegistry, WorldPlugin};
 use std::net::SocketAddr;
 
 use crate::input::{handle_client_input, handle_connection_established};
 use crate::parser;
+use crate::validation::{hash_password, ReservedNamePrefixes};
 use crate::ScenePlugin;
 
 // ─── Shared fixtures ─────────────────────────────────────────────────

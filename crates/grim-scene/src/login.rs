@@ -8,10 +8,6 @@ use grim_engine_types::components::{
     Account, Character, Client, ClientState, Linkdead, Name as GrimName, OutputHistory, Player,
 };
 use grim_engine_types::events::LinkdeadAnnounce;
-use grim_engine_types::validation::{
-    hash_password, normalize_character_name, validate_identifier, validate_password,
-    verify_password,
-};
 use grim_engine_types::GrimId;
 use grim_networking::{ConnectionOutput, DisconnectRequest};
 use grim_persistence::{load_character_by_name, PersistenceConfig};
@@ -20,6 +16,10 @@ use grim_text::tr;
 use crate::character;
 use crate::creation;
 use crate::params::{RoomResolver, SessionRes};
+use crate::validation::{
+    hash_password, normalize_character_name, validate_identifier, validate_password,
+    verify_password,
+};
 use crate::world_entry;
 
 /// LoginPrompt: try the input as a character name first (resident, linkdead

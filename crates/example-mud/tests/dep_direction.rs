@@ -72,6 +72,12 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // NOTE (divergence): §4 does not show scene→persistence; today the scene owns
     // resume placement / player-alias expansion, so it depends on grim-persistence.
     ("grim-scene", "grim-persistence"),
+    // NOTE (Placement Phase 1): the race/class registry content moved into
+    // grim-world, and the scene's creation flow reads it in production code
+    // (params.rs / plugin.rs), so scene→world is now a NORMAL edge (previously a
+    // dev-only harness edge). grim-world does not depend on grim-scene, so this
+    // adds no cycle.
+    ("grim-scene", "grim-world"),
     // ── Gameplay subsystems ────────────────────────────────────────────────────
     // NOTE (divergence #3): §4's diagram routes grim-world / grim-channel through
     // grim-command. Reality: neither depends on grim-command; dispatch is mediated
@@ -104,10 +110,11 @@ const ALLOWED_NORMAL: &[Edge] = &[
 /// Internal edges expected with dependency kind **dev** (`[dev-dependencies]`).
 ///
 /// NOTE (divergence #2): `grim-scene`'s E2E-style harness composes the gameplay
-/// plugins to exercise the full loop (ARCHITECTURE.md §10). These are DEV-only and
-/// deliberately not normal edges — a normal dependency here would be a real coupling
-/// regression, so they are segregated into their own allow-list.
-const ALLOWED_DEV: &[Edge] = &[("grim-scene", "grim-world"), ("grim-scene", "grim-channel")];
+/// plugins to exercise the full loop (ARCHITECTURE.md §10). This is DEV-only and
+/// deliberately not a normal edge — a normal dependency here would be a real coupling
+/// regression, so it is segregated into its own allow-list. (The scene→world edge was
+/// promoted to a normal dependency in Placement Phase 1; see ALLOWED_NORMAL.)
+const ALLOWED_DEV: &[Edge] = &[("grim-scene", "grim-channel")];
 
 /// Read the workspace graph and return internal edges split by kind: `(normal, dev)`.
 /// Only edges where both endpoints are workspace members are considered.

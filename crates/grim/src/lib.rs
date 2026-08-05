@@ -10,6 +10,14 @@
 pub use bevy::prelude::*;
 pub use grim_engine_types::*;
 
+// Placement Phase 1 relocated these domain types out of the `grim-engine-types`
+// god-node into their owning subsystem crates. Re-export them at the crate root
+// (and via `prelude`) so `grim::X` / `grim::prelude::X` stay stable downstream.
+pub mod prelude;
+pub use grim_channel::LastWhisperFrom;
+pub use grim_scene::{ConnectedAt, ReservedNamePrefixes};
+pub use grim_world::{ClassDef, ClassRegistry, Npc, RaceDef, RaceRegistry};
+
 // Transport-agnostic networking primitives (Connection + wire events).
 pub use grim_networking::{self as networking, *};
 

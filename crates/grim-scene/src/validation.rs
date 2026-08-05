@@ -1,4 +1,10 @@
+//! Input validation + credential helpers for the login / creation flow, plus
+//! the server-configurable reserved-name-prefix resource that gates character
+//! names.
+
 use std::fmt;
+
+use bevy::prelude::Resource;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValidationError {
@@ -15,10 +21,29 @@ pub enum ValidationError {
 /// — a command like `cast fire self` must unambiguously mean the caster, never a
 /// character named "Selfius". Prefix-based on purpose: "Selfius" is rejected but
 /// "Zself" is fine. This is only the DEFAULT list; the server exposes it as
-/// configuration (see `grim_scene::ReservedNamePrefixes`) so an author can extend
-/// or replace it. Enforcement lives at the creation boundary, not in the pure
+/// configuration (see [`ReservedNamePrefixes`]) so an author can extend or
+/// replace it. Enforcement lives at the creation boundary, not in the pure
 /// validator, so the configured list is what actually applies.
 pub const DEFAULT_RESERVED_NAME_PREFIXES: &[&str] = &["self", "someone"];
+
+/// Server config: character-name prefixes that may not be used (a new character's
+/// canonical name may not begin with any, case-insensitive — see
+/// [`is_name_reserved`]). Defaults to [`DEFAULT_RESERVED_NAME_PREFIXES`]; an
+/// author overrides or extends it by inserting this resource before adding the
+/// scene plugin.
+#[derive(Resource, Clone, Debug)]
+pub struct ReservedNamePrefixes(pub Vec<String>);
+
+impl Default for ReservedNamePrefixes {
+    fn default() -> Self {
+        Self(
+            DEFAULT_RESERVED_NAME_PREFIXES
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        )
+    }
+}
 
 /// Whether `name` begins with any of `prefixes` (case-insensitive). Used at
 /// character creation against the configured reserved list.
@@ -77,8 +102,8 @@ fn validate_email(s: &str) -> Result<String, ValidationError> {
 ///
 /// The reserved-word check is deliberately NOT done here — it is enforced at the
 /// character-creation boundary against the server's configured list
-/// ([`is_name_reserved`] / [`crate::components::ReservedNamePrefixes`]) so a
-/// custom list actually applies.
+/// ([`is_name_reserved`] / [`ReservedNamePrefixes`]) so a custom list actually
+/// applies.
 pub fn validate_character_name(input: &str) -> Result<String, ValidationError> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
@@ -117,26 +142,6 @@ pub fn normalize_character_name(s: &str) -> String {
         }
         None => String::new(),
     }
-}
-
-/// Normalize a string for use as a filename.
-/// Lowercase, spaces → underscores, other non-alphanumeric → hyphens.
-pub fn normalize_filename(s: &str) -> String {
-    s.trim()
-        .to_lowercase()
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() {
-                c
-            } else if c == ' ' || c == '_' {
-                '_'
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches(|c: char| c == '_' || c == '-')
-        .to_string()
 }
 
 /// Validate a password. Minimum 6 characters.
@@ -304,52 +309,6 @@ mod tests {
         assert!(!is_name_reserved("Bobself", &prefixes));
         // Empty configured list reserves nothing.
         assert!(!is_name_reserved("Self", &[]));
-    }
-
-    // ── normalize_filename ──
-
-    #[test]
-    fn normalize_filename_basic() {
-        assert_eq!(normalize_filename("hello"), "hello");
-    }
-
-    #[test]
-    fn normalize_filename_spaces() {
-        assert_eq!(normalize_filename("hello world"), "hello_world");
-    }
-
-    #[test]
-    fn normalize_filename_mixed_separators() {
-        assert_eq!(
-            normalize_filename("hello world foo_bar"),
-            "hello_world_foo_bar"
-        );
-    }
-
-    #[test]
-    fn normalize_filename_special_chars() {
-        // non-alphanumeric, non-space → hyphens
-        assert_eq!(normalize_filename("hello!!!world"), "hello---world");
-    }
-
-    #[test]
-    fn normalize_filename_multiple_special_chars() {
-        assert_eq!(normalize_filename("hello---world"), "hello---world");
-    }
-
-    #[test]
-    fn normalize_filename_leading_separators_trimmed() {
-        assert_eq!(normalize_filename("__hello world__"), "hello_world");
-    }
-
-    #[test]
-    fn normalize_filename_trailing_separators_trimmed() {
-        assert_eq!(normalize_filename("hello_world__"), "hello_world");
-    }
-
-    #[test]
-    fn normalize_filename_leading_and_trailing_trimmed() {
-        assert_eq!(normalize_filename("  ___hello world___  "), "hello_world");
     }
 
     // ── validate_password ──
