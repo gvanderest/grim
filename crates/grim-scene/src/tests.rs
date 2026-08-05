@@ -143,6 +143,7 @@ mod reconnect {
 
     /// Simulate name-based reconnect: type character name at login prompt,
     /// then password. The character has Linkdead — should reconnect.
+    #[allow(clippy::too_many_lines)] // reason: end-to-end reconnect scenario; one linear flow reads clearer unsplit
     #[test]
     fn reconnect_by_name_on_linkdead_character() {
         let mut app = test_app();

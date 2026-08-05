@@ -9,13 +9,17 @@ precommit:
 
 # ─── Lint (read-only, used by precommit) ─────────────────────────────
 
-lint: check clippy fmt-check
+lint: check clippy fmt-check file-length
 
 check:
 	RUSTFLAGS="-D warnings" cargo check
 
 clippy:
-	cargo clippy --all-targets -- -D warnings
+	cargo clippy --all-targets -- -D warnings -D clippy::too_many_lines
+
+# ─── File/module size caps (per-file; clippy owns the per-fn cap) ─────
+file-length:
+	bash scripts/check-file-length.sh
 
 fmt-check:
 	cargo fmt --check
