@@ -225,6 +225,15 @@ impl Mud {
         names.sort();
         names
     }
+
+    /// Fetch a clone of the in-world `Character` with this name, if present.
+    /// Lets a scenario assert on stored build data (gender/race/class/level).
+    pub fn character(&mut self, name: &str) -> Option<Character> {
+        let mut q = self.app.world_mut().query::<(&GrimName, &Character)>();
+        q.iter(self.app.world())
+            .find(|(n, _)| n.0 == name)
+            .map(|(_, c)| c.clone())
+    }
 }
 
 impl Default for Mud {

@@ -3,7 +3,7 @@
 
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::prelude::*;
-use grim_engine_types::components::ReservedNamePrefixes;
+use grim_engine_types::components::{ClassRegistry, RaceRegistry, ReservedNamePrefixes};
 use grim_engine_types::events::{
     EngineCommand, GlobalEcho, InfoMessage, LinkdeadAnnounce, LookEntity, LookRoom, MoveEvent,
     OocEvent, SayEvent, ServerBroadcast, YellEvent,
@@ -28,6 +28,11 @@ impl Plugin for ScenePlugin {
         // Reserved character-name prefixes. init_resource keeps the built-in
         // defaults unless the author inserted a custom list before this plugin.
         app.init_resource::<ReservedNamePrefixes>();
+        // Playable races/classes offered at character creation. init_resource so
+        // the engine ships a full seed; an author overrides by inserting a custom
+        // registry before adding this plugin (mirrors ReservedNamePrefixes).
+        app.init_resource::<RaceRegistry>();
+        app.init_resource::<ClassRegistry>();
         app.add_message::<ConnectionOutput>()
             .add_message::<ConnectionResumed>()
             .add_message::<DisconnectRequest>()

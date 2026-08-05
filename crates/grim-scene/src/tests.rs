@@ -85,6 +85,10 @@ fn make_character(roles: Vec<Role>) -> Character {
         created_at: Utc::now(),
         last_room: None,
         roles,
+        gender: Gender::Neutral,
+        race: String::new(),
+        class: String::new(),
+        level: 1,
     }
 }
 
@@ -180,6 +184,10 @@ mod reconnect {
             created_at: Utc::now(),
             last_room: None,
             roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: String::new(),
+            class: String::new(),
+            level: 1,
         };
         let char_entity = app
             .world_mut()
@@ -317,6 +325,10 @@ mod reconnect {
             created_at: Utc::now(),
             last_room: None,
             roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: String::new(),
+            class: String::new(),
+            level: 1,
         };
         let char_entity = app
             .world_mut()
@@ -443,6 +455,10 @@ mod reconnect {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             },
             GrimName("Test".into()),
             Description("Stale copy.".into()),
@@ -459,6 +475,10 @@ mod reconnect {
                     created_at: Utc::now(),
                     last_room: None,
                     roles: Vec::new(),
+                    gender: Gender::Neutral,
+                    race: String::new(),
+                    class: String::new(),
+                    level: 1,
                 },
                 GrimName("Test".into()),
                 Description("Real character.".into()),
@@ -553,6 +573,10 @@ mod reconnect {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             },
             GrimName("Test".into()),
             Description("Stale copy.".into()),
@@ -569,6 +593,10 @@ mod reconnect {
                     created_at: Utc::now(),
                     last_room: None,
                     roles: Vec::new(),
+                    gender: Gender::Neutral,
+                    race: String::new(),
+                    class: String::new(),
+                    level: 1,
                 },
                 GrimName("Test".into()),
                 Description("Real character.".into()),
@@ -652,6 +680,10 @@ mod reconnect {
             created_at: Utc::now(),
             last_room: None,
             roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: String::new(),
+            class: String::new(),
+            level: 1,
         };
         write_disk_char(&dir, &ch);
         let char_entity = app
@@ -752,6 +784,8 @@ mod ordering {
             .id();
         app.world_mut().insert_resource(StartingRoom(room));
         app.init_resource::<ReservedNamePrefixes>();
+        app.init_resource::<RaceRegistry>();
+        app.init_resource::<ClassRegistry>();
 
         let conn = app
             .world_mut()
@@ -913,6 +947,10 @@ mod output_format {
                     created_at: Utc::now(),
                     last_room: None,
                     roles: vec![Role::Admin],
+                    gender: Gender::Neutral,
+                    race: String::new(),
+                    class: String::new(),
+                    level: 1,
                 },
             )
         };
@@ -933,6 +971,10 @@ mod output_format {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             },
         ));
 
@@ -1581,6 +1623,10 @@ mod character_select {
                     created_at: Utc::now(),
                     last_room: None,
                     roles: Vec::new(),
+                    gender: Gender::Neutral,
+                    race: String::new(),
+                    class: String::new(),
+                    level: 1,
                 },
                 GrimName(format!("C{}", i + 1)),
                 Description(format!("Character {}.", i + 1)),
@@ -1662,6 +1708,10 @@ mod character_select {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             },
             GrimName("Linky".into()),
             Description("A linkdead character.".into()),
@@ -1727,6 +1777,10 @@ mod character_select {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             },
             GrimName("Aragorn".into()),
             Description("Heir of Isildur.".into()),
@@ -1808,14 +1862,17 @@ mod character_select {
             );
         }
 
-        // Replace the reserved list with an empty one → the name is now allowed.
+        // Replace the reserved list with an empty one → the name is now allowed
+        // and creation proceeds into the gender → race → class picker.
         app.world_mut()
             .insert_resource(ReservedNamePrefixes(vec![]));
-        app.world_mut().write_message(ConnectionInput {
-            connection: conn,
-            text: "self".into(),
-        });
-        app.update();
+        for line in ["self", "1", "human", "warrior"] {
+            app.world_mut().write_message(ConnectionInput {
+                connection: conn,
+                text: line.into(),
+            });
+            app.update();
+        }
         {
             let mut q = app.world_mut().query::<&GrimName>();
             assert!(
@@ -2140,6 +2197,10 @@ mod disk_lifecycle {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             },
         );
 
@@ -2206,6 +2267,10 @@ mod disk_lifecycle {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             },
         );
 
@@ -2289,6 +2354,10 @@ mod disk_lifecycle {
                     created_at: Utc::now(),
                     last_room: None,
                     roles: Vec::new(),
+                    gender: Gender::Neutral,
+                    race: String::new(),
+                    class: String::new(),
+                    level: 1,
                 },
                 GrimName("Twinsie".into()),
                 Description("Already online.".into()),
@@ -2343,6 +2412,151 @@ mod disk_lifecycle {
             Some(new_conn)
         );
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+// ─── Character creation picker: gender → race → class ────────────────
+
+mod character_creation {
+    use super::*;
+
+    /// Read a connection's client state.
+    fn state_of(app: &mut App, conn: Entity) -> ClientState {
+        let mut q = app.world_mut().query::<&Client>();
+        q.iter(app.world())
+            .find(|c| c.connection == conn)
+            .unwrap()
+            .state
+            .clone()
+    }
+
+    /// Boot an app in an isolated dir with an account already logged in and a
+    /// client parked at `CreateCharacter`, ready to accept a name.
+    fn app_at_create_character(dir: &std::path::Path) -> (App, Entity) {
+        let mut app = test_app_in(dir);
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let account = Account {
+            id: GrimId::new(),
+            identifier: "maker@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![],
+            created_at: Utc::now(),
+        };
+        let account_entity = app.world_mut().spawn(account).id();
+
+        let conn = spawn_conn(&mut app, 1);
+        let mut client = Client::new(conn);
+        client.state = ClientState::CreateCharacter;
+        client.account = Some(account_entity);
+        app.world_mut().spawn(client);
+        app.update(); // flush spawns
+        (app, conn)
+    }
+
+    fn send(app: &mut App, conn: Entity, text: &str) {
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: text.into(),
+        });
+        app.update();
+    }
+
+    #[test]
+    fn full_flow_transitions_and_persists_selections() {
+        let dir = unique_dir("create-full");
+        let (mut app, conn) = app_at_create_character(&dir);
+
+        // Name → SelectGender
+        send(&mut app, conn, "Aria");
+        assert_eq!(
+            state_of(&mut app, conn),
+            ClientState::SelectGender {
+                name: "Aria".into()
+            }
+        );
+
+        // Gender (index 2 = Female) → SelectRace
+        send(&mut app, conn, "2");
+        assert_eq!(
+            state_of(&mut app, conn),
+            ClientState::SelectRace {
+                name: "Aria".into(),
+                gender: Gender::Female,
+            }
+        );
+
+        // Race (slug prefix "dwa" → dwarf) → SelectClass
+        send(&mut app, conn, "dwa");
+        assert_eq!(
+            state_of(&mut app, conn),
+            ClientState::SelectClass {
+                name: "Aria".into(),
+                gender: Gender::Female,
+                race: "dwarf".into(),
+            }
+        );
+
+        // Class (name prefix "Mage") → MotdPrompt + persisted character.
+        send(&mut app, conn, "Mage");
+        assert_eq!(state_of(&mut app, conn), ClientState::MotdPrompt);
+
+        let mut q = app.world_mut().query::<(&GrimName, &Character)>();
+        let (_, ch) = q
+            .iter(app.world())
+            .find(|(n, _)| n.0 == "Aria")
+            .expect("character spawned");
+        assert_eq!(ch.gender, Gender::Female);
+        assert_eq!(ch.race, "dwarf");
+        assert_eq!(ch.class, "mage");
+        assert_eq!(ch.level, 1);
+
+        // And it round-trips through disk with those fields present.
+        let path = dir.join("characters").join("Aria.json");
+        let json = std::fs::read_to_string(&path).expect("character json on disk");
+        let loaded: Character = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.gender, Gender::Female);
+        assert_eq!(loaded.race, "dwarf");
+        assert_eq!(loaded.class, "mage");
+        assert_eq!(loaded.level, 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn invalid_gender_reprompts_without_advancing() {
+        let dir = unique_dir("create-bad-gender");
+        let (mut app, conn) = app_at_create_character(&dir);
+        send(&mut app, conn, "Bran");
+        // Out-of-range index → still SelectGender.
+        send(&mut app, conn, "9");
+        assert_eq!(
+            state_of(&mut app, conn),
+            ClientState::SelectGender {
+                name: "Bran".into()
+            }
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tier_two_class_slug_is_not_creatable() {
+        let dir = unique_dir("create-tier2");
+        let (mut app, conn) = app_at_create_character(&dir);
+        send(&mut app, conn, "Cade");
+        send(&mut app, conn, "1"); // gender
+        send(&mut app, conn, "human"); // race
+                                       // "champion" is a tier-2 class → not in the creatable menu → rejected.
+        send(&mut app, conn, "champion");
+        assert!(matches!(
+            state_of(&mut app, conn),
+            ClientState::SelectClass { .. }
+        ));
+        // A tier-1 class is accepted.
+        send(&mut app, conn, "warrior");
+        assert_eq!(state_of(&mut app, conn), ClientState::MotdPrompt);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

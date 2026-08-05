@@ -122,10 +122,22 @@ pub(crate) fn handle_client_input(
                 &mut announce_linkdead,
                 &mut disconnect,
             ),
-            ClientState::CreateCharacter => character::create_character(
+            ClientState::CreateCharacter => {
+                character::create_character(&mut client, conn, text, &res, &mut outputs);
+            }
+            ClientState::SelectGender { name } => {
+                character::select_gender(&mut client, conn, text, name, &res, &mut outputs);
+            }
+            ClientState::SelectRace { name, gender } => {
+                character::select_race(&mut client, conn, text, name, gender, &res, &mut outputs);
+            }
+            ClientState::SelectClass { name, gender, race } => character::select_class(
                 &mut client,
                 conn,
                 text,
+                name,
+                gender,
+                race,
                 &mut accounts,
                 &res,
                 &mut commands,

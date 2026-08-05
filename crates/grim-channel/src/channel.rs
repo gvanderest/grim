@@ -250,7 +250,7 @@ fn handle_gecho(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_engine_types::components::{Character, InRoom, Name, Player, Role, Room};
+    use grim_engine_types::components::{Character, Gender, InRoom, Name, Player, Role, Room};
     use grim_engine_types::events::{
         Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
     };
@@ -267,6 +267,10 @@ mod tests {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: vec![Role::Admin],
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             })
             .id()
     }

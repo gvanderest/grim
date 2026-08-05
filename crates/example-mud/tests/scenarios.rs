@@ -6,6 +6,7 @@
 //! purpose: the flow IS the thing under test.
 
 mod harness;
+use grim::components::Gender;
 use harness::{Mud, Session};
 
 /// A password that satisfies validation (short ones are rejected — see
@@ -20,9 +21,12 @@ fn create_char(mud: &mut Mud, email: &str, name: &str) -> Session {
     let _ = mud.send(s, "y"); //   confirm create
     let _ = mud.send(s, PW); //    choose password → account created, character menu
     let _ = mud.send(s, "c"); //   create a character
-    let _ = mud.send(s, name); //  name it → MOTD
-                               // Press enter at the MOTD → enter the world. Assert we actually landed in a
-                               // room, so a broken login/creation step can't return a bogus Session.
+    let _ = mud.send(s, name); //  name it → gender picker
+    let _ = mud.send(s, "1"); //   gender: Male (menu index)
+    let _ = mud.send(s, "human"); // race: by slug
+    let _ = mud.send(s, "warrior"); // class: by slug → MOTD
+                                    // Press enter at the MOTD → enter the world. Assert we actually landed in
+                                    // a room, so a broken login/creation step can't return a bogus Session.
     mud.send(s, "").assert_contains("Exits:");
     s
 }
@@ -46,6 +50,57 @@ fn account_creation_places_character_in_the_world() {
     mud.send(alice, "look")
         .assert_contains("The Rusted Anvil")
         .assert_contains("Exits: north");
+}
+
+#[test]
+fn character_creation_records_gender_race_and_class_at_level_one() {
+    let mut mud = Mud::new();
+    let (s, _) = mud.connect();
+    let _ = mud.send(s, "gwen@example.com");
+    let _ = mud.send(s, "y");
+    let _ = mud.send(s, PW);
+    let _ = mud.send(s, "c");
+    let _ = mud.send(s, "Gwen"); // → gender picker
+
+    // Mix input styles: gender by name prefix, race by index, class by slug.
+    mud.send(s, "fem").assert_contains("Choose a race"); // Female by prefix
+    mud.send(s, "2").assert_contains("Choose a class"); // Race index 2 → Elf
+    let _ = mud.send(s, "mage"); // Class by slug → MOTD
+    mud.send(s, "").assert_contains("Exits:"); // enter the world
+
+    let gwen = mud.character("Gwen").expect("Gwen is in the world");
+    assert_eq!(gwen.gender, Gender::Female);
+    assert_eq!(gwen.race, "elf");
+    assert_eq!(gwen.class, "mage");
+    assert_eq!(gwen.level, 1);
+}
+
+#[test]
+fn invalid_creation_pick_reprompts_without_advancing() {
+    let mut mud = Mud::new();
+    let (s, _) = mud.connect();
+    let _ = mud.send(s, "ivy@example.com");
+    let _ = mud.send(s, "y");
+    let _ = mud.send(s, PW);
+    let _ = mud.send(s, "c");
+    let _ = mud.send(s, "Ivy"); // → gender picker
+
+    // Out-of-range index is rejected and the gender menu is shown again.
+    mud.send(s, "9")
+        .assert_contains("Please choose one of the options")
+        .assert_contains("Choose a gender");
+    // A valid pick then advances.
+    mud.send(s, "1").assert_contains("Choose a race");
+    // A tier-2 class is NOT offered/creatable: its slug does not resolve.
+    let _ = mud.send(s, "human");
+    mud.send(s, "champion")
+        .assert_contains("Please choose one of the options")
+        .assert_contains("Choose a class");
+    let _ = mud.send(s, "warrior"); // valid tier-1 → MOTD
+    mud.send(s, "").assert_contains("Exits:");
+
+    let ivy = mud.character("Ivy").expect("Ivy is in the world");
+    assert_eq!(ivy.class, "warrior");
 }
 
 #[test]

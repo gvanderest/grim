@@ -233,6 +233,7 @@ fn save_on_move(
 mod tests {
     use super::*;
     use chrono::Utc;
+    use grim_engine_types::components::Gender;
     use grim_engine_types::GrimId;
     use std::sync::{LazyLock, Mutex};
 
@@ -329,6 +330,10 @@ mod tests {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             };
             let other = Character {
                 id: GrimId::new(),
@@ -337,6 +342,10 @@ mod tests {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             };
             for c in [&mine, &other] {
                 fs::write(
@@ -400,6 +409,10 @@ mod tests {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             };
             let char_path = format!("data/characters/{}.json", character.name);
             fs::write(&char_path, serde_json::to_string(&character).unwrap()).unwrap();
@@ -554,6 +567,10 @@ mod tests {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             };
             let char_e = app.world_mut().spawn(character.clone()).id();
 
@@ -609,6 +626,10 @@ mod tests {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             };
             let char_e = app.world_mut().spawn(character.clone()).id();
 
@@ -706,6 +727,10 @@ mod tests {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(), // starts with no last_room
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             };
             let char_e = app
                 .world_mut()
@@ -764,6 +789,10 @@ mod tests {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             };
             let char_e = app.world_mut().spawn(character.clone()).id();
 
@@ -902,6 +931,10 @@ mod tests {
                 created_at: Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             };
             fs::write(
                 dir.join("characters").join("CfgHero.json"),
@@ -996,6 +1029,10 @@ mod tests {
                     room: "square".into(),
                 }),
                 roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             };
             let actor = app.world_mut().spawn((character, InRoom { room })).id();
 

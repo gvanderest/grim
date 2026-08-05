@@ -158,6 +158,54 @@ pub fn format_motd() -> String {
     include_str!("../../../assets/motd.txt").to_string()
 }
 
+/// One row of a creation menu: a display `name`, an identifying `slug` (matched
+/// as a prefix), and an optional one-line `description`.
+pub struct MenuItem<'a> {
+    pub name: &'a str,
+    pub slug: &'a str,
+    pub description: &'a str,
+}
+
+/// Render a numbered creation menu: a `title`, one `N. Name - description` line
+/// per item (the `- description` omitted when empty), and a trailing `prompt`.
+pub fn format_selection_menu(title: &str, items: &[MenuItem], prompt: &str) -> String {
+    let mut out = format!("[ {title} ]\n");
+    for (i, item) in items.iter().enumerate() {
+        if item.description.is_empty() {
+            out.push_str(&format!("{}. {}\n", i + 1, item.name));
+        } else {
+            out.push_str(&format!(
+                "{}. {} - {}\n",
+                i + 1,
+                item.name,
+                item.description
+            ));
+        }
+    }
+    out.push('\n');
+    out.push_str(prompt);
+    out
+}
+
+/// Resolve a line of menu input against `items`, returning the 0-based position
+/// of the chosen row. Accepts either a 1-based index or a case-insensitive
+/// prefix of a row's name or slug (first match wins). Returns `None` on blank,
+/// out-of-range, or unmatched input, so the caller re-prompts without advancing.
+pub fn parse_menu_choice(input: &str, items: &[MenuItem]) -> Option<usize> {
+    let input = input.trim();
+    if input.is_empty() {
+        return None;
+    }
+    if let Ok(idx) = input.parse::<usize>() {
+        // `then` (lazy) not `then_some`: `idx - 1` would underflow for idx == 0.
+        return (idx >= 1 && idx <= items.len()).then(|| idx - 1);
+    }
+    let lower = input.to_lowercase();
+    items.iter().position(|item| {
+        item.name.to_lowercase().starts_with(&lower) || item.slug.to_lowercase().starts_with(&lower)
+    })
+}
+
 /// Format a linkdead announce.
 pub fn format_linkdead(name: &str, reconnecting: bool) -> String {
     if reconnecting {
@@ -430,5 +478,64 @@ mod tests {
     #[test]
     fn linkdead_reconnected() {
         assert_eq!(format_linkdead("Bob", true), "Bob has reconnected.\n");
+    }
+
+    // ── format_selection_menu ────────────────────────────────────
+
+    fn items() -> Vec<MenuItem<'static>> {
+        vec![
+            MenuItem {
+                name: "Warrior",
+                slug: "warrior",
+                description: "Hits things.",
+            },
+            MenuItem {
+                name: "Mage",
+                slug: "mage",
+                description: "",
+            },
+        ]
+    }
+
+    #[test]
+    fn selection_menu_numbers_and_prompts() {
+        let got = format_selection_menu("Class", &items(), "Pick: ");
+        assert!(got.starts_with("[ Class ]\n"));
+        assert!(got.contains("1. Warrior - Hits things.\n"));
+        // Empty description omits the dash.
+        assert!(got.contains("2. Mage\n"));
+        assert!(got.ends_with("Pick: "));
+    }
+
+    // ── parse_menu_choice ────────────────────────────────────────
+
+    #[test]
+    fn parse_choice_by_index() {
+        assert_eq!(parse_menu_choice("1", &items()), Some(0));
+        assert_eq!(parse_menu_choice("2", &items()), Some(1));
+    }
+
+    #[test]
+    fn parse_choice_index_out_of_range_or_zero() {
+        assert_eq!(parse_menu_choice("0", &items()), None);
+        assert_eq!(parse_menu_choice("3", &items()), None);
+    }
+
+    #[test]
+    fn parse_choice_by_name_prefix_case_insensitive() {
+        assert_eq!(parse_menu_choice("war", &items()), Some(0));
+        assert_eq!(parse_menu_choice("MAGE", &items()), Some(1));
+    }
+
+    #[test]
+    fn parse_choice_by_slug_prefix() {
+        assert_eq!(parse_menu_choice("warr", &items()), Some(0));
+    }
+
+    #[test]
+    fn parse_choice_blank_or_unmatched_is_none() {
+        assert_eq!(parse_menu_choice("", &items()), None);
+        assert_eq!(parse_menu_choice("   ", &items()), None);
+        assert_eq!(parse_menu_choice("cleric", &items()), None);
     }
 }

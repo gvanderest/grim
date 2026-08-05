@@ -7,7 +7,8 @@
 
 use bevy::prelude::*;
 use grim_engine_types::components::{
-    Area, Name as GrimName, ReservedNamePrefixes, Room, RoomLocation, StartingRoom,
+    Area, ClassRegistry, Name as GrimName, RaceRegistry, ReservedNamePrefixes, Room, RoomLocation,
+    StartingRoom,
 };
 use grim_engine_types::events::{Command, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce};
 
@@ -20,6 +21,8 @@ pub(crate) struct SessionRes<'w> {
     pub(crate) registry: Res<'w, grim_command::CommandRegistry<Command>>,
     pub(crate) persistence: Res<'w, grim_persistence::PersistenceConfig>,
     pub(crate) reserved: Res<'w, ReservedNamePrefixes>,
+    pub(crate) races: Res<'w, RaceRegistry>,
+    pub(crate) classes: Res<'w, ClassRegistry>,
 }
 
 /// Rooms + areas bundled so placement code can resolve a persisted
