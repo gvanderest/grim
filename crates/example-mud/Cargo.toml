@@ -10,3 +10,7 @@ grim = { path = "../grim" }
 bevy = { workspace = true, default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+# Dependency-direction guard (tests/dep_direction.rs) reads the workspace graph.
+cargo_metadata = "0.23"
