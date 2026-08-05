@@ -185,8 +185,8 @@ mod reconnect {
             last_room: None,
             roles: Vec::new(),
             gender: Gender::Neutral,
-            race: String::new(),
-            class: String::new(),
+            race: "human".into(),
+            class: "warrior".into(),
             level: 1,
         };
         let char_entity = app
@@ -327,8 +327,8 @@ mod reconnect {
             last_room: None,
             roles: Vec::new(),
             gender: Gender::Neutral,
-            race: String::new(),
-            class: String::new(),
+            race: "human".into(),
+            class: "warrior".into(),
             level: 1,
         };
         let char_entity = app
@@ -457,8 +457,8 @@ mod reconnect {
                 last_room: None,
                 roles: Vec::new(),
                 gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
+                race: "human".into(),
+                class: "warrior".into(),
                 level: 1,
             },
             GrimName("Test".into()),
@@ -575,8 +575,8 @@ mod reconnect {
                 last_room: None,
                 roles: Vec::new(),
                 gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
+                race: "human".into(),
+                class: "warrior".into(),
                 level: 1,
             },
             GrimName("Test".into()),
@@ -595,8 +595,8 @@ mod reconnect {
                     last_room: None,
                     roles: Vec::new(),
                     gender: Gender::Neutral,
-                    race: String::new(),
-                    class: String::new(),
+                    race: "human".into(),
+                    class: "warrior".into(),
                     level: 1,
                 },
                 GrimName("Test".into()),
@@ -1625,8 +1625,8 @@ mod character_select {
                     last_room: None,
                     roles: Vec::new(),
                     gender: Gender::Neutral,
-                    race: String::new(),
-                    class: String::new(),
+                    race: "human".into(),
+                    class: "warrior".into(),
                     level: 1,
                 },
                 GrimName(format!("C{}", i + 1)),
@@ -2269,8 +2269,8 @@ mod disk_lifecycle {
                 last_room: None,
                 roles: Vec::new(),
                 gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
+                race: "human".into(),
+                class: "warrior".into(),
                 level: 1,
             },
         );
@@ -2611,6 +2611,145 @@ mod character_creation {
         let json = std::fs::read_to_string(dir.join("characters").join("Racer.json")).unwrap();
         let loaded: Character = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.race, "elf");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+// ─── Legacy character backfill (pre-race/class → picker once at login) ─
+//
+// A character created before races/classes existed loads with `race`/`class`
+// empty. Selecting it at the menu routes it through the gender → race → class
+// picker ONCE; the `select_class` backfill path (chosen because the account
+// already owns the name) writes the build onto its on-disk JSON and enters the
+// world via the normal path. A fully-built character still enters directly.
+mod legacy_backfill {
+    use super::*;
+
+    fn send(app: &mut App, conn: Entity, text: &str) {
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: text.into(),
+        });
+        app.update();
+    }
+
+    fn state_of(app: &mut App, conn: Entity) -> ClientState {
+        let mut q = app.world_mut().query::<&Client>();
+        q.iter(app.world())
+            .find(|c| c.connection == conn)
+            .unwrap()
+            .state
+            .clone()
+    }
+
+    /// Boot an app whose (resident) account owns one on-disk character with the
+    /// given race/class, log in, and stop at the character-select menu. An empty
+    /// race/class models a legacy character; a filled one a normal character.
+    fn app_at_menu_owning(
+        dir: &std::path::Path,
+        char_name: &str,
+        race: &str,
+        class: &str,
+    ) -> (App, Entity) {
+        let mut app = test_app_in(dir);
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let account_id = GrimId::new();
+        let char_id = GrimId::new();
+        app.world_mut().spawn(Account {
+            id: account_id,
+            identifier: "legacy@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![char_id],
+            created_at: Utc::now(),
+        });
+        write_disk_char(
+            dir,
+            &Character {
+                id: char_id,
+                name: char_name.into(),
+                account_id,
+                created_at: Utc::now(),
+                last_room: None,
+                roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: race.into(),
+                class: class.into(),
+                level: 1,
+            },
+        );
+
+        let conn = spawn_conn(&mut app, 1);
+        app.world_mut().spawn(Client::new(conn));
+        send(&mut app, conn, "legacy@example.com");
+        send(&mut app, conn, "password");
+        (app, conn)
+    }
+
+    #[test]
+    fn legacy_char_routes_through_picker_and_backfills_build() {
+        let dir = unique_dir("legacy-backfill");
+        let (mut app, conn) = app_at_menu_owning(&dir, "Oldtimer", "", "");
+        assert_eq!(state_of(&mut app, conn), ClientState::CharacterSelect);
+
+        // Selecting the legacy character routes to the picker, NOT the world.
+        send(&mut app, conn, "1");
+        assert_eq!(
+            state_of(&mut app, conn),
+            ClientState::SelectGender {
+                name: "Oldtimer".into()
+            }
+        );
+
+        // Complete the picker: gender index 2 = Female, race + class by slug.
+        send(&mut app, conn, "2");
+        send(&mut app, conn, "dwarf");
+        send(&mut app, conn, "mage");
+        // Backfill entered the world via the normal path → MOTD.
+        assert_eq!(state_of(&mut app, conn), ClientState::MotdPrompt);
+
+        // The chosen build is persisted; id/account/level are preserved (level
+        // still 1 — no XP system).
+        let json = std::fs::read_to_string(dir.join("characters").join("Oldtimer.json")).unwrap();
+        let loaded: Character = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.gender, Gender::Female);
+        assert_eq!(loaded.race, "dwarf");
+        assert_eq!(loaded.class, "mage");
+        assert_eq!(loaded.level, 1);
+
+        // Exactly one in-world entity — backfill reused the normal world-entry
+        // (spawn-from-disk) path, it did not duplicate the character.
+        let mut q = app.world_mut().query::<(&Character, &GrimName)>();
+        assert_eq!(
+            q.iter(app.world())
+                .filter(|(_, n)| n.0 == "Oldtimer")
+                .count(),
+            1,
+            "backfill must not spawn a duplicate character entity"
+        );
+        let ingame = q
+            .iter(app.world())
+            .find(|(_, n)| n.0 == "Oldtimer")
+            .map(|(c, _)| c.clone())
+            .unwrap();
+        assert_eq!(ingame.race, "dwarf");
+        assert_eq!(ingame.class, "mage");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn normal_char_enters_directly_without_picker() {
+        let dir = unique_dir("legacy-normal");
+        let (mut app, conn) = app_at_menu_owning(&dir, "Freshie", "human", "warrior");
+        assert_eq!(state_of(&mut app, conn), ClientState::CharacterSelect);
+
+        // A fully-built character enters the world directly — the picker is
+        // never shown (behavior-preserving for the normal path).
+        send(&mut app, conn, "1");
+        assert_eq!(state_of(&mut app, conn), ClientState::MotdPrompt);
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

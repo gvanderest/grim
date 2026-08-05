@@ -4,17 +4,14 @@
 //! / `SelectRace` / `SelectClass` state handlers.
 
 use bevy::prelude::*;
-use chrono::Utc;
-use grim_engine_types::components::{
-    Account, Character, Client, ClientState, Description, Gender, InRoom, Name as GrimName, Player,
-};
+use grim_engine_types::components::{Account, Client, ClientState, Gender};
 use grim_engine_types::validation::{is_name_reserved, validate_character_name};
-use grim_engine_types::GrimId;
 use grim_networking::ConnectionOutput;
 use grim_persistence::load_character_by_name;
 
+use crate::finalize;
 use crate::formatter::{self, MenuItem};
-use crate::params::SessionRes;
+use crate::params::{SessionRes, WorldEntry};
 
 /// The three fixed genders, paired with display name + slug for the menu.
 const GENDERS: [(Gender, &str, &str); 3] = [
@@ -51,11 +48,7 @@ pub(crate) fn create_character(
         }
         Ok(name) => {
             // Name accepted — begin the gender → race → class picker.
-            client.state = ClientState::SelectGender { name };
-            outputs.write(ConnectionOutput {
-                echo: None,
-                ..ConnectionOutput::new(conn, gender_menu())
-            });
+            start_gender_pick(client, conn, name, outputs);
         }
         Err(e) => {
             outputs.write(ConnectionOutput {
@@ -82,6 +75,24 @@ fn gender_menu() -> String {
         })
         .collect();
     formatter::format_selection_menu("Gender", &items, "Choose a gender: ")
+}
+
+/// Begin the gender → race → class picker for `name`: flip to `SelectGender`
+/// and send the gender menu. Shared by new-character creation and legacy
+/// backfill — a character created before races/classes existed
+/// (`race`/`class` empty on disk) routed through the picker once at login (see
+/// [`crate::character::character_select`]).
+pub(crate) fn start_gender_pick(
+    client: &mut Client,
+    conn: Entity,
+    name: String,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+) {
+    client.state = ClientState::SelectGender { name };
+    outputs.write(ConnectionOutput {
+        echo: None,
+        ..ConnectionOutput::new(conn, gender_menu())
+    });
 }
 
 /// The race selection menu, built from the [`grim_engine_types::components::RaceRegistry`].
@@ -177,8 +188,17 @@ pub(crate) fn select_race(
     }
 }
 
-/// SelectClass: resolve the pick to a tier-1 class slug, then persist the fully
-/// specified character and advance to the MOTD. Re-prompts on invalid input.
+/// SelectClass: resolve the pick to a tier-1 class slug, then finish the build.
+/// Two modes, discriminated by account ownership (no state flag — the closed
+/// [`ClientState`] enum stays intact):
+///
+/// - **new character** — the account does NOT already own a character with this
+///   `name` → [`finalize_character`] creates + spawns it (→ MOTD).
+/// - **legacy backfill** — the account already owns `name` (a pre-race/class
+///   character routed here from the menu) → [`backfill_and_enter`] writes the
+///   chosen build to its on-disk JSON and enters the world via the normal path.
+///
+/// Re-prompts on invalid input.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn select_class(
     client: &mut Client,
@@ -191,6 +211,7 @@ pub(crate) fn select_class(
     res: &SessionRes,
     commands: &mut Commands,
     outputs: &mut MessageWriter<ConnectionOutput>,
+    world: &mut WorldEntry,
 ) {
     // Only tier-1 classes are creatable; index into that same filtered list.
     let creatable: Vec<_> = res.classes.creatable().collect();
@@ -205,103 +226,19 @@ pub(crate) fn select_class(
     match formatter::parse_menu_choice(text, &items) {
         Some(i) => {
             let class = creatable[i].slug.clone();
-            finalize_character(
-                client, conn, name, gender, race, class, accounts, res, commands, outputs,
-            );
+            if finalize::account_owns_named(accounts, client.account, &name, &res.persistence) {
+                finalize::backfill_and_enter(
+                    client, conn, name, gender, race, class, accounts, res, commands, outputs,
+                    world,
+                );
+            } else {
+                finalize::finalize_character(
+                    client, conn, name, gender, race, class, accounts, res, commands, outputs,
+                );
+            }
         }
         None => reprompt(conn, class_menu(res), outputs),
     }
-}
-
-/// Persist a fully specified new character (level 1, no XP system) to disk +
-/// ECS, link it to the account, and advance the session to the MOTD.
-#[allow(clippy::too_many_arguments)]
-fn finalize_character(
-    client: &mut Client,
-    conn: Entity,
-    name: String,
-    gender: Gender,
-    race: String,
-    class: String,
-    accounts: &mut Query<(Entity, &mut Account)>,
-    res: &SessionRes,
-    commands: &mut Commands,
-    outputs: &mut MessageWriter<ConnectionOutput>,
-) {
-    let Some(account_entity) = client.account else {
-        return;
-    };
-    let Ok((_, mut account)) = accounts.get_mut(account_entity) else {
-        return;
-    };
-    // Re-check availability at finalize. The name was accepted when the picker
-    // started, but another session could have finalized the same name during the
-    // gender/race/class steps. Without this, two accounts racing the same name
-    // both write `{name}.json` and the later write clobbers the former's
-    // character (lost data + a dangling account reference). Send the player back
-    // to name entry rather than overwrite.
-    if load_character_by_name(&res.persistence, &name).is_some() {
-        client.state = ClientState::CreateCharacter;
-        outputs.write(ConnectionOutput {
-            echo: None,
-            ..ConnectionOutput::new(
-                conn,
-                "That name was just taken.\nEnter a name for your new character: ",
-            )
-        });
-        return;
-    }
-    let char_id = GrimId::new();
-    let character = Character {
-        id: char_id,
-        name: name.clone(),
-        account_id: account.id,
-        created_at: Utc::now(),
-        last_room: None,
-        roles: Vec::new(),
-        gender,
-        race,
-        class,
-        level: 1,
-    };
-    // Save character to disk immediately.
-    let path = res
-        .persistence
-        .characters_dir()
-        .join(format!("{name}.json"));
-    let _ = std::fs::create_dir_all(res.persistence.characters_dir());
-    if let Ok(json) = serde_json::to_string_pretty(&character) {
-        let _ = std::fs::write(path, json);
-    }
-    let char_entity = commands
-        .spawn((
-            character,
-            GrimName(name.clone()),
-            Description("A new adventurer.".into()),
-            Player {
-                connection: Some(conn),
-            },
-            InRoom {
-                room: res.starting.0,
-            },
-        ))
-        .id();
-    account.characters.push(char_id);
-    // Update account JSON with the new character reference.
-    let acct_path = res
-        .persistence
-        .accounts_dir()
-        .join(format!("{}.json", account.id));
-    let _ = std::fs::create_dir_all(res.persistence.accounts_dir());
-    if let Ok(json) = serde_json::to_string_pretty(&*account) {
-        let _ = std::fs::write(acct_path, json);
-    }
-    client.character = Some(char_entity);
-    client.state = ClientState::MotdPrompt;
-    outputs.write(ConnectionOutput {
-        echo: None,
-        ..ConnectionOutput::new(conn, formatter::format_motd())
-    });
 }
 
 /// Re-send a menu without advancing state, prefixed with a rejection notice.

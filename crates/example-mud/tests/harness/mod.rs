@@ -234,6 +234,24 @@ impl Mud {
             .find(|(n, _)| n.0 == name)
             .map(|(_, c)| c.clone())
     }
+
+    /// Rewrite a logged-out character's on-disk JSON to look like it was created
+    /// before races/classes existed: empty race/class and the default gender,
+    /// with id/account/level preserved. Lets a scenario drive the legacy-backfill
+    /// login path (menu → picker → world). The character must be saved to disk
+    /// (logged out) first.
+    pub fn make_character_legacy(&self, name: &str) {
+        let path = self
+            .data_dir
+            .join("characters")
+            .join(format!("{name}.json"));
+        let data = std::fs::read_to_string(&path).expect("character json on disk");
+        let mut ch: Character = serde_json::from_str(&data).unwrap();
+        ch.gender = grim::components::Gender::Neutral;
+        ch.race = String::new();
+        ch.class = String::new();
+        std::fs::write(&path, serde_json::to_string_pretty(&ch).unwrap()).unwrap();
+    }
 }
 
 impl Default for Mud {

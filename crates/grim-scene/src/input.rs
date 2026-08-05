@@ -4,20 +4,17 @@
 
 use bevy::prelude::*;
 use grim_engine_types::components::{
-    Account, Character, Client, ClientState, InRoom, Linkdead, Name as GrimName, OutputHistory,
-    Player,
+    Account, Character, Client, ClientState, InRoom, Name as GrimName,
 };
-use grim_engine_types::events::{LinkdeadAnnounce, LoginAnnounce, LookRoom};
-use grim_networking::{
-    ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest,
-};
+use grim_engine_types::events::{LoginAnnounce, LookRoom};
+use grim_networking::{ConnectionEstablished, ConnectionInput, ConnectionOutput};
 use grim_text::tr;
 
 use crate::character;
 use crate::command;
 use crate::creation;
 use crate::login;
-use crate::params::{RoomResolver, SessionRes};
+use crate::params::{SessionRes, WorldEntry};
 
 pub(crate) fn handle_connection_established(
     mut established: MessageReader<ConnectionEstablished>,
@@ -42,19 +39,13 @@ pub(crate) fn handle_client_input(
     mut inputs: MessageReader<ConnectionInput>,
     mut clients: Query<(Entity, &mut Client)>,
     mut accounts: Query<(Entity, &mut Account)>,
-    characters: Query<(Entity, &Character, &GrimName)>,
     player_chars: Query<(Entity, &GrimName, &InRoom, Option<&Character>)>,
-    players: Query<&Player>,
-    rooms: RoomResolver,
     res: SessionRes,
     mut commands: Commands,
     mut outputs: MessageWriter<ConnectionOutput>,
     mut look_room: MessageWriter<LookRoom>,
     mut announce_login: MessageWriter<LoginAnnounce>,
-    mut announce_linkdead: MessageWriter<LinkdeadAnnounce>,
-    linkdead: Query<&Linkdead>,
-    mut histories: Query<&mut OutputHistory>,
-    mut disconnect: MessageWriter<DisconnectRequest>,
+    mut world: WorldEntry,
 ) {
     for ev in inputs.read() {
         let Some((client_entity, mut client)) = clients
@@ -74,8 +65,8 @@ pub(crate) fn handle_client_input(
                 conn,
                 text,
                 &accounts,
-                &characters,
-                &linkdead,
+                &world.characters,
+                &world.linkdead,
                 &res.persistence,
                 &mut outputs,
             ),
@@ -97,16 +88,16 @@ pub(crate) fn handle_client_input(
                 conn,
                 text,
                 &accounts,
-                &characters,
-                &players,
-                &linkdead,
-                &mut histories,
-                &rooms,
+                &world.characters,
+                &world.players,
+                &world.linkdead,
+                &mut world.histories,
+                &world.rooms,
                 &res,
                 &mut commands,
                 &mut outputs,
-                &mut announce_linkdead,
-                &mut disconnect,
+                &mut world.announce_linkdead,
+                &mut world.disconnect,
             ),
             ClientState::CharacterSelect => character::character_select(
                 client_entity,
@@ -114,16 +105,16 @@ pub(crate) fn handle_client_input(
                 conn,
                 text,
                 &accounts,
-                &characters,
-                &players,
-                &linkdead,
-                &mut histories,
-                &rooms,
+                &world.characters,
+                &world.players,
+                &world.linkdead,
+                &mut world.histories,
+                &world.rooms,
                 &res,
                 &mut commands,
                 &mut outputs,
-                &mut announce_linkdead,
-                &mut disconnect,
+                &mut world.announce_linkdead,
+                &mut world.disconnect,
             ),
             ClientState::CreateCharacter => {
                 creation::create_character(&mut client, conn, text, &res, &mut outputs);
@@ -145,10 +136,11 @@ pub(crate) fn handle_client_input(
                 &res,
                 &mut commands,
                 &mut outputs,
+                &mut world,
             ),
             ClientState::MotdPrompt => character::motd_prompt(
                 &mut client,
-                &characters,
+                &world.characters,
                 &player_chars,
                 &mut commands,
                 &mut announce_login,
@@ -158,10 +150,10 @@ pub(crate) fn handle_client_input(
                 &mut client,
                 conn,
                 text,
-                &characters,
+                &world.characters,
                 &player_chars,
-                &linkdead,
-                &rooms,
+                &world.linkdead,
+                &world.rooms,
                 &res,
                 &mut outputs,
             ),
