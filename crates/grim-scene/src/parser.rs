@@ -182,6 +182,13 @@ fn build_registry() -> CommandRegistry<Command> {
         })
     });
 
+    // `goto` and `gecho` share the `g` prefix. `register` front-loads priority,
+    // so `gecho` (registered later) would otherwise win the bare `g`
+    // abbreviation. `goto` predates `gecho` and `g` has long meant goto, so keep
+    // it: promote `goto` above `gecho`. Longer prefixes (`ge…`) still reach
+    // `gecho` unambiguously.
+    r.prioritize("goto");
+
     r
 }
 
@@ -435,6 +442,28 @@ mod tests {
     fn test_goto_without_target_is_none() {
         assert_eq!(parse("goto"), None);
         assert_eq!(parse("goto   "), None);
+    }
+
+    #[test]
+    fn test_g_prefix_resolves_to_goto_not_gecho() {
+        // `goto` and `gecho` share the `g` prefix; `goto` is prioritized so the
+        // bare `g` abbreviation keeps meaning goto (regression guard).
+        assert_eq!(
+            parse("g haven:market-square"),
+            Some(Command::Goto {
+                target: "haven:market-square".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn test_ge_prefix_still_resolves_to_gecho() {
+        assert_eq!(
+            parse("ge hello world"),
+            Some(Command::Gecho {
+                text: "hello world".to_string()
+            })
+        );
     }
 
     #[test]

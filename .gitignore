@@ -6,3 +6,7 @@ coverage/
 !/data/areas/
 # Per-crate test scratch data dirs.
 crates/*/data/
+
+# Agent worktrees and local planning (not committed)
+.claude/
+.planning/
