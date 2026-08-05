@@ -117,6 +117,10 @@ fn actual_edges() -> (BTreeSet<Edge>, BTreeSet<Edge>) {
     // test binary, so the one-time leak is inconsequential.
     let metadata: &'static cargo_metadata::Metadata = Box::leak(Box::new(
         MetadataCommand::new()
+            // Pin the manifest so the guard doesn't depend on the runner's cwd
+            // (a runner starting the binary elsewhere would read a different
+            // manifest or fail).
+            .manifest_path(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
             .no_deps()
             .exec()
             .expect("cargo metadata failed"),
@@ -137,6 +141,11 @@ fn actual_edges() -> (BTreeSet<Edge>, BTreeSet<Edge>) {
 
     let mut normal = BTreeSet::new();
     let mut dev = BTreeSet::new();
+    // Build/other-kind edges are a separate coupling axis with no allow-list.
+    // Collect them apart from `normal` — folding them in would let a build edge
+    // that shares endpoints with an existing normal edge be silently absorbed by
+    // set dedup, hiding the new build-time coupling.
+    let mut other: BTreeSet<(&str, &str, String)> = BTreeSet::new();
 
     for pkg in &metadata.packages {
         let from = pkg.name.as_str();
@@ -155,15 +164,20 @@ fn actual_edges() -> (BTreeSet<Edge>, BTreeSet<Edge>) {
                 DependencyKind::Development => {
                     dev.insert((from, to));
                 }
-                // Build deps would be a new coupling axis; none exist today. Treat
-                // any that appears as "unexpected" by folding it into `normal`, so
-                // the set-equality assertion surfaces it rather than ignoring it.
-                _ => {
-                    normal.insert((from, to));
+                kind => {
+                    other.insert((from, to, format!("{kind:?}")));
                 }
             }
         }
     }
+
+    // No internal build (or other-kind) edges are expected today. Surface any
+    // regardless of whether the same pair exists as a normal/dev edge.
+    assert!(
+        other.is_empty(),
+        "unexpected internal non-normal/dev edge(s): {:?}",
+        other
+    );
 
     (normal, dev)
 }
