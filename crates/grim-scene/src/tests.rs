@@ -2802,4 +2802,77 @@ mod legacy_backfill {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn backfill_refreshes_resident_linkdead_entity() {
+        // A legacy character that is still RESIDENT (linkdead after a crash) must
+        // have its live ECS Character refreshed by the backfill, not just its disk
+        // copy — else a later move/disconnect save re-clobbers the JSON.
+        let dir = unique_dir("legacy-resident");
+        let mut app = test_app_in(&dir);
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let account_id = GrimId::new();
+        let char_id = GrimId::new();
+        app.world_mut().spawn(Account {
+            id: account_id,
+            identifier: "legacy@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![char_id],
+            created_at: Utc::now(),
+        });
+        let legacy = Character {
+            id: char_id,
+            name: "Ghost".into(),
+            account_id,
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: String::new(),
+            class: String::new(),
+            level: 1,
+        };
+        write_disk_char(&dir, &legacy);
+        // Resident but linkdead (as after a crash): entity exists, empty build.
+        let entity = app
+            .world_mut()
+            .spawn((
+                legacy.clone(),
+                GrimName("Ghost".into()),
+                Description("A faded soul.".into()),
+                InRoom { room },
+                Player { connection: None },
+                Linkdead,
+                OutputHistory::with_max(100),
+            ))
+            .id();
+
+        let conn = spawn_conn(&mut app, 1);
+        app.world_mut().spawn(Client::new(conn));
+        send(&mut app, conn, "legacy@example.com");
+        send(&mut app, conn, "password"); // → CharacterSelect
+        send(&mut app, conn, "1"); // select Ghost → legacy picker
+        send(&mut app, conn, "2"); // gender
+        send(&mut app, conn, "elf"); // race
+        send(&mut app, conn, "cleric"); // class → backfill + reconnect
+
+        // The live entity now carries the picked build (not the stale empty one).
+        let ch = app
+            .world()
+            .get::<Character>(entity)
+            .expect("resident entity still present");
+        assert_eq!(ch.race, "elf");
+        assert_eq!(ch.class, "cleric");
+        // No duplicate entity was spawned.
+        let mut q = app.world_mut().query::<&GrimName>();
+        assert_eq!(
+            q.iter(app.world()).filter(|n| n.0 == "Ghost").count(),
+            1,
+            "backfill must refresh the resident entity, not duplicate it"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

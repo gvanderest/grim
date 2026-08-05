@@ -72,18 +72,33 @@ pub(crate) fn backfill_and_enter(
         return;
     };
     let account_id = account.id;
-    // Update the character JSON in place with the picked build data.
+    // Update the character with the picked build data.
     if let Some(mut character) = load_character_by_name(&res.persistence, &name) {
         character.gender = gender;
         character.race = race;
         character.class = class;
+        // Write the JSON under the character's OWN stored name (letters-only, set
+        // through validate_character_name at creation), not the raw input, so the
+        // path can't be steered outside characters_dir.
         let path = res
             .persistence
             .characters_dir()
-            .join(format!("{name}.json"));
+            .join(format!("{}.json", character.name));
         let _ = std::fs::create_dir_all(res.persistence.characters_dir());
         if let Ok(json) = serde_json::to_string_pretty(&character) {
             let _ = std::fs::write(path, json);
+        }
+        // If the character is already resident (linkdead / in-world), its ECS
+        // `Character` component is stale — `enter_world_by_name` reuses the
+        // existing entity rather than re-reading disk. Refresh the component so a
+        // later move/disconnect save can't overwrite the corrected JSON with the
+        // old empty race/class.
+        if let Some((entity, _, _)) = world
+            .characters
+            .iter()
+            .find(|(_, _, n)| n.0 == character.name)
+        {
+            commands.entity(entity).insert(character);
         }
     }
     world_entry::enter_world_by_name(
