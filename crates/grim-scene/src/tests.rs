@@ -2559,4 +2559,57 @@ mod character_creation {
         assert_eq!(state_of(&mut app, conn), ClientState::MotdPrompt);
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// Write a character JSON to disk as if another session had created it. Uses
+    /// race "elf" as a marker so a clobber is detectable.
+    fn write_existing_character(dir: &std::path::Path, name: &str) {
+        let existing = Character {
+            id: GrimId::new(),
+            name: name.into(),
+            account_id: GrimId::new(),
+            created_at: Utc::now(),
+            last_room: None,
+            roles: vec![],
+            gender: Gender::Neutral,
+            race: "elf".into(),
+            class: "warrior".into(),
+            level: 1,
+        };
+        std::fs::create_dir_all(dir.join("characters")).unwrap();
+        std::fs::write(
+            dir.join("characters").join(format!("{name}.json")),
+            serde_json::to_string(&existing).unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn name_already_taken_is_rejected_at_entry() {
+        let dir = unique_dir("create-taken-entry");
+        let (mut app, conn) = app_at_create_character(&dir);
+        write_existing_character(&dir, "Taken");
+        send(&mut app, conn, "Taken");
+        // Rejected up front — no picker started.
+        assert_eq!(state_of(&mut app, conn), ClientState::CreateCharacter);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn name_taken_during_picker_is_caught_at_finalize() {
+        let dir = unique_dir("create-taken-finalize");
+        let (mut app, conn) = app_at_create_character(&dir);
+        send(&mut app, conn, "Racer"); // → SelectGender
+        send(&mut app, conn, "1"); // gender → SelectRace
+        send(&mut app, conn, "human"); // race → SelectClass
+                                       // A rival session finalizes the same name mid-picker.
+        write_existing_character(&dir, "Racer");
+        send(&mut app, conn, "warrior"); // finalize hits the collision
+        assert_eq!(state_of(&mut app, conn), ClientState::CreateCharacter);
+        // The pre-existing character was NOT clobbered (still race "elf", not the
+        // picker's "human").
+        let json = std::fs::read_to_string(dir.join("characters").join("Racer.json")).unwrap();
+        let loaded: Character = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.race, "elf");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

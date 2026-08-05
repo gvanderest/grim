@@ -49,6 +49,7 @@ impl Plugin for ScenePlugin {
             .add_message::<LogoutAnnounce>()
             .add_message::<LinkdeadAnnounce>()
             .add_message::<ServerBroadcast>()
+            .add_systems(Startup, validate_registries)
             .add_systems(
                 Update,
                 (
@@ -61,5 +62,48 @@ impl Plugin for ScenePlugin {
                     capture_output,
                 ),
             );
+    }
+}
+
+/// Fail fast on a mis-seeded world. An empty `RaceRegistry`, or a `ClassRegistry`
+/// with no tier-1 (creatable) classes, would leave character creation showing a
+/// menu with no options and no exit — trapping the player. Runs at Startup, after
+/// any author override has been inserted, so it validates the effective set.
+fn validate_registries(races: Res<RaceRegistry>, classes: Res<ClassRegistry>) {
+    assert!(
+        !races.0.is_empty(),
+        "RaceRegistry is empty: character creation would trap players with no race \
+         to pick. Seed at least one race."
+    );
+    assert!(
+        classes.creatable().next().is_some(),
+        "ClassRegistry has no tier-1 (creatable) classes: character creation would \
+         trap players. Seed at least one tier-1 class."
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use grim_engine_types::components::{ClassRegistry, RaceRegistry};
+
+    #[test]
+    #[should_panic(expected = "RaceRegistry is empty")]
+    fn empty_race_registry_panics() {
+        let mut app = App::new();
+        app.insert_resource(RaceRegistry(vec![]));
+        app.insert_resource(ClassRegistry::default());
+        app.add_systems(Startup, validate_registries);
+        app.update();
+    }
+
+    #[test]
+    #[should_panic(expected = "no tier-1")]
+    fn class_registry_without_tier1_panics() {
+        let mut app = App::new();
+        app.insert_resource(RaceRegistry::default());
+        app.insert_resource(ClassRegistry(vec![])); // no creatable classes
+        app.add_systems(Startup, validate_registries);
+        app.update();
     }
 }

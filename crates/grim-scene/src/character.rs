@@ -11,7 +11,7 @@ use grim_engine_types::events::{LinkdeadAnnounce, LoginAnnounce, LookRoom};
 use grim_engine_types::validation::{is_name_reserved, validate_character_name};
 use grim_engine_types::GrimId;
 use grim_networking::{ConnectionOutput, DisconnectRequest};
-use grim_persistence::{load_account_characters, PersistenceConfig};
+use grim_persistence::{load_account_characters, load_character_by_name, PersistenceConfig};
 use std::collections::VecDeque;
 
 use crate::formatter::{self, MenuItem};
@@ -221,6 +221,15 @@ pub(crate) fn create_character(
                 )
             });
         }
+        Ok(name) if load_character_by_name(&res.persistence, &name).is_some() => {
+            outputs.write(ConnectionOutput {
+                echo: None,
+                ..ConnectionOutput::new(
+                    conn,
+                    "That name is already taken.\nEnter a name for your new character: ",
+                )
+            });
+        }
         Ok(name) => {
             // Name accepted — begin the gender → race → class picker.
             client.state = ClientState::SelectGender { name };
@@ -406,6 +415,23 @@ fn finalize_character(
     let Ok((_, mut account)) = accounts.get_mut(account_entity) else {
         return;
     };
+    // Re-check availability at finalize. The name was accepted when the picker
+    // started, but another session could have finalized the same name during the
+    // gender/race/class steps. Without this, two accounts racing the same name
+    // both write `{name}.json` and the later write clobbers the former's
+    // character (lost data + a dangling account reference). Send the player back
+    // to name entry rather than overwrite.
+    if load_character_by_name(&res.persistence, &name).is_some() {
+        client.state = ClientState::CreateCharacter;
+        outputs.write(ConnectionOutput {
+            echo: None,
+            ..ConnectionOutput::new(
+                conn,
+                "That name was just taken.\nEnter a name for your new character: ",
+            )
+        });
+        return;
+    }
     let char_id = GrimId::new();
     let character = Character {
         id: char_id,
