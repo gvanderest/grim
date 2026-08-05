@@ -953,6 +953,7 @@ name = "grim-channel"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "chrono",
  "grim-engine-types",
  "grim-text",
 ]

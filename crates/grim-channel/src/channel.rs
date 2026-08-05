@@ -1,7 +1,7 @@
 use grim_text::tr;
 
 use bevy::prelude::*;
-use grim_engine_types::components::{InRoom, LastWhisperFrom, Name, Player, Room};
+use grim_engine_types::components::{Character, InRoom, LastWhisperFrom, Name, Player, Room};
 use grim_engine_types::events::{
     Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
 };
@@ -220,11 +220,26 @@ fn handle_ooc(
 /// Admin gating happens at dispatch (see the grim-scene dispatcher); by the
 /// time it reaches here the command is authorized. Rendering — including
 /// per-recipient attribution — is `format_output`'s job.
-fn handle_gecho(mut engine: MessageReader<EngineCommand>, mut echo: MessageWriter<GlobalEcho>) {
+fn handle_gecho(
+    mut engine: MessageReader<EngineCommand>,
+    mut echo: MessageWriter<GlobalEcho>,
+    characters: Query<&Character>,
+) {
     for cmd in engine.read() {
         let Command::Gecho { text } = &cmd.command else {
             continue;
         };
+        // Defense in depth, mirroring `handle_goto` / `handle_shutdown_command`.
+        // Dispatch already masks `gecho` as unknown for non-admins, so a
+        // well-behaved session never sends this for a non-admin. If one arrives
+        // from another command source, fail closed and stay silent.
+        let is_admin = characters
+            .get(cmd.client)
+            .map(Character::is_admin)
+            .unwrap_or(false);
+        if !is_admin {
+            continue;
+        }
         echo.write(GlobalEcho {
             actor: cmd.client,
             text: text.clone(),
@@ -235,11 +250,26 @@ fn handle_gecho(mut engine: MessageReader<EngineCommand>, mut echo: MessageWrite
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_engine_types::components::{InRoom, Name, Player, Room};
+    use grim_engine_types::components::{Character, InRoom, Name, Player, Role, Room};
     use grim_engine_types::events::{
         Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
     };
     use grim_engine_types::GrimId;
+
+    use chrono::Utc;
+
+    fn spawn_admin(app: &mut App) -> Entity {
+        app.world_mut()
+            .spawn(Character {
+                id: GrimId::new(),
+                name: "Admin".into(),
+                account_id: GrimId::new(),
+                created_at: Utc::now(),
+                last_room: None,
+                roles: vec![Role::Admin],
+            })
+            .id()
+    }
 
     fn test_app() -> App {
         let mut app = App::new();
@@ -522,7 +552,7 @@ mod tests {
     #[test]
     fn gecho_emits_global_echo() {
         let mut app = test_app();
-        let actor = app.world_mut().spawn(()).id();
+        let actor = spawn_admin(&mut app);
         app.world_mut().write_message(EngineCommand {
             client: actor,
             command: Command::Gecho {
@@ -537,6 +567,27 @@ mod tests {
         assert_eq!(ev.actor, actor);
         assert_eq!(ev.text, "server reboot soon");
         assert!(iter.next().is_none(), "expected exactly one GlobalEcho");
+    }
+
+    #[test]
+    fn gecho_from_non_admin_is_ignored() {
+        // Defense in depth: even if a `Gecho` reaches the handler for a
+        // non-admin (no `Character`/no admin role), no `GlobalEcho` is emitted.
+        let mut app = test_app();
+        let actor = app.world_mut().spawn(()).id();
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Gecho {
+                text: "should not broadcast".into(),
+            },
+        });
+        app.update();
+        let messages = app.world().resource::<Messages<GlobalEcho>>();
+        let mut cursor = messages.get_cursor();
+        assert!(
+            cursor.read(messages).next().is_none(),
+            "non-admin gecho must emit no GlobalEcho"
+        );
     }
 
     #[test]
