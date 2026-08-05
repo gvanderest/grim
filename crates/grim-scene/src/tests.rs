@@ -682,8 +682,8 @@ mod reconnect {
             last_room: None,
             roles: Vec::new(),
             gender: Gender::Neutral,
-            race: String::new(),
-            class: String::new(),
+            race: "human".into(),
+            class: "warrior".into(),
             level: 1,
         };
         write_disk_char(&dir, &ch);
@@ -2199,8 +2199,8 @@ mod disk_lifecycle {
                 last_room: None,
                 roles: Vec::new(),
                 gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
+                race: "human".into(),
+                class: "warrior".into(),
                 level: 1,
             },
         );
