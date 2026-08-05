@@ -18,6 +18,7 @@ use grim_persistence::{load_character_by_name, PersistenceConfig};
 use grim_text::tr;
 
 use crate::character;
+use crate::creation;
 use crate::params::{RoomResolver, SessionRes};
 use crate::world_entry;
 
@@ -327,25 +328,34 @@ fn authenticate(
             if ok {
                 client.account = Some(account_entity);
                 if let Some(name) = auto_select {
-                    // Logged in by character name → straight into the world
-                    // (reconnect / takeover / spawn).
-                    world_entry::enter_world_by_name(
-                        conn,
-                        client,
-                        account_id,
-                        &name,
-                        commands,
-                        characters,
-                        players,
-                        linkdead,
-                        histories,
-                        rooms,
-                        res.starting.0,
-                        &res.persistence,
-                        outputs,
-                        announce_linkdead,
-                        disconnect,
-                    );
+                    // A legacy character (no race/class yet) is routed through the
+                    // creation picker once before entering — same as the
+                    // menu-selection path (character_select). Otherwise: straight
+                    // into the world (reconnect / takeover / spawn).
+                    let legacy = load_character_by_name(&res.persistence, &name)
+                        .map(|c| c.race.is_empty() && c.class.is_empty())
+                        .unwrap_or(false);
+                    if legacy {
+                        creation::start_gender_pick(client, conn, name, outputs);
+                    } else {
+                        world_entry::enter_world_by_name(
+                            conn,
+                            client,
+                            account_id,
+                            &name,
+                            commands,
+                            characters,
+                            players,
+                            linkdead,
+                            histories,
+                            rooms,
+                            res.starting.0,
+                            &res.persistence,
+                            outputs,
+                            announce_linkdead,
+                            disconnect,
+                        );
+                    }
                 } else {
                     client.state = ClientState::CharacterSelect;
                     character::show_character_menu(

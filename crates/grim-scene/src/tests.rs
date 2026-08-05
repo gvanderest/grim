@@ -2752,4 +2752,54 @@ mod legacy_backfill {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn legacy_name_login_routes_to_picker() {
+        // Logging in directly by CHARACTER NAME (bypassing the select menu) must
+        // also route a legacy character through the picker, not straight into the
+        // world.
+        let dir = unique_dir("legacy-name-login");
+        let mut app = test_app_in(&dir);
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let account_id = GrimId::new();
+        let char_id = GrimId::new();
+        app.world_mut().spawn(Account {
+            id: account_id,
+            identifier: "legacy@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![char_id],
+            created_at: Utc::now(),
+        });
+        write_disk_char(
+            &dir,
+            &Character {
+                id: char_id,
+                name: "Oldtimer".into(),
+                account_id,
+                created_at: Utc::now(),
+                last_room: None,
+                roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
+            },
+        );
+
+        let conn = spawn_conn(&mut app, 1);
+        app.world_mut().spawn(Client::new(conn));
+        // Log in by character name, then password.
+        send(&mut app, conn, "Oldtimer");
+        send(&mut app, conn, "password");
+        assert_eq!(
+            state_of(&mut app, conn),
+            ClientState::SelectGender {
+                name: "Oldtimer".into()
+            }
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
