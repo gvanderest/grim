@@ -5,7 +5,7 @@ A modular MUD engine built on Bevy ECS. Everything in the world is an entity. Ev
 **Connect now, in your terminal:**
 
 ```sh
-$ telnet grimtide.org 4000
+telnet grimtide.org 4000
 ```
 
 For context: I come from a MUD called Waterdeep and am trying to recreate the general vibe, but with a more modern twist in Rust.
