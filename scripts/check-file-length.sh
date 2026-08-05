@@ -24,7 +24,15 @@ CAP_FILE=400
 CAP_SHELL=80
 fail=0
 
-while IFS= read -r f; do
+# Discover files up front so a failed/empty `find` can't be silently treated as
+# "everything passed" (process substitution would swallow find's exit status).
+mapfile -t files < <(find crates -name '*.rs' -type f)
+if (( ${#files[@]} == 0 )); then
+    echo "ERROR: no Rust files found under crates/ (find failed or wrong cwd)"
+    exit 1
+fi
+
+for f in "${files[@]}"; do
     # Whole-file test code is exempt.
     case "$f" in
         */tests/*) continue ;;
@@ -32,7 +40,9 @@ while IFS= read -r f; do
     esac
 
     # Production lines = up to the first `#[cfg(test)]`, else the whole file.
-    prod=$(awk '/#\[cfg\(test\)\]/{print NR-1; found=1; exit} END{if(!found) print NR}' "$f")
+    # Anchor the attribute at line start (allowing indentation) so a commented
+    # `// #[cfg(test)]` does not falsely cut the production boundary early.
+    prod=$(awk '/^[[:space:]]*#\[cfg\(test\)\]/{print NR-1; found=1; exit} END{if(!found) print NR}' "$f")
 
     base=$(basename "$f")
     if [[ "$base" == "lib.rs" || "$base" == "mod.rs" ]]; then
@@ -47,7 +57,7 @@ while IFS= read -r f; do
         echo "FAIL (${kind} cap ${cap}): ${f} has ${prod} production lines"
         fail=1
     fi
-done < <(find crates -name '*.rs' -type f)
+done
 
 if (( fail )); then
     echo ""
