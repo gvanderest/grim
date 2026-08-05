@@ -24,11 +24,19 @@ CAP_FILE=400
 CAP_SHELL=80
 fail=0
 
-# Discover files up front so a failed/empty `find` can't be silently treated as
-# "everything passed" (process substitution would swallow find's exit status).
-mapfile -t files < <(find crates -name '*.rs' -type f)
+# Discover files up front. Run `find` into a temp file rather than a process
+# substitution so its exit status is observable: a partial-traversal failure that
+# still emitted some paths must abort, not silently check a truncated tree and
+# report success.
+list=$(mktemp)
+trap 'rm -f "$list"' EXIT
+if ! find crates -name '*.rs' -type f > "$list"; then
+    echo "ERROR: find failed while discovering Rust files"
+    exit 1
+fi
+mapfile -t files < "$list"
 if (( ${#files[@]} == 0 )); then
-    echo "ERROR: no Rust files found under crates/ (find failed or wrong cwd)"
+    echo "ERROR: no Rust files found under crates/ (wrong cwd?)"
     exit 1
 fi
 
