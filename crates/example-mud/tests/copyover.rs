@@ -97,6 +97,7 @@ fn kill_group(pgid: u32) {
         .status();
 }
 
+#[allow(clippy::too_many_lines)] // reason: real-process/socket integration test; one linear scenario
 #[test]
 fn copyover_keeps_player_connected_and_resumes_last_room() {
     // This spawns real, instrumented server processes and drives them over real
