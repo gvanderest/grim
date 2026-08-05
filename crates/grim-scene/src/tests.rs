@@ -876,6 +876,103 @@ mod output_format {
         );
     }
 
+    /// `gecho` reaches everyone including the sender; another admin sees it
+    /// attributed (`Name> text`) while the sender and non-admins see raw text.
+    #[test]
+    fn format_output_gecho_attributes_for_other_admins_only() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let mk_conn = |app: &mut App, id: usize, port: u16| -> Entity {
+            app.world_mut()
+                .spawn(Connection {
+                    id,
+                    addr: format!("127.0.0.1:{port}").parse().unwrap(),
+                    echo_hidden: false,
+                })
+                .id()
+        };
+        let sender_conn = mk_conn(&mut app, 1, 12345);
+        let admin2_conn = mk_conn(&mut app, 2, 12346);
+        let normal_conn = mk_conn(&mut app, 3, 12347);
+
+        let admin_char = |name: &str, conn: Entity| {
+            (
+                GrimName(name.into()),
+                InRoom { room },
+                Player {
+                    connection: Some(conn),
+                },
+                OutputHistory::with_max(100),
+                Character {
+                    id: GrimId::new(),
+                    account_id: GrimId::new(),
+                    name: name.into(),
+                    created_at: Utc::now(),
+                    last_room: None,
+                    roles: vec![Role::Admin],
+                },
+            )
+        };
+
+        let sender = app.world_mut().spawn(admin_char("Boss", sender_conn)).id();
+        let _admin2 = app.world_mut().spawn(admin_char("Deputy", admin2_conn));
+        let _normal = app.world_mut().spawn((
+            GrimName("Peon".into()),
+            InRoom { room },
+            Player {
+                connection: Some(normal_conn),
+            },
+            OutputHistory::with_max(100),
+            Character {
+                id: GrimId::new(),
+                account_id: GrimId::new(),
+                name: "Peon".into(),
+                created_at: Utc::now(),
+                last_room: None,
+                roles: Vec::new(),
+            },
+        ));
+
+        app.world_mut().write_message(GlobalEcho {
+            actor: sender,
+            text: "reboot".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
+        let text_for = |conn: Entity| -> String {
+            outputs
+                .iter()
+                .filter(|o| o.connection == conn)
+                .map(|o| o.text.clone())
+                .collect()
+        };
+
+        // Sender sees raw text, not attributed to themselves.
+        let sender_text = text_for(sender_conn);
+        assert!(sender_text.contains("reboot"), "sender should see the echo");
+        assert!(
+            !sender_text.contains("Boss>"),
+            "sender should not see own name prefix"
+        );
+        // Another admin sees it attributed.
+        assert!(
+            text_for(admin2_conn).contains("Boss> reboot"),
+            "other admin should see attributed echo"
+        );
+        // Non-admin sees raw text only.
+        let normal_text = text_for(normal_conn);
+        assert!(normal_text.contains("reboot"), "non-admin should see echo");
+        assert!(
+            !normal_text.contains("Boss>"),
+            "non-admin should not see attribution"
+        );
+    }
+
     /// Verify that format_output handles LoginAnnounce (broadcast_global path).
     #[test]
     fn format_output_login_announce() {
@@ -1875,6 +1972,42 @@ mod ingame_commands {
             queued || dispatched,
             "admin shutdown should be queued or dispatched, not dropped"
         );
+    }
+
+    /// A non-admin `gecho` is masked exactly like an unknown command and never
+    /// forwarded to the engine.
+    #[test]
+    fn ingame_gecho_masked_for_non_admin() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        spawn_ingame(&mut app, conn, make_character(Vec::new()));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "gecho hello world".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == conn)
+            .expect("expected a response");
+        assert_eq!(out.text, "Unknown command. Type 'commands' for a list.\n");
+        assert!(!out.prepend_newline, "must match unknown-command framing");
+
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        assert_eq!(engine.get_cursor().read(engine).count(), 0);
     }
 
     // ── handle_client_input: InGame with blank line ──
