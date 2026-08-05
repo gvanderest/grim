@@ -45,6 +45,7 @@ fn parse_tell(rest: &str) -> Option<Command> {
     })
 }
 
+#[allow(clippy::too_many_lines)] // reason: flat command-registration list
 fn build_registry() -> CommandRegistry<Command> {
     let mut r = CommandRegistry::new();
 
