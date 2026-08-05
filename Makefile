@@ -15,7 +15,7 @@ check:
 	RUSTFLAGS="-D warnings" cargo check
 
 clippy:
-	cargo clippy --all-targets -- -D warnings -D clippy::too_many_lines
+	cargo clippy --workspace --all-targets -- -D warnings -D clippy::too_many_lines
 
 # ─── File/module size caps (per-file; clippy owns the per-fn cap) ─────
 file-length:
