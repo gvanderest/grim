@@ -12,7 +12,7 @@ the binary.
 1. **build** — `cargo build --release --target x86_64-unknown-linux-musl`. The
    musl target produces a fully static binary. Most assets are `include_str!`-baked,
    but **area blueprints (`data/areas/*.json`) are read from disk at runtime**, so
-   they ship alongside the binary (see below). Uploaded as an artifact named `grim`.
+   they ship alongside the binary (see below). Uploaded as an artifact named `grim-binary`.
 2. **deploy** — `scp`s the binary to `/opt/grim/bin/grim.new`, plus
    `deploy/deploy.sh`, `deploy/grim.service`, and the committed `data/areas`
    folder (to `/opt/grim/bin/areas.staged`), then runs the script over SSH.

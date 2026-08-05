@@ -47,9 +47,19 @@ if [[ -d "$AREAS_STAGED" ]]; then
     # renamed in the repo doesn't linger on the box. Only data/areas is cleared
     # — sibling data/accounts and data/characters (runtime saves) are untouched.
     log "replacing area blueprints in $AREAS_DST"
+    # Stage into a temp dir and only swap it in on a clean copy. Deleting the
+    # live dir first and ignoring a failed cp could leave the world with empty
+    # or partial area data — the next startup/copyover would then have no world.
+    AREAS_TMP="${AREAS_DST}.new.$$"
+    rm -rf "$AREAS_TMP"
+    mkdir -p "$AREAS_TMP"
+    if ! cp "$AREAS_STAGED"/*.json "$AREAS_TMP"/; then
+        log "ERROR: failed to copy staged area blueprints — leaving $AREAS_DST untouched"
+        rm -rf "$AREAS_TMP" "$AREAS_STAGED"
+        exit 1
+    fi
     rm -rf "$AREAS_DST"
-    mkdir -p "$AREAS_DST"
-    cp "$AREAS_STAGED"/*.json "$AREAS_DST"/ 2>/dev/null || true
+    mv "$AREAS_TMP" "$AREAS_DST"
     rm -rf "$AREAS_STAGED"
 else
     log "no staged area blueprints — leaving $AREAS_DST as-is"

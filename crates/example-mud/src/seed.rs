@@ -90,8 +90,13 @@ pub fn seed_world(mut commands: Commands, dir: Option<Res<AreaBlueprintDir>>) {
 
     let mut files: Vec<PathBuf> = match std::fs::read_dir(&dir) {
         Ok(entries) => entries
-            .flatten()
-            .map(|e| e.path())
+            .filter_map(|entry| match entry {
+                Ok(e) => Some(e.path()),
+                Err(e) => {
+                    error!("skipping unreadable entry in area dir {dir:?}: {e}");
+                    None
+                }
+            })
             .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json"))
             .collect(),
         Err(e) => {
@@ -128,9 +133,14 @@ pub fn seed_world(mut commands: Commands, dir: Option<Res<AreaBlueprintDir>>) {
 
     match starting {
         Some(room) => commands.insert_resource(StartingRoom(room)),
-        None => {
-            error!("no starting room resolved from area blueprints in {dir:?} — logins will fail")
-        }
+        // Fail fast, and loudly. The scene systems take `Res<StartingRoom>`, so a
+        // missing resource would otherwise panic cryptically on the first tick.
+        // A MUD with no reachable world cannot serve logins — surface the real
+        // cause at startup instead.
+        None => panic!(
+            "no starting room resolved from area blueprints in {dir:?}: need at least one \
+             `canonical` area declaring a resolvable `starting_room`"
+        ),
     }
 }
 
@@ -294,5 +304,19 @@ mod tests {
         // The NPC is present.
         let npcs = app.world_mut().query::<&Npc>().iter(app.world()).count();
         assert_eq!(npcs, 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "no starting room resolved")]
+    fn seed_panics_when_no_starting_room() {
+        // An empty area dir yields no canonical area, so no StartingRoom can be
+        // resolved. Seeding must fail fast rather than leave the resource unset
+        // (which would panic cryptically in the scene systems).
+        let empty = std::env::temp_dir().join(format!("grim_seed_empty_{}", std::process::id()));
+        std::fs::create_dir_all(&empty).unwrap();
+        let mut app = App::new();
+        app.insert_resource(AreaBlueprintDir(empty));
+        app.add_systems(Startup, seed_world);
+        app.update();
     }
 }
