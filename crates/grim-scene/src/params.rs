@@ -7,10 +7,11 @@
 
 use bevy::prelude::*;
 use grim_engine_types::components::{
-    Area, ClassRegistry, Name as GrimName, RaceRegistry, ReservedNamePrefixes, Room, RoomLocation,
-    StartingRoom,
+    Area, Character, ClassRegistry, Linkdead, Name as GrimName, OutputHistory, Player,
+    RaceRegistry, ReservedNamePrefixes, Room, RoomLocation, StartingRoom,
 };
 use grim_engine_types::events::{Command, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce};
+use grim_networking::DisconnectRequest;
 
 /// Session-scoped resources bundled into one `SystemParam` so the input
 /// dispatcher can take the command registry as a real `Res` without exceeding
@@ -58,6 +59,23 @@ impl RoomResolver<'_, '_> {
             .and_then(|loc| self.resolve(loc))
             .unwrap_or(starting)
     }
+}
+
+/// Everything [`crate::world_entry::enter_world_by_name`] needs to place a
+/// character in the world (reconnect / takeover / spawn-from-disk), bundled into
+/// one `SystemParam`. Shared by the login-by-name, character-select, and
+/// legacy-backfill (class-pick) paths so none of them thread seven separate
+/// params. Same pattern as [`SessionRes`] / [`RoomResolver`]; also keeps
+/// `handle_client_input` within Bevy's 16-parameter limit.
+#[derive(bevy::ecs::system::SystemParam)]
+pub(crate) struct WorldEntry<'w, 's> {
+    pub(crate) characters: Query<'w, 's, (Entity, &'static Character, &'static GrimName)>,
+    pub(crate) players: Query<'w, 's, &'static Player>,
+    pub(crate) linkdead: Query<'w, 's, &'static Linkdead>,
+    pub(crate) rooms: RoomResolver<'w, 's>,
+    pub(crate) histories: Query<'w, 's, &'static mut OutputHistory>,
+    pub(crate) announce_linkdead: MessageWriter<'w, LinkdeadAnnounce>,
+    pub(crate) disconnect: MessageWriter<'w, DisconnectRequest>,
 }
 
 /// The three global-announce readers bundled into one `SystemParam`, so

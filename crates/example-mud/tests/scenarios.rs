@@ -104,6 +104,40 @@ fn invalid_creation_pick_reprompts_without_advancing() {
 }
 
 #[test]
+fn legacy_character_is_routed_through_the_picker_at_login() {
+    let mut mud = Mud::new();
+    // Create Nomad normally, then log out so the character lives only on disk.
+    let nomad = create_char(&mut mud, "nomad@example.com", "Nomad");
+    let _ = mud.send(nomad, "quit");
+    mud.disconnect(nomad);
+
+    // Simulate a character created before races/classes existed: clear its
+    // on-disk race/class. The account still owns it.
+    mud.make_character_legacy("Nomad");
+
+    // Log back in and open the menu.
+    let (again, _) = mud.connect();
+    let _ = mud.send(again, "nomad@example.com");
+    mud.send(again, PW).assert_contains("Nomad");
+
+    // Selecting the legacy character does NOT drop into the world — it opens the
+    // gender picker instead.
+    mud.send(again, "1").assert_contains("Choose a gender");
+    mud.send(again, "male").assert_contains("Choose a race");
+    mud.send(again, "human").assert_contains("Choose a class");
+    // Picking the class backfills the build and enters the world (MOTD → room).
+    let _ = mud.send(again, "warrior");
+    mud.send(again, "").assert_contains("Exits:");
+
+    // The build is now recorded, and level is still 1 (no XP system).
+    let nomad = mud.character("Nomad").expect("Nomad is in the world");
+    assert_eq!(nomad.gender, Gender::Male);
+    assert_eq!(nomad.race, "human");
+    assert_eq!(nomad.class, "warrior");
+    assert_eq!(nomad.level, 1);
+}
+
+#[test]
 fn movement_walks_between_seeded_rooms() {
     let mut mud = Mud::new();
     let alice = create_char(&mut mud, "alice@example.com", "Alice");

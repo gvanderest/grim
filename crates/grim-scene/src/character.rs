@@ -12,6 +12,7 @@ use grim_networking::{ConnectionOutput, DisconnectRequest};
 use grim_persistence::{load_account_characters, PersistenceConfig};
 use std::collections::VecDeque;
 
+use crate::creation;
 use crate::params::{RoomResolver, SessionRes};
 use crate::world_entry;
 
@@ -144,21 +145,18 @@ pub(crate) fn character_select(
     let account_id = account.id;
     // Resident (owned) UNION disk, deduped by id, stable order.
     let entries = account_character_list(account, characters, &res.persistence);
-    // Resolve the selection (index or case-insensitive name) to a name.
-    let selected: Option<String> = if let Ok(idx) = lower.parse::<usize>() {
+    // Resolve the selection (index or case-insensitive name) to a list entry.
+    let selected: Option<&CharEntry> = if let Ok(idx) = lower.parse::<usize>() {
         if idx >= 1 {
-            entries.get(idx - 1).map(|e| e.name.clone())
+            entries.get(idx - 1)
         } else {
             None
         }
     } else {
-        entries
-            .iter()
-            .find(|e| e.name.to_lowercase() == lower)
-            .map(|e| e.name.clone())
+        entries.iter().find(|e| e.name.to_lowercase() == lower)
     };
 
-    let Some(name) = selected else {
+    let Some(entry) = selected else {
         show_character_menu(
             client_entity,
             client,
@@ -171,6 +169,16 @@ pub(crate) fn character_select(
         );
         return;
     };
+    let name = entry.name.clone();
+
+    // Legacy character: created before races/classes existed, so both slugs are
+    // empty on disk. Route it through the gender → race → class picker ONCE
+    // (the `select_class` backfill path then persists the build and enters the
+    // world). A normal character enters directly, exactly as before.
+    if entry.race.is_empty() && entry.class.is_empty() {
+        creation::start_gender_pick(client, conn, name, outputs);
+        return;
+    }
 
     world_entry::enter_world_by_name(
         conn,
