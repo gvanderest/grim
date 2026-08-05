@@ -7,11 +7,27 @@
 
 use bevy::prelude::*;
 use grim_engine_types::components::{
-    Area, Character, ClassRegistry, Linkdead, Name as GrimName, OutputHistory, Player,
-    RaceRegistry, ReservedNamePrefixes, Room, RoomLocation, StartingRoom,
+    Area, Character, ClassRegistry, ConnectedAt, InRoom, Linkdead, Name as GrimName, OutputHistory,
+    Player, RaceRegistry, ReservedNamePrefixes, Room, RoomLocation, StartingRoom,
 };
 use grim_engine_types::events::{Command, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce};
 use grim_networking::DisconnectRequest;
+
+/// The online-characters query shared by the WHO / WHERE renderers and the
+/// post-login auto-look: each player entity with its display name, current
+/// room, optional [`Character`] build (WHO stats), and optional
+/// [`ConnectedAt`] (the WHO connect-time sort tiebreak).
+pub(crate) type PlayerChars<'w, 's> = Query<
+    'w,
+    's,
+    (
+        Entity,
+        &'static GrimName,
+        &'static InRoom,
+        Option<&'static Character>,
+        Option<&'static ConnectedAt>,
+    ),
+>;
 
 /// Session-scoped resources bundled into one `SystemParam` so the input
 /// dispatcher can take the command registry as a real `Res` without exceeding

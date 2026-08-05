@@ -235,6 +235,17 @@ impl Mud {
             .map(|(_, c)| c.clone())
     }
 
+    /// Mutate the in-world `Character` with this name. A test-only escape hatch
+    /// for state the creation flow can't produce (admin role, level, race/class)
+    /// so a scenario can set up a realistic WHO list.
+    pub fn edit_character(&mut self, name: &str, edit: impl FnOnce(&mut Character)) {
+        let mut q = self.app.world_mut().query::<(&GrimName, &mut Character)>();
+        let world = self.app.world_mut();
+        if let Some((_, mut ch)) = q.iter_mut(world).find(|(n, _)| n.0 == name) {
+            edit(&mut ch);
+        }
+    }
+
     /// Rewrite a logged-out character's on-disk JSON to look like it was created
     /// before races/classes existed: empty race/class and the default gender,
     /// with id/account/level preserved. Lets a scenario drive the legacy-backfill

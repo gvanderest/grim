@@ -81,18 +81,110 @@ pub fn format_move(actor: &str, direction: &str, leaving: bool) -> String {
     }
 }
 
-/// Format the who list.
-#[allow(dead_code)]
-pub fn format_who_list(players: &[String]) -> String {
-    if players.is_empty() {
-        "No other players online.\n".into()
-    } else {
-        let mut out = format!("Players online ({}):\n", players.len());
-        for name in players {
-            out.push_str(&format!("  {}\n", name));
-        }
-        out
+// ─── WHO list (MUD-style column grid) ────────────────────────────────
+
+/// Column widths for the WHO stat block `LLL G RRRRR CCC GGGGG`.
+const WHO_LEVEL_W: usize = 3;
+const WHO_GENDER_W: usize = 1;
+const WHO_RACE_W: usize = 5;
+const WHO_CLASS_W: usize = 3;
+const WHO_GUILD_W: usize = 5;
+
+/// Left-justify `s` into exactly `width` chars: pad with trailing spaces, or
+/// truncate to fit. Keeps every WHO column aligned regardless of content.
+fn pad_left(s: &str, width: usize) -> String {
+    let mut out: String = s.chars().take(width).collect();
+    while out.chars().count() < width {
+        out.push(' ');
     }
+    out
+}
+
+/// Right-justify `s` into exactly `width` chars: pad with leading spaces, or
+/// truncate to fit. Used for the right-aligned level column.
+fn pad_right(s: &str, width: usize) -> String {
+    let truncated: String = s.chars().take(width).collect();
+    let pad = width - truncated.chars().count();
+    format!("{}{truncated}", " ".repeat(pad))
+}
+
+/// One character's WHO row inputs. The caller computes each column's default
+/// text (level → `IMM`/number, gender → `M`/`F`/`N`, race/class → registry
+/// abbrev, guild → blank); this renderer applies any `restrings` override and
+/// the fixed-width grid.
+pub struct WhoRow<'a> {
+    /// Level column default: `"IMM"` for admins, else the level number.
+    pub level: String,
+    /// Gender column default: `"M"` / `"F"` / `"N"`.
+    pub gender: String,
+    /// Race abbrev (blank for legacy/unknown slug).
+    pub race: String,
+    /// Class abbrev (blank for legacy/unknown slug).
+    pub class: String,
+    /// Guild (blank — no guild system yet).
+    pub guild: String,
+    /// Real character name — NEVER restrung.
+    pub name: String,
+    /// Optional title, shown after the name.
+    pub title: Option<String>,
+    /// Persisted display overrides (`who_level`/`who_gender`/`who_race`/
+    /// `who_class`/`who_guild` per column, `who` for the whole stat block).
+    pub restrings: &'a std::collections::HashMap<String, String>,
+    /// Whether to append the `(Linkdead)` marker.
+    pub linkdead: bool,
+}
+
+impl WhoRow<'_> {
+    /// The `LLL G RRRRR CCC GGGGG` stat block: a `who` restring replaces it
+    /// verbatim; otherwise each column is its restring override (if any) or its
+    /// computed default, padded/truncated to the column width.
+    fn stat_block(&self) -> String {
+        if let Some(whole) = self.restrings.get("who") {
+            return whole.clone();
+        }
+        let col = |key: &str, default: &str| -> String {
+            self.restrings
+                .get(key)
+                .map_or_else(|| default.to_string(), String::clone)
+        };
+        format!(
+            "{} {} {} {} {}",
+            pad_right(&col("who_level", &self.level), WHO_LEVEL_W),
+            pad_left(&col("who_gender", &self.gender), WHO_GENDER_W),
+            pad_left(&col("who_race", &self.race), WHO_RACE_W),
+            pad_left(&col("who_class", &self.class), WHO_CLASS_W),
+            pad_left(&col("who_guild", &self.guild), WHO_GUILD_W),
+        )
+    }
+}
+
+/// Render one WHO line: the stat block, the real name, an optional title, and a
+/// trailing `(Linkdead)` marker.
+pub fn format_who_row(row: &WhoRow) -> String {
+    let mut line = format!("{} {}", row.stat_block(), row.name);
+    if let Some(title) = &row.title {
+        if !title.is_empty() {
+            line.push(' ');
+            line.push_str(title);
+        }
+    }
+    if row.linkdead {
+        line.push_str(" (Linkdead)");
+    }
+    line
+}
+
+/// Render the full WHO list from already-sorted rows.
+pub fn format_who_list(rows: &[WhoRow]) -> String {
+    if rows.is_empty() {
+        return "No players online.\n".into();
+    }
+    let mut out = format!("Players online ({}):\n", rows.len());
+    for row in rows {
+        out.push_str(&format_who_row(row));
+        out.push('\n');
+    }
+    out
 }
 
 /// Format the where list (same-area players with room names).
@@ -134,6 +226,7 @@ pub fn format_commands() -> String {
         "ooc <text>          — Out-of-character global chat",
         "tell <who> <text>   — Private message a player (alias: whisper)",
         "reply <text>        — Reply to the last player who whispered you",
+        "title [text]        — Set your WHO title (no text clears it)",
         "north / n           — Move north",
         "east / e            — Move east",
         "south / s           — Move south",
@@ -409,21 +502,156 @@ mod tests {
         assert_eq!(format_move("Bob", "east", false), "Bob arrives.\n");
     }
 
-    // ── format_who_list ──────────────────────────────────────────
+    // ── WHO column grid ──────────────────────────────────────────
 
-    #[test]
-    fn who_empty() {
-        assert_eq!(format_who_list(&[]), "No other players online.\n");
+    use std::collections::HashMap;
+
+    /// A `WhoRow` builder with sensible defaults for terse tests. `restrings`
+    /// is threaded in by reference so the borrow outlives the row.
+    fn who_row<'a>(
+        level: &str,
+        gender: &str,
+        race: &str,
+        class: &str,
+        name: &str,
+        restrings: &'a HashMap<String, String>,
+    ) -> WhoRow<'a> {
+        WhoRow {
+            level: level.into(),
+            gender: gender.into(),
+            race: race.into(),
+            class: class.into(),
+            guild: String::new(),
+            name: name.into(),
+            title: None,
+            restrings,
+            linkdead: false,
+        }
     }
 
     #[test]
-    fn who_populated() {
-        let players = vec!["Alice".into(), "Bob".into(), "Charlie".into()];
-        let got = format_who_list(&players);
-        assert!(got.starts_with("Players online (3):\n"));
-        assert!(got.contains("  Alice\n"));
-        assert!(got.contains("  Bob\n"));
-        assert!(got.contains("  Charlie\n"));
+    fn pad_left_pads_and_truncates() {
+        assert_eq!(pad_left("Hi", 5), "Hi   ");
+        assert_eq!(pad_left("Human", 5), "Human");
+        assert_eq!(pad_left("Halfling", 5), "Halfl");
+        assert_eq!(pad_left("", 3), "   ");
+    }
+
+    #[test]
+    fn pad_right_pads_and_truncates() {
+        assert_eq!(pad_right("5", 3), "  5");
+        assert_eq!(pad_right("100", 3), "100");
+        assert_eq!(pad_right("IMM", 3), "IMM");
+        assert_eq!(pad_right("1000", 3), "100");
+    }
+
+    #[test]
+    fn who_empty_list() {
+        assert_eq!(format_who_list(&[]), "No players online.\n");
+    }
+
+    /// Column geometry check: the stat block is always 21 chars, so the name
+    /// begins at index 22 on every non-`who`-override row. Keeps the hand-typed
+    /// exact-string expectations below honest.
+    #[test]
+    fn who_row_name_column_is_fixed() {
+        let rs = HashMap::new();
+        let row = who_row("5", "M", "Human", "War", "Alice", &rs);
+        let line = format_who_row(&row);
+        assert_eq!(&line[..22], "  5 M Human War       ");
+        assert_eq!(&line[22..], "Alice");
+    }
+
+    #[test]
+    fn who_row_numeric_level_and_grid() {
+        let rs = HashMap::new();
+        let row = who_row("5", "M", "Human", "War", "Alice", &rs);
+        // LLL(right) G RRRRR(left) CCC(left) GGGGG(left) Name
+        assert_eq!(format_who_row(&row), "  5 M Human War       Alice");
+    }
+
+    #[test]
+    fn who_row_imm_level_for_admin() {
+        let rs = HashMap::new();
+        let row = who_row("IMM", "F", "Elf", "Mag", "Boss", &rs);
+        assert_eq!(format_who_row(&row), "IMM F Elf   Mag       Boss");
+    }
+
+    #[test]
+    fn who_row_neutral_gender_and_title() {
+        let rs = HashMap::new();
+        let mut row = who_row("3", "N", "Dwarf", "Cle", "Nn", &rs);
+        row.title = Some("the Grey".into());
+        assert_eq!(format_who_row(&row), "  3 N Dwarf Cle       Nn the Grey");
+    }
+
+    #[test]
+    fn who_row_legacy_blank_race_and_class() {
+        let rs = HashMap::new();
+        let row = who_row("1", "N", "", "", "Old", &rs);
+        // Blank race (5) + blank class (3) + blank guild (5) → all spaces.
+        assert_eq!(format_who_row(&row), "  1 N                 Old");
+    }
+
+    #[test]
+    fn who_row_race_abbrev_truncated_to_five() {
+        let rs = HashMap::new();
+        let row = who_row("1", "M", "TooLongRace", "Warrior", "X", &rs);
+        // race truncates to 5, class truncates to 3.
+        assert_eq!(format_who_row(&row), "  1 M TooLo War       X");
+    }
+
+    #[test]
+    fn who_row_linkdead_marker_appended() {
+        let rs = HashMap::new();
+        let mut row = who_row("2", "M", "Human", "War", "Gone", &rs);
+        row.linkdead = true;
+        assert!(format_who_row(&row).ends_with("Gone (Linkdead)"));
+    }
+
+    #[test]
+    fn who_restring_overrides_each_column() {
+        let mut rs = HashMap::new();
+        rs.insert("who_level".into(), "GOD".into());
+        rs.insert("who_gender".into(), "X".into());
+        rs.insert("who_race".into(), "Deity".into());
+        rs.insert("who_class".into(), "Sun".into());
+        rs.insert("who_guild".into(), "Elite".into());
+        let row = who_row("5", "M", "Human", "War", "Zeus", &rs);
+        assert_eq!(format_who_row(&row), "GOD X Deity Sun Elite Zeus");
+    }
+
+    #[test]
+    fn who_restring_overrides_are_padded_and_truncated() {
+        let mut rs = HashMap::new();
+        rs.insert("who_race".into(), "VeryLongRace".into());
+        rs.insert("who_gender".into(), "MF".into());
+        let row = who_row("5", "M", "Human", "War", "Q", &rs);
+        // race truncated to 5, gender truncated to 1, grid preserved.
+        assert_eq!(format_who_row(&row), "  5 M VeryL War       Q");
+    }
+
+    #[test]
+    fn who_full_block_override_rendered_verbatim() {
+        let mut rs = HashMap::new();
+        rs.insert("who".into(), "[ the Almighty ]".into());
+        let mut row = who_row("5", "M", "Human", "War", "God", &rs);
+        row.title = Some("of Olympus".into());
+        // Whole stat block replaced verbatim, then ` Name Title`.
+        assert_eq!(format_who_row(&row), "[ the Almighty ] God of Olympus");
+    }
+
+    #[test]
+    fn who_list_headers_and_joins_rows() {
+        let rs = HashMap::new();
+        let rows = vec![
+            who_row("5", "M", "Human", "War", "Alice", &rs),
+            who_row("3", "F", "Elf", "Mag", "Bob", &rs),
+        ];
+        let got = format_who_list(&rows);
+        assert!(got.starts_with("Players online (2):\n"));
+        assert!(got.contains("  5 M Human War       Alice\n"));
+        assert!(got.contains("  3 F Elf   Mag       Bob\n"));
     }
 
     // ── format_where_list ────────────────────────────────────────

@@ -6,7 +6,7 @@
 //! purpose: the flow IS the thing under test.
 
 mod harness;
-use grim::components::Gender;
+use grim::components::{Gender, Role};
 use harness::{Mud, Session};
 
 /// A password that satisfies validation (short ones are rejected — see
@@ -221,6 +221,72 @@ fn a_new_account_cannot_see_another_accounts_characters() {
     mud.send(b, PW)
         .assert_contains("no characters")
         .assert_excludes("Alice");
+}
+
+#[test]
+fn title_command_sets_clears_and_shows_in_who() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    // Setting a title confirms, and clearing it confirms too.
+    mud.send(alice, "title the Bold")
+        .assert_contains("the Bold");
+    assert_eq!(
+        mud.character("Alice").unwrap().title.as_deref(),
+        Some("the Bold")
+    );
+    mud.send(alice, "title").assert_contains("cleared");
+    assert!(mud.character("Alice").unwrap().title.is_none());
+
+    // An over-length title (61 chars) is rejected and nothing is stored.
+    let long = "z".repeat(61);
+    mud.send(alice, &format!("title {long}"))
+        .assert_contains("at most 60 characters");
+    assert!(mud.character("Alice").unwrap().title.is_none());
+}
+
+#[test]
+fn who_list_is_ordered_and_formatted_mud_style() {
+    let mut mud = Mud::new();
+    // Three characters enter in order: Alice, then Bob, then Carol. Creation
+    // order fixes the connect-time tiebreak (Bob connected before Carol).
+    let _alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let _bob = create_char(&mut mud, "bob@example.com", "Bob");
+    let carol = create_char(&mut mud, "carol@example.com", "Carol");
+
+    // Alice is an immortal with a title (human warrior, level irrelevant → IMM).
+    mud.edit_character("Alice", |c| {
+        c.roles.push(Role::Admin);
+        c.title = Some("the Great".into());
+    });
+    // Bob: level 10 elf mage with a title.
+    mud.edit_character("Bob", |c| {
+        c.level = 10;
+        c.race = "elf".into();
+        c.class = "mage".into();
+        c.title = Some("the Wise".into());
+    });
+    // Carol: level 10 human warrior, no title. Same level as Bob, so the
+    // connect-time tiebreak (Bob first) decides their order.
+    mud.edit_character("Carol", |c| c.level = 10);
+
+    let out = mud.send(carol, "who");
+    let text = out.text();
+
+    // Exact MUD-style rows: `LLL G RRRRR CCC GGGGG Name Title`.
+    let alice_row = "IMM M Human War       Alice the Great";
+    let bob_row = " 10 M Elf   Mag       Bob the Wise";
+    let carol_row = " 10 M Human War       Carol";
+    out.assert_contains("Players online (3):")
+        .assert_contains(alice_row)
+        .assert_contains(bob_row)
+        .assert_contains(carol_row);
+
+    // Ordering: admin first (alpha), then level-10 by connect time (Bob<Carol).
+    let ai = text.find(alice_row).unwrap();
+    let bi = text.find(bob_row).unwrap();
+    let ci = text.find(carol_row).unwrap();
+    assert!(ai < bi && bi < ci, "WHO order wrong:\n{text}");
 }
 
 #[test]

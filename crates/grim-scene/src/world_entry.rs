@@ -3,9 +3,10 @@
 //! take over a live/offline one, or spawn a fresh entity from disk.
 
 use bevy::prelude::*;
+use chrono::Utc;
 use grim_engine_types::components::{
-    Character, Client, ClientState, Description, InRoom, Linkdead, Name as GrimName, OutputHistory,
-    Player,
+    Character, Client, ClientState, ConnectedAt, Description, InRoom, Linkdead, Name as GrimName,
+    OutputHistory, Player,
 };
 use grim_engine_types::events::LinkdeadAnnounce;
 use grim_engine_types::GrimId;
@@ -125,9 +126,12 @@ fn reconnect_linkdead(
     announce_linkdead: &mut MessageWriter<LinkdeadAnnounce>,
 ) {
     commands.entity(char_entity).remove::<Linkdead>();
-    commands.entity(char_entity).insert(Player {
-        connection: Some(conn),
-    });
+    commands.entity(char_entity).insert((
+        Player {
+            connection: Some(conn),
+        },
+        ConnectedAt(Utc::now()),
+    ));
     client.character = Some(char_entity);
     client.state = ClientState::InGame;
     client.input_queue = std::collections::VecDeque::new();
@@ -186,6 +190,7 @@ fn takeover_resident(
         Player {
             connection: Some(conn),
         },
+        ConnectedAt(Utc::now()),
         InRoom {
             room: rooms.placement(last.as_ref(), starting),
         },
@@ -219,6 +224,7 @@ fn spawn_from_disk(
             Player {
                 connection: Some(conn),
             },
+            ConnectedAt(Utc::now()),
             InRoom {
                 room: rooms.placement(last.as_ref(), starting),
             },

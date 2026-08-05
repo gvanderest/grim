@@ -334,6 +334,8 @@ mod tests {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             };
             let other = Character {
                 id: GrimId::new(),
@@ -346,6 +348,8 @@ mod tests {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             };
             for c in [&mine, &other] {
                 fs::write(
@@ -413,6 +417,8 @@ mod tests {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             };
             let char_path = format!("data/characters/{}.json", character.name);
             fs::write(&char_path, serde_json::to_string(&character).unwrap()).unwrap();
@@ -571,6 +577,8 @@ mod tests {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             };
             let char_e = app.world_mut().spawn(character.clone()).id();
 
@@ -630,6 +638,8 @@ mod tests {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             };
             let char_e = app.world_mut().spawn(character.clone()).id();
 
@@ -731,6 +741,8 @@ mod tests {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             };
             let char_e = app
                 .world_mut()
@@ -793,6 +805,8 @@ mod tests {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             };
             let char_e = app.world_mut().spawn(character.clone()).id();
 
@@ -935,6 +949,8 @@ mod tests {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             };
             fs::write(
                 dir.join("characters").join("CfgHero.json"),
@@ -1033,6 +1049,8 @@ mod tests {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             };
             let actor = app.world_mut().spawn((character, InRoom { room })).id();
 

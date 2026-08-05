@@ -13,6 +13,7 @@ use grim_networking::DisconnectRequest;
 mod area;
 mod look;
 mod movement;
+mod title;
 
 // Preserve the pre-split public paths (`grim_world::world::*`): these lookups
 // were public here before the concern modules were carved out.
@@ -37,6 +38,7 @@ impl Plugin for WorldPlugin {
                     movement::handle_move,
                     handle_quit,
                     movement::handle_goto,
+                    title::handle_title,
                 ),
             );
     }
@@ -129,6 +131,8 @@ mod tests {
                     race: String::new(),
                     class: String::new(),
                     level: 1,
+                    title: None,
+                    restrings: std::collections::HashMap::new(),
                 },
             ))
             .id()
@@ -314,6 +318,8 @@ mod tests {
                         race: String::new(),
                         class: String::new(),
                         level: 1,
+                        title: None,
+                        restrings: std::collections::HashMap::new(),
                     },
                 ))
                 .id();

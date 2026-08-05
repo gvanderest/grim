@@ -3,9 +3,7 @@
 //! session's current [`ClientState`].
 
 use bevy::prelude::*;
-use grim_engine_types::components::{
-    Account, Character, Client, ClientState, InRoom, Name as GrimName,
-};
+use grim_engine_types::components::{Account, Client, ClientState};
 use grim_engine_types::events::{LoginAnnounce, LookRoom};
 use grim_networking::{ConnectionEstablished, ConnectionInput, ConnectionOutput};
 use grim_text::tr;
@@ -14,7 +12,7 @@ use crate::character;
 use crate::command;
 use crate::creation;
 use crate::login;
-use crate::params::{SessionRes, WorldEntry};
+use crate::params::{PlayerChars, SessionRes, WorldEntry};
 
 pub(crate) fn handle_connection_established(
     mut established: MessageReader<ConnectionEstablished>,
@@ -39,7 +37,7 @@ pub(crate) fn handle_client_input(
     mut inputs: MessageReader<ConnectionInput>,
     mut clients: Query<(Entity, &mut Client)>,
     mut accounts: Query<(Entity, &mut Account)>,
-    player_chars: Query<(Entity, &GrimName, &InRoom, Option<&Character>)>,
+    player_chars: PlayerChars,
     res: SessionRes,
     mut commands: Commands,
     mut outputs: MessageWriter<ConnectionOutput>,

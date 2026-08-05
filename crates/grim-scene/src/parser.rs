@@ -97,6 +97,13 @@ fn build_registry() -> CommandRegistry<Command> {
             text: text.to_string(),
         })
     });
+    // `title <text>` sets the WHO title; a bare `title` clears it. Always parses
+    // (empty = clear), so it is a recognized command either way.
+    r.register("title", |rest| {
+        Some(Command::Title {
+            text: rest.trim().to_string(),
+        })
+    });
 
     // ── Game actions ─────────────────────────────────────────────
     r.register("look", |rest| {
@@ -387,6 +394,34 @@ mod tests {
         assert_eq!(parse("tell"), None);
         assert_eq!(parse("tell Wrack"), None);
         assert_eq!(parse("tell Wrack   "), None);
+    }
+
+    // ── Title ─────────────────────────────────────────────────────
+    #[test]
+    fn test_title_with_text() {
+        assert_eq!(
+            parse("title the Bold"),
+            Some(Command::Title {
+                text: "the Bold".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn test_title_bare_clears() {
+        // A bare `title` is a recognized command that clears (empty text).
+        assert_eq!(
+            parse("title"),
+            Some(Command::Title {
+                text: String::new()
+            })
+        );
+        assert_eq!(
+            parse("title   "),
+            Some(Command::Title {
+                text: String::new()
+            })
+        );
     }
 
     // ── Look ──────────────────────────────────────────────────────

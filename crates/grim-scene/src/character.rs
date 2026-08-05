@@ -3,8 +3,7 @@
 
 use bevy::prelude::*;
 use grim_engine_types::components::{
-    Account, Character, Client, ClientState, InRoom, Linkdead, Name as GrimName, OutputHistory,
-    Player,
+    Account, Character, Client, ClientState, Linkdead, Name as GrimName, OutputHistory, Player,
 };
 use grim_engine_types::events::{LinkdeadAnnounce, LoginAnnounce, LookRoom};
 use grim_engine_types::GrimId;
@@ -13,7 +12,7 @@ use grim_persistence::{load_account_characters, PersistenceConfig};
 use std::collections::VecDeque;
 
 use crate::creation;
-use crate::params::{RoomResolver, SessionRes};
+use crate::params::{PlayerChars, RoomResolver, SessionRes};
 use crate::world_entry;
 
 /// One selectable character for the account menu / selection. A logged-out
@@ -204,7 +203,7 @@ pub(crate) fn character_select(
 pub(crate) fn motd_prompt(
     client: &mut Client,
     characters: &Query<(Entity, &Character, &GrimName)>,
-    player_chars: &Query<(Entity, &GrimName, &InRoom, Option<&Character>)>,
+    player_chars: &PlayerChars,
     commands: &mut Commands,
     announce_login: &mut MessageWriter<LoginAnnounce>,
     look_room: &mut MessageWriter<LookRoom>,
@@ -227,7 +226,7 @@ pub(crate) fn motd_prompt(
     let Some(char_entity) = client.character else {
         return;
     };
-    if let Ok((_, _, ir, _)) = player_chars.get(char_entity) {
+    if let Ok((_, _, ir, _, _)) = player_chars.get(char_entity) {
         look_room.write(LookRoom {
             target: char_entity,
             room: ir.room,

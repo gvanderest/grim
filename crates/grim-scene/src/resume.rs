@@ -4,9 +4,10 @@
 //! persisted `last_room` (falling back to the starting room).
 
 use bevy::prelude::*;
+use chrono::Utc;
 use grim_engine_types::components::{
-    Account, Character, Client, ClientState, Description, InRoom, Name as GrimName, OutputHistory,
-    Player, StartingRoom,
+    Account, Character, Client, ClientState, ConnectedAt, Description, InRoom, Name as GrimName,
+    OutputHistory, Player, StartingRoom,
 };
 use grim_engine_types::events::LookRoom;
 use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
@@ -114,6 +115,7 @@ fn resolve_resumed(
             Player {
                 connection: Some(conn),
             },
+            ConnectedAt(Utc::now()),
             InRoom { room: r },
         ));
         Some((acct, resident, r))
@@ -138,6 +140,7 @@ fn resolve_resumed(
                 Player {
                     connection: Some(conn),
                 },
+                ConnectedAt(Utc::now()),
                 InRoom { room: r },
             ))
             .id();

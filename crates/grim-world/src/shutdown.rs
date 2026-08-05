@@ -312,6 +312,8 @@ mod tests {
                 race: String::new(),
                 class: String::new(),
                 level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
             })
             .id()
     }
