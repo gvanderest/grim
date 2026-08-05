@@ -333,7 +333,9 @@ fn authenticate(
                     // menu-selection path (character_select). Otherwise: straight
                     // into the world (reconnect / takeover / spawn).
                     let legacy = load_character_by_name(&res.persistence, &name)
-                        .map(|c| c.race.is_empty() && c.class.is_empty())
+                        .map(|c| {
+                            c.account_id == account_id && c.race.is_empty() && c.class.is_empty()
+                        })
                         .unwrap_or(false);
                     if legacy {
                         creation::start_gender_pick(client, conn, name, outputs);
