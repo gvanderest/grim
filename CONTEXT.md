@@ -186,6 +186,37 @@ Resolution precedence when a bare/slug token is ambiguous is an implementation
 concern, not glossary — see
 [ADR-0001](docs/adr/0001-area-identity-and-instancing.md).
 
+### Character build
+
+The three choices a player makes at creation, plus the class ladder they sit on.
+See [ADR-0002](docs/adr/0002-character-class-tiers.md).
+
+**Gender**:
+A character's gender — a **closed** set (`Male`, `Female`, `Neutral`; default
+`Neutral`), not data. Because it is closed, a plugin can match it exhaustively
+(pronouns, gendered emotes). Contrast **Race**/**Class**, which are open data.
+_Avoid_: sex, pronoun (pronoun is a *rendering* of a Gender, not the concept).
+
+**Race**:
+A playable ancestry — registered *data* addressed by a **Slug** (`human`,
+`half-elf`). A `RaceDef` carries slug, name, abbrev, and description; the set
+lives in the `RaceRegistry` resource with a seeded default an author overrides.
+The character stores only the slug.
+
+**Class**:
+A playable vocation — registered *data* addressed by a **Slug** (`warrior`,
+`mage`), held in the `ClassRegistry`. Like a Race it carries slug/name/abbrev/
+description, and additionally a **Class Tier** and an `evolves_to`. The character
+stores a single class slug for now.
+_Avoid_: profession, job — settled on Class, the word a MUD author uses.
+
+**Class Tier**:
+A class's rung on the evolution ladder. **Tier-1** classes are the only ones
+**creatable** — offered at character creation. **Tier-2** classes are seeded but
+reachable only via a future **reroll** (each tier-1 names its tier-2 successor in
+`evolves_to`). Reroll/evolution and any tier beyond the seeded two are NOT
+implemented yet; the ladder is described in data so adding them stays additive.
+
 ### World instancing
 
 **Blueprint**:

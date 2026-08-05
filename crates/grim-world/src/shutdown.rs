@@ -286,7 +286,7 @@ mod tests {
     // ── System-level tests ────────────────────────────────────────
 
     use chrono::Utc;
-    use grim_engine_types::components::Role;
+    use grim_engine_types::components::{Gender, Role};
     use grim_engine_types::GrimId;
     use std::time::Duration;
 
@@ -308,6 +308,10 @@ mod tests {
                 created_at: Utc::now(),
                 last_room: None,
                 roles,
+                gender: Gender::Neutral,
+                race: String::new(),
+                class: String::new(),
+                level: 1,
             })
             .id()
     }

@@ -26,6 +26,7 @@ Currently functional: telnet login, account creation, character management, room
 - [x] Telnet server with IAC negotiation and password masking
 - [x] Account creation and login (email only)
 - [x] Character creation, selection, and persistence
+- [x] Character gender / race / class / level (first pass): closed `Gender` enum + author-overridable `RaceRegistry`/`ClassRegistry` data with a class tier ladder; new characters start at level 1 (no XP yet) — see [ADR-0002](docs/adr/0002-character-class-tiers.md)
 - [x] MOTD gate before entering the world
 - [x] Room movement (north/east/south/west/up/down)
 - [x] Social channels: say (room), yell (area), ooc (global)
@@ -48,8 +49,8 @@ Currently functional: telnet login, account creation, character management, room
 - [ ] Combat system
 - [ ] Items, equipment, and inventory
 - [ ] Drinking potions, eating food and pills
-- [ ] Experience, levels, and skills
-- [ ] Race/class/level type systems
+- [ ] Experience, levels, and skills (level exists as a stored number; no XP/levelling yet)
+- [ ] Class evolution / reroll (tier-2+ classes; tier-1 → `evolves_to`) — data ladder seeded, mechanic not built
 - [ ] Areas and rooms from file definitions (not hardcoded seed)
 - [ ] Crash recovery without losing connections
 - [ ] Copyover / builder port

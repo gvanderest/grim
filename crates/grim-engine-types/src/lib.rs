@@ -1,6 +1,7 @@
 //! Core types for GRIM MUD engine
 
 pub mod cardinal;
+pub mod character;
 pub mod color;
 pub mod components;
 pub mod events;

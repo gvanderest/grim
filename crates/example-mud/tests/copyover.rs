@@ -172,6 +172,13 @@ fn copyover_keeps_player_connected_and_resumes_last_room() {
         Duration::from_secs(20),
     );
     send(&mut stream, "Alice");
+    // Name accepted → pick gender, race, class (by name/slug).
+    expect(&mut stream, "Choose a gender", Duration::from_secs(20));
+    send(&mut stream, "neutral");
+    expect(&mut stream, "Choose a race", Duration::from_secs(20));
+    send(&mut stream, "human");
+    expect(&mut stream, "Choose a class", Duration::from_secs(20));
+    send(&mut stream, "warrior");
     // MOTD → press enter to enter the world → land in the starting tavern.
     std::thread::sleep(Duration::from_millis(300));
     send(&mut stream, "");

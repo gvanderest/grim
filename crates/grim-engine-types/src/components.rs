@@ -8,6 +8,11 @@ use crate::cardinal::Cardinal;
 use crate::events::Command;
 use crate::id::GrimId;
 
+// Re-export the character build-data types so `components::*` (and, through it,
+// the crate prelude) surfaces them alongside `Character` itself. The bare
+// `Gender` name here also types the `Character::gender` field below.
+pub use crate::character::{ClassDef, ClassRegistry, Gender, RaceDef, RaceRegistry};
+
 // ─── Session ────────────────────────────────────────────────────────
 
 /// The client session state machine — one per connection, on a separate
@@ -58,6 +63,18 @@ pub enum ClientState {
     CharacterSelect,
     /// Waiting for the user to type a new character name.
     CreateCharacter,
+    /// Picking a gender for the new character. Carries the accepted `name`.
+    SelectGender { name: String },
+    /// Picking a race. Carries the `name` and chosen `gender`.
+    SelectRace { name: String, gender: Gender },
+    /// Picking a (tier-1) class. Carries the `name`, `gender`, and race `slug`.
+    /// On a valid pick the character is persisted and the session advances to
+    /// the MOTD.
+    SelectClass {
+        name: String,
+        gender: Gender,
+        race: String,
+    },
     /// MOTD prompt after character select — hit Enter to enter the world.
     MotdPrompt,
     /// In-game — input is parsed and queued as commands.
@@ -102,6 +119,29 @@ pub struct Character {
     /// character JSON (written before roles existed) loading cleanly.
     #[serde(default)]
     pub roles: Vec<Role>,
+    /// Chosen at creation. `#[serde(default)]` → [`Gender::Neutral`] for old
+    /// character JSON written before genders existed.
+    #[serde(default)]
+    pub gender: Gender,
+    /// Race slug (e.g. `"human"`), keyed into [`RaceRegistry`]. Empty on old
+    /// JSON (and never picked); resolve leniently.
+    #[serde(default)]
+    pub race: String,
+    /// Class slug (e.g. `"warrior"`), keyed into [`ClassRegistry`]. Holds a
+    /// single tier-1 slug for now; a future reroll swaps it to the tier-2
+    /// `evolves_to` (see `docs/adr/0002-character-class-tiers.md`).
+    #[serde(default)]
+    pub class: String,
+    /// Character level. New characters start at 1; there is no XP system yet,
+    /// so this is just a stored number. `#[serde(default = ...)]` gives old
+    /// JSON level 1 rather than 0.
+    #[serde(default = "default_level")]
+    pub level: u32,
+}
+
+/// The level every new (or pre-level-field) character starts at.
+fn default_level() -> u32 {
+    1
 }
 
 impl Character {
@@ -241,6 +281,10 @@ mod tests {
             created_at: chrono::Utc::now(),
             last_room: None,
             roles,
+            gender: Gender::Neutral,
+            race: String::new(),
+            class: String::new(),
+            level: 1,
         }
     }
 
@@ -260,6 +304,23 @@ mod tests {
     }
 
     #[test]
+    fn character_round_trips_build_fields() {
+        let mut ch = character(vec![]);
+        ch.gender = Gender::Female;
+        ch.race = "dwarf".into();
+        ch.class = "mage".into();
+        ch.level = 1;
+        let json = serde_json::to_string(&ch).unwrap();
+        // Gender rides along lowercase, like Role.
+        assert!(json.contains("\"gender\":\"female\""));
+        let back: Character = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.gender, Gender::Female);
+        assert_eq!(back.race, "dwarf");
+        assert_eq!(back.class, "mage");
+        assert_eq!(back.level, 1);
+    }
+
+    #[test]
     fn character_json_without_roles_defaults_empty() {
         // Old character files, written before `roles` existed. Ids are Grim IDs
         // (base62 x12) — pre-GrimId UUID files must be migrated first.
@@ -267,5 +328,10 @@ mod tests {
         let ch: Character = serde_json::from_str(json).unwrap();
         assert!(ch.roles.is_empty());
         assert!(ch.last_room.is_none());
+        // New build fields default cleanly for pre-existing JSON.
+        assert_eq!(ch.gender, Gender::Neutral);
+        assert!(ch.race.is_empty());
+        assert!(ch.class.is_empty());
+        assert_eq!(ch.level, 1);
     }
 }

@@ -64,7 +64,7 @@ fn handle_quit(
 mod tests {
     use super::*;
     use grim_engine_types::cardinal::Cardinal;
-    use grim_engine_types::components::{Area, Character, Exits, InRoom, Name, Role, Room};
+    use grim_engine_types::components::{Area, Character, Exits, Gender, InRoom, Name, Role, Room};
     use grim_engine_types::events::{
         Command, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent,
     };
@@ -125,6 +125,10 @@ mod tests {
                     created_at: chrono::Utc::now(),
                     last_room: None,
                     roles,
+                    gender: Gender::Neutral,
+                    race: String::new(),
+                    class: String::new(),
+                    level: 1,
                 },
             ))
             .id()
@@ -306,6 +310,10 @@ mod tests {
                         created_at: chrono::Utc::now(),
                         last_room: None,
                         roles: Vec::new(),
+                        gender: Gender::Neutral,
+                        race: String::new(),
+                        class: String::new(),
+                        level: 1,
                     },
                 ))
                 .id();
