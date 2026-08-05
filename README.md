@@ -2,6 +2,12 @@
 
 A modular MUD engine built on Bevy ECS. Everything in the world is an entity. Every interaction is an event. The engine is a library — a collection of Bevy plugins — and the running server is a binary that composes them.
 
+**Connect now, in your terminal:**
+
+```sh
+$ telnet grimtide.org 4000
+```
+
 For context: I come from a MUD called Waterdeep and am trying to recreate the general vibe, but with a more modern twist in Rust.
 
 NOTE: This project leverages AI assistance to develop the software. All code is reviewed and curated by a human maintainer.
