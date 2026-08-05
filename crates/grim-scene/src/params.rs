@@ -7,11 +7,15 @@
 
 use bevy::prelude::*;
 use grim_engine_types::components::{
-    Area, Character, ClassRegistry, ConnectedAt, InRoom, Linkdead, Name as GrimName, OutputHistory,
-    Player, RaceRegistry, ReservedNamePrefixes, Room, RoomLocation, StartingRoom,
+    Area, Character, InRoom, Linkdead, Name as GrimName, OutputHistory, Player, Room, RoomLocation,
+    StartingRoom,
 };
 use grim_engine_types::events::{Command, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce};
 use grim_networking::DisconnectRequest;
+use grim_world::{ClassRegistry, RaceRegistry};
+
+use crate::session::ConnectedAt;
+use crate::validation::ReservedNamePrefixes;
 
 /// The online-characters query shared by the WHO / WHERE renderers and the
 /// post-login auto-look: each player entity with its display name, current

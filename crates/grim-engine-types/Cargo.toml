@@ -9,7 +9,6 @@ bevy = { workspace = true, default-features = false }
 serde = { workspace = true }
 nanoid = { workspace = true }
 chrono = { workspace = true }
-sha2 = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

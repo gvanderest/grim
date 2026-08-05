@@ -8,10 +8,10 @@ use crate::cardinal::Cardinal;
 use crate::events::Command;
 use crate::id::GrimId;
 
-// Re-export the character build-data types so `components::*` (and, through it,
-// the crate prelude) surfaces them alongside `Character` itself. The bare
-// `Gender` name here also types the `Character::gender` field below.
-pub use crate::character::{ClassDef, ClassRegistry, Gender, RaceDef, RaceRegistry};
+// Re-export `Gender` so `components::*` (and, through it, the crate prelude)
+// surfaces it alongside `Character` itself. The bare `Gender` name here also
+// types the `Character::gender` field below.
+pub use crate::character::Gender;
 
 // ─── Session ────────────────────────────────────────────────────────
 
@@ -245,49 +245,12 @@ impl OutputHistory {
     }
 }
 
-/// The last player who whispered (`tell`/`whisper`) this character, so `reply`
-/// can answer them. Set on delivery; points at a (boot-local) player entity, so
-/// a reply fails gracefully if they've since left.
-#[derive(Component, Debug)]
-pub struct LastWhisperFrom(pub Entity);
-
-/// Marks an entity as an NPC.
-#[derive(Component, Debug)]
-pub struct Npc;
-
-/// When the character's current session entered the world. Transient (NOT
-/// persisted): stamped with `Utc::now()` wherever a character gets its live
-/// `Player` — fresh login, takeover, spawn-from-disk, linkdead reconnect, and
-/// copyover resume. The WHO list uses it as the connect-time sort tiebreak
-/// (oldest connection first among characters of equal level).
-#[derive(Component, Debug, Clone, Copy)]
-pub struct ConnectedAt(pub DateTime<Utc>);
-
 /// Character is still in-world but the player disconnected (linkdead).
 #[derive(Component, Debug)]
 pub struct Linkdead;
 /// Inserted by the seed world system, read by the client during character creation.
 #[derive(Resource, Debug)]
 pub struct StartingRoom(pub Entity);
-
-/// Server config: character-name prefixes that may not be used (a new character's
-/// canonical name may not begin with any, case-insensitive — see
-/// [`crate::validation::is_name_reserved`]). Defaults to
-/// [`crate::validation::DEFAULT_RESERVED_NAME_PREFIXES`]; an author overrides or
-/// extends it by inserting this resource before adding the scene plugin.
-#[derive(Resource, Clone, Debug)]
-pub struct ReservedNamePrefixes(pub Vec<String>);
-
-impl Default for ReservedNamePrefixes {
-    fn default() -> Self {
-        Self(
-            crate::validation::DEFAULT_RESERVED_NAME_PREFIXES
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
-        )
-    }
-}
 
 #[cfg(test)]
 mod tests {

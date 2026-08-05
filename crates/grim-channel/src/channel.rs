@@ -1,10 +1,16 @@
 use grim_text::tr;
 
 use bevy::prelude::*;
-use grim_engine_types::components::{Character, InRoom, LastWhisperFrom, Name, Player, Room};
+use grim_engine_types::components::{Character, InRoom, Name, Player, Room};
 use grim_engine_types::events::{
     Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
 };
+
+/// The last player who whispered (`tell`/`whisper`) this character, so `reply`
+/// can answer them. Set on delivery; points at a (boot-local) player entity, so
+/// a reply fails gracefully if they've since left.
+#[derive(Component, Debug)]
+pub struct LastWhisperFrom(pub Entity);
 
 /// Handles `say` commands, emitting a `SayEvent` for room broadcast and an
 /// `InfoMessage` echo back to the speaker.

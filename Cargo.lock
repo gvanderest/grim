@@ -979,7 +979,6 @@ dependencies = [
  "nanoid",
  "serde",
  "serde_json",
- "sha2",
 ]
 
 [[package]]
@@ -1032,6 +1031,7 @@ dependencies = [
  "grim-text",
  "grim-world",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

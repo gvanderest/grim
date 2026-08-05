@@ -5,13 +5,13 @@
 
 use bevy::prelude::*;
 use grim_engine_types::components::{Account, Client, ClientState, Gender};
-use grim_engine_types::validation::{is_name_reserved, validate_character_name};
 use grim_networking::ConnectionOutput;
 use grim_persistence::load_character_by_name;
 
 use crate::finalize;
 use crate::formatter::{self, MenuItem};
 use crate::params::{SessionRes, WorldEntry};
+use crate::validation::{is_name_reserved, validate_character_name};
 
 /// The three fixed genders, paired with display name + slug for the menu.
 const GENDERS: [(Gender, &str, &str); 3] = [
@@ -95,7 +95,7 @@ pub(crate) fn start_gender_pick(
     });
 }
 
-/// The race selection menu, built from the [`grim_engine_types::components::RaceRegistry`].
+/// The race selection menu, built from the [`grim_world::RaceRegistry`].
 fn race_menu(res: &SessionRes) -> String {
     let items: Vec<MenuItem> = res
         .races

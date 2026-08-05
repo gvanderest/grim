@@ -13,8 +13,7 @@
 use bevy::prelude::*;
 use chrono::Utc;
 use grim_engine_types::components::{
-    Account, Character, Client, ClientState, ConnectedAt, Description, Gender, InRoom,
-    Name as GrimName, Player,
+    Account, Character, Client, ClientState, Description, Gender, InRoom, Name as GrimName, Player,
 };
 use grim_engine_types::GrimId;
 use grim_networking::ConnectionOutput;
@@ -22,6 +21,7 @@ use grim_persistence::{load_character_by_name, PersistenceConfig};
 
 use crate::formatter;
 use crate::params::{SessionRes, WorldEntry};
+use crate::session::ConnectedAt;
 use crate::world_entry;
 
 /// Whether `client.account` already owns a character named `name`. Resolves the

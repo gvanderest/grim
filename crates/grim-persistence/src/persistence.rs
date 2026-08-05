@@ -99,7 +99,8 @@ pub fn load_account_characters(config: &PersistenceConfig, account_id: GrimId) -
 /// Read a single character from disk by its canonical name (`<name>.json`), for
 /// login-by-name of a character that isn't currently in the world. Names are
 /// stored canonical and callers normalize user input (see
-/// `normalize_character_name`) before calling, so an exact filename match works.
+/// `grim_scene::validation::normalize_character_name`) before calling, so an
+/// exact filename match works.
 pub fn load_character_by_name(config: &PersistenceConfig, name: &str) -> Option<Character> {
     let path = config.characters_dir().join(format!("{name}.json"));
     let data = fs::read_to_string(path).ok()?;

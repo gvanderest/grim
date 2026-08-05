@@ -6,14 +6,15 @@
 use bevy::prelude::*;
 use chrono::Utc;
 use grim_engine_types::components::{
-    Account, Character, Client, ClientState, ConnectedAt, Description, InRoom, Name as GrimName,
-    OutputHistory, Player, StartingRoom,
+    Account, Character, Client, ClientState, Description, InRoom, Name as GrimName, OutputHistory,
+    Player, StartingRoom,
 };
 use grim_engine_types::events::LookRoom;
 use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
 use grim_persistence::{load_character_by_name, PersistenceConfig};
 
 use crate::params::RoomResolver;
+use crate::session::ConnectedAt;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_connection_resumed(

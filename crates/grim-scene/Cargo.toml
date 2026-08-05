@@ -10,11 +10,13 @@ grim-command = { path = "../grim-command" }
 grim-text = { path = "../grim-text" }
 grim-color = { path = "../grim-color" }
 grim-persistence = { path = "../grim-persistence" }
+# Owns the race/class registry content the creation flow reads (Placement Phase 1).
+grim-world = { path = "../grim-world" }
 bevy = { workspace = true, default-features = false }
 chrono = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
-# Test harness composes the gameplay plugins to exercise the full loop.
-grim-world = { path = "../grim-world" }
+# Test harness composes the channel plugin to exercise the full loop.
 grim-channel = { path = "../grim-channel" }
