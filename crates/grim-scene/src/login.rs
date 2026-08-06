@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
-use grim_actor::{Character, Linkdead, OutputHistory, Player};
+use grim_actor::{Actor, Character, Linkdead, OutputHistory, Player};
 use grim_engine_types::components::{Account, Client, ClientState, Name as GrimName};
 use grim_engine_types::events::LinkdeadAnnounce;
 use grim_engine_types::GrimId;
@@ -29,7 +29,7 @@ pub(crate) fn login_prompt(
     conn: Entity,
     text: &str,
     accounts: &Query<(Entity, &mut Account)>,
-    characters: &Query<(Entity, &Character, &GrimName)>,
+    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
     linkdead: &Query<&Linkdead>,
     persistence: &PersistenceConfig,
     outputs: &mut MessageWriter<ConnectionOutput>,
@@ -51,9 +51,9 @@ pub(crate) fn login_prompt(
         .then(|| {
             characters
                 .iter()
-                .filter(|(_, _, n)| n.0 == canonical)
-                .max_by_key(|(e, _, _)| if linkdead.get(*e).is_ok() { 1 } else { 0 })
-                .map(|(_, c, n)| (c.account_id, n.0.clone()))
+                .filter(|(_, _, _, n)| n.0 == canonical)
+                .max_by_key(|(e, _, _, _)| if linkdead.get(*e).is_ok() { 1 } else { 0 })
+                .map(|(_, c, _, n)| (c.account_id, n.0.clone()))
                 .or_else(|| {
                     load_character_by_name(persistence, &canonical).map(|c| (c.account_id, c.name))
                 })
@@ -164,7 +164,7 @@ pub(crate) fn password_prompt(
     conn: Entity,
     text: &str,
     accounts: &Query<(Entity, &mut Account)>,
-    characters: &Query<(Entity, &Character, &GrimName)>,
+    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
     players: &Query<&Player>,
     linkdead: &Query<&Linkdead>,
     histories: &mut Query<&mut OutputHistory>,
@@ -237,7 +237,7 @@ fn create_account(
     text: &str,
     identifier: &str,
     persistence: &PersistenceConfig,
-    characters: &Query<(Entity, &Character, &GrimName)>,
+    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
     accounts: &Query<(Entity, &mut Account)>,
     players: &Query<&Player>,
     linkdead: &Query<&Linkdead>,
@@ -303,7 +303,7 @@ fn authenticate(
     identifier: &str,
     auto_select: Option<String>,
     accounts: &Query<(Entity, &mut Account)>,
-    characters: &Query<(Entity, &Character, &GrimName)>,
+    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
     players: &Query<&Player>,
     linkdead: &Query<&Linkdead>,
     histories: &mut Query<&mut OutputHistory>,

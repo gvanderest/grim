@@ -23,7 +23,8 @@ use std::path::PathBuf;
 use bevy::log::{error, warn};
 use bevy::prelude::*;
 use grim::prelude::{
-    Area, Cardinal, Description, Exits, GrimId, InRoom, Name as GrimName, Npc, Room, StartingRoom,
+    Actor, Area, Cardinal, Creature, Description, Exits, Gender, GrimId, InRoom, Name as GrimName,
+    Room, StartingRoom,
 };
 use serde::Deserialize;
 
@@ -219,7 +220,15 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
 
         for npc in &r.npcs {
             commands.spawn((
-                Npc,
+                Creature,
+                // Seeded mobs carry the shared `Actor` base with sensible
+                // defaults (no race/build data in blueprints yet): empty race,
+                // level 1, neutral gender.
+                Actor {
+                    race: String::new(),
+                    level: 1,
+                    gender: Gender::Neutral,
+                },
                 GrimName(npc.name.clone()),
                 Description(npc.description.clone()),
                 InRoom { room: from },
@@ -301,9 +310,13 @@ mod tests {
             "square"
         );
 
-        // The NPC is present.
-        let npcs = app.world_mut().query::<&Npc>().iter(app.world()).count();
-        assert_eq!(npcs, 1);
+        // The creature (mob) is present.
+        let creatures = app
+            .world_mut()
+            .query::<&Creature>()
+            .iter(app.world())
+            .count();
+        assert_eq!(creatures, 1);
     }
 
     #[test]

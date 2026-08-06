@@ -54,7 +54,6 @@ pub(crate) fn register(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_engine_types::character::Gender;
     use grim_engine_types::GrimId;
 
     fn test_app() -> App {
@@ -68,15 +67,11 @@ mod tests {
         app.world_mut()
             .spawn(Character {
                 id: GrimId::new(),
-                name: "Hero".into(),
                 account_id: GrimId::new(),
                 created_at: chrono::Utc::now(),
                 last_room: None,
                 roles: Vec::new(),
-                gender: Gender::Neutral,
-                race: String::new(),
                 class: String::new(),
-                level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
             })

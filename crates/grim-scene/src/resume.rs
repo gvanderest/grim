@@ -91,17 +91,11 @@ fn resolve_resumed(
         disconnect.write(DisconnectRequest { connection: conn });
     };
 
-    if let Some((resident, character, _)) =
-        characters.iter().find(|(_, c, _)| c.name == ev.character)
+    if let Some((resident, character, _)) = characters.iter().find(|(_, _, n)| n.0 == ev.character)
     {
         // A resumed character must not already be live (would mean a duplicate
-        // handoff or a name collision) — unexpected state, refuse.
-        if players
-            .get(resident)
-            .ok()
-            .and_then(|p| p.connection)
-            .is_some()
-        {
+        // handoff or a name collision). Online ⇔ has a `Player`; refuse if so.
+        if players.get(resident).is_ok() {
             abort(outputs, disconnect, "character already connected");
             return None;
         }
@@ -112,9 +106,7 @@ fn resolve_resumed(
         };
         let r = rooms.placement(character.last_room.as_ref(), starting_room);
         commands.entity(resident).insert((
-            Player {
-                connection: Some(conn),
-            },
+            Player { connection: conn },
             ConnectedAt(Utc::now()),
             InRoom { room: r },
         ));
@@ -130,16 +122,15 @@ fn resolve_resumed(
             return None;
         };
         let last = loaded.last_room.clone();
-        let name = loaded.name.clone();
         let r = rooms.placement(last.as_ref(), starting_room);
+        let (name, actor, character) = loaded.into_components();
         let char_entity = commands
             .spawn((
-                loaded,
-                GrimName(name),
+                name,
+                actor,
+                character,
                 Description("A new adventurer.".into()),
-                Player {
-                    connection: Some(conn),
-                },
+                Player { connection: conn },
                 ConnectedAt(Utc::now()),
                 InRoom { room: r },
             ))

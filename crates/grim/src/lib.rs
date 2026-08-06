@@ -15,11 +15,13 @@ pub use grim_engine_types::*;
 // them at the crate root (and via `prelude`) so `grim::X` / `grim::prelude::X`
 // stay stable downstream.
 pub mod prelude;
-pub use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player, Role};
+pub use grim_actor::{
+    Actor, Character, Creature, InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter,
+};
 pub use grim_channel::LastWhisperFrom;
 pub use grim_scene::{ConnectedAt, ReservedNamePrefixes};
 pub use grim_world::{
-    Area, ClassDef, ClassRegistry, Exits, Npc, RaceDef, RaceRegistry, Room, StartingRoom,
+    Area, ClassDef, ClassRegistry, Exits, RaceDef, RaceRegistry, Room, RoomLocation, StartingRoom,
 };
 
 // Transport-agnostic networking primitives (Connection + wire events).

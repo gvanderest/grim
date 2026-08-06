@@ -1,11 +1,11 @@
 use bevy::log::info;
 use bevy::prelude::*;
-use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player};
-use grim_engine_types::components::{Account, Client, RoomLocation};
+use grim_actor::{Actor, Character, InRoom, Linkdead, OutputHistory, Player, StoredCharacter};
+use grim_engine_types::components::{Account, Client, Name as GrimName};
 use grim_engine_types::events::{LinkdeadAnnounce, MoveEvent};
 use grim_engine_types::GrimId;
 use grim_networking::{Connection, ConnectionClosed};
-use grim_world::{Area, Room};
+use grim_world::{Area, Room, RoomLocation};
 use std::fs;
 use std::path::PathBuf;
 
@@ -73,9 +73,14 @@ fn load_persisted_data(mut commands: Commands, config: Res<PersistenceConfig>) {
     // so the world only holds characters that are actually in play.
 }
 
-/// Read every character on disk belonging to `account_id`. Used to lazily bring
-/// an account's characters into the world at login. Missing dir → empty.
-pub fn load_account_characters(config: &PersistenceConfig, account_id: GrimId) -> Vec<Character> {
+/// Read every character on disk belonging to `account_id`, as flat
+/// [`StoredCharacter`] DTOs (the caller splits them into components when
+/// spawning). Used to lazily bring an account's characters into the world at
+/// login. Missing dir → empty.
+pub fn load_account_characters(
+    config: &PersistenceConfig,
+    account_id: GrimId,
+) -> Vec<StoredCharacter> {
     let dir = config.characters_dir();
     let mut out = Vec::new();
     if let Ok(entries) = fs::read_dir(&dir) {
@@ -85,9 +90,9 @@ pub fn load_account_characters(config: &PersistenceConfig, account_id: GrimId) -
                 continue;
             }
             if let Ok(data) = fs::read_to_string(&path) {
-                if let Ok(character) = serde_json::from_str::<Character>(&data) {
-                    if character.account_id == account_id {
-                        out.push(character);
+                if let Ok(stored) = serde_json::from_str::<StoredCharacter>(&data) {
+                    if stored.account_id == account_id {
+                        out.push(stored);
                     }
                 }
             }
@@ -96,15 +101,15 @@ pub fn load_account_characters(config: &PersistenceConfig, account_id: GrimId) -
     out
 }
 
-/// Read a single character from disk by its canonical name (`<name>.json`), for
-/// login-by-name of a character that isn't currently in the world. Names are
-/// stored canonical and callers normalize user input (see
-/// `grim_scene::validation::normalize_character_name`) before calling, so an
-/// exact filename match works.
-pub fn load_character_by_name(config: &PersistenceConfig, name: &str) -> Option<Character> {
+/// Read a single character from disk by its canonical name (`<name>.json`) as a
+/// flat [`StoredCharacter`], for login-by-name of a character that isn't
+/// currently in the world. Names are stored canonical and callers normalize user
+/// input (see `grim_scene::validation::normalize_character_name`) before calling,
+/// so an exact filename match works.
+pub fn load_character_by_name(config: &PersistenceConfig, name: &str) -> Option<StoredCharacter> {
     let path = config.characters_dir().join(format!("{name}.json"));
     let data = fs::read_to_string(path).ok()?;
-    serde_json::from_str::<Character>(&data).ok()
+    serde_json::from_str::<StoredCharacter>(&data).ok()
 }
 
 /// On connection close: persist the bound account/character (refreshing the
@@ -118,6 +123,8 @@ fn save_on_disconnect(
     connections: Query<&Connection>,
     accounts: Query<&Account>,
     mut characters: Query<&mut Character>,
+    names: Query<&GrimName>,
+    actors: Query<&Actor>,
     inroom: Query<&InRoom>,
     rooms: Query<(&Room, &Area)>,
     histories: Query<&OutputHistory>,
@@ -157,43 +164,46 @@ fn save_on_disconnect(
             }
         }
         if let Some(char_e) = character_entity {
-            if let Ok(mut character) = characters.get_mut(char_e) {
-                if let Ok(ir) = inroom.get(char_e) {
-                    if let Ok((room, area)) = rooms.get(ir.room) {
-                        character.last_room = Some(RoomLocation {
-                            area: area.friendly_id.clone(),
-                            room: room.friendly_id.clone(),
-                        });
+            // Save the character to disk from its three components
+            // (`Name + Actor + Character`) via the flat `StoredCharacter` DTO —
+            // the only disk surface. Requires all three; a partial entity (e.g.
+            // a bare `Character` with no `Name`/`Actor`) skips the save.
+            if let (Ok(name), Ok(actor)) = (names.get(char_e), actors.get(char_e)) {
+                if let Ok(mut character) = characters.get_mut(char_e) {
+                    if let Ok(ir) = inroom.get(char_e) {
+                        if let Ok((room, area)) = rooms.get(ir.room) {
+                            character.last_room = Some(RoomLocation {
+                                area: area.friendly_id.clone(),
+                                room: room.friendly_id.clone(),
+                            });
+                        }
                     }
-                }
-                let path = config
-                    .characters_dir()
-                    .join(format!("{}.json", character.name));
-                if let Ok(json) = serde_json::to_string_pretty(&*character) {
-                    let _ = fs::write(path, json);
+                    let stored = StoredCharacter::from_components(name, actor, &character);
+                    let path = config.characters_dir().join(format!("{}.json", name.0));
+                    if let Ok(json) = serde_json::to_string_pretty(&stored) {
+                        let _ = fs::write(path, json);
+                    }
                 }
             }
             // Transfer OutputHistory from connection to character before despawn
             if let Ok(history) = histories.get(conn) {
                 commands.entity(char_e).insert(history.clone());
             }
-            // Only skip linkdead marking if the character was taken over by
-            // another session — meaning the Player.connection is different
-            // from the connection being closed.
-            let has_other_connection = players
+            // Player is present only while connected. On a normal close, remove
+            // it and mark the character linkdead. Skip only if another session
+            // took the character over — its live `Player.connection` differs from
+            // the connection being closed, so we must not disturb it.
+            let taken_over = players
                 .get(char_e)
-                .ok()
-                .and_then(|p| p.connection)
-                .is_some_and(|c| c != conn);
-            if !has_other_connection {
-                // Mark as linkdead: drop connection, keep Player with None
-                commands.entity(char_e).insert(Player { connection: None });
-                // Marker component for easy querying
+                .map(|p| p.connection != conn)
+                .unwrap_or(false);
+            if !taken_over {
+                commands.entity(char_e).remove::<Player>();
                 commands.entity(char_e).insert(Linkdead);
-                if let Ok(ch) = characters.get(char_e) {
-                    info!("Character '{}' went linkdead", ch.name);
+                if let Ok(name) = names.get(char_e) {
+                    info!("Character '{}' went linkdead", name.0);
                     announce_linkdead.write(LinkdeadAnnounce {
-                        name: ch.name.clone(),
+                        name: name.0.clone(),
                         reconnecting: false,
                     });
                 }
@@ -213,18 +223,20 @@ fn save_on_disconnect(
 /// this; see the durable-persistence follow-up.)
 fn save_on_move(
     mut moves: MessageReader<MoveEvent>,
-    characters: Query<&Character>,
+    characters: Query<(&GrimName, &Actor, &Character)>,
     config: Res<PersistenceConfig>,
 ) {
     for ev in moves.read() {
-        // Only character entities persist; NPCs and other movers are ignored.
-        let Ok(character) = characters.get(ev.actor) else {
+        // Only player characters persist; creatures and other movers (which have
+        // no `Character`) are ignored.
+        let Ok((name, actor, character)) = characters.get(ev.actor) else {
             continue;
         };
         let dir = config.characters_dir();
         let _ = fs::create_dir_all(&dir);
-        let path = dir.join(format!("{}.json", character.name));
-        if let Ok(json) = serde_json::to_string_pretty(character) {
+        let path = dir.join(format!("{}.json", name.0));
+        let stored = StoredCharacter::from_components(name, actor, character);
+        if let Ok(json) = serde_json::to_string_pretty(&stored) {
             let _ = fs::write(path, json);
         }
     }
@@ -258,6 +270,31 @@ mod tests {
     fn cleanup_save_dirs() {
         let _ = fs::remove_dir_all("data/accounts");
         let _ = fs::remove_dir_all("data/characters");
+    }
+
+    /// A flat [`StoredCharacter`] with sensible defaults, for disk fixtures and
+    /// spawning. Mirrors the pre-split `Character` field set.
+    fn stored(name: &str, account_id: GrimId) -> StoredCharacter {
+        StoredCharacter {
+            id: GrimId::new(),
+            name: name.into(),
+            account_id,
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: String::new(),
+            class: String::new(),
+            level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Spawn a live PC entity (`Name + Actor + Character`) from a DTO.
+    fn spawn_pc(app: &mut App, s: &StoredCharacter) -> Entity {
+        let (name, actor, character) = s.clone().into_components();
+        app.world_mut().spawn((name, actor, character)).id()
     }
 
     fn make_connection(app: &mut App, id: usize) -> Entity {
@@ -324,34 +361,8 @@ mod tests {
             fs::create_dir_all(dir.join("characters")).unwrap();
 
             let account_id = GrimId::new();
-            let mine = Character {
-                id: GrimId::new(),
-                name: "TestHero".into(),
-                account_id,
-                created_at: Utc::now(),
-                last_room: None,
-                roles: Vec::new(),
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-            };
-            let other = Character {
-                id: GrimId::new(),
-                name: "Stranger".into(),
-                account_id: GrimId::new(), // a different account
-                created_at: Utc::now(),
-                last_room: None,
-                roles: Vec::new(),
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-            };
+            let mine = stored("TestHero", account_id);
+            let other = stored("Stranger", GrimId::new()); // a different account
             for c in [&mine, &other] {
                 fs::write(
                     dir.join("characters").join(format!("{}.json", c.name)),
@@ -407,20 +418,7 @@ mod tests {
             let acct_path = format!("data/accounts/{}.json", account.id);
             fs::write(&acct_path, serde_json::to_string(&account).unwrap()).unwrap();
 
-            let character = Character {
-                id: GrimId::new(),
-                name: "DualHero".into(),
-                account_id: account.id,
-                created_at: Utc::now(),
-                last_room: None,
-                roles: Vec::new(),
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-            };
+            let character = stored("DualHero", account.id);
             let char_path = format!("data/characters/{}.json", character.name);
             fs::write(&char_path, serde_json::to_string(&character).unwrap()).unwrap();
 
@@ -567,21 +565,8 @@ mod tests {
             let mut app = test_app();
             let conn = make_connection(&mut app, 1);
 
-            let character = Character {
-                id: GrimId::new(),
-                name: "NoAccountHero".into(),
-                account_id: GrimId::new(), // orphan — no Account entity spawned
-                created_at: Utc::now(),
-                last_room: None,
-                roles: Vec::new(),
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-            };
-            let char_e = app.world_mut().spawn(character.clone()).id();
+            let character = stored("NoAccountHero", GrimId::new()); // orphan — no Account entity
+            let char_e = spawn_pc(&mut app, &character);
 
             let client = Client {
                 account: None, // no account entity
@@ -596,7 +581,7 @@ mod tests {
 
             // Character file written (character_entity is Some)
             let char_path = format!("data/characters/{}.json", character.name);
-            let saved: Character =
+            let saved: StoredCharacter =
                 serde_json::from_str(&fs::read_to_string(&char_path).unwrap()).unwrap();
             assert_eq!(saved.name, "NoAccountHero");
 
@@ -628,21 +613,8 @@ mod tests {
             };
             let acct_e = app.world_mut().spawn(account.clone()).id();
 
-            let character = Character {
-                id: GrimId::new(),
-                name: "FullSaveHero".into(),
-                account_id: account.id,
-                created_at: Utc::now(),
-                last_room: None,
-                roles: Vec::new(),
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-            };
-            let char_e = app.world_mut().spawn(character.clone()).id();
+            let character = stored("FullSaveHero", account.id);
+            let char_e = spawn_pc(&mut app, &character);
 
             let client = Client {
                 account: Some(acct_e),
@@ -662,16 +634,25 @@ mod tests {
             assert_eq!(saved_acct.identifier, "fullsave");
 
             let char_path = format!("data/characters/{}.json", character.name);
-            let saved_char: Character =
+            let saved_char: StoredCharacter =
                 serde_json::from_str(&fs::read_to_string(&char_path).unwrap()).unwrap();
             assert_eq!(saved_char.name, "FullSaveHero");
 
-            // Character marked linkdead with Player { connection: None }
-            let mut ld = app.world_mut().query::<(&Character, &Linkdead, &Player)>();
+            // Character marked linkdead: Linkdead inserted, Player REMOVED (a
+            // linkdead being has no Player under the present-only-while-connected
+            // model).
+            let mut ld = app
+                .world_mut()
+                .query::<(&Character, &GrimName, &Linkdead)>();
             let results: Vec<_> = ld.iter(app.world()).collect();
             assert_eq!(results.len(), 1);
-            assert_eq!(results[0].0.name, "FullSaveHero");
-            assert!(results[0].2.connection.is_none());
+            assert_eq!(results[0].1 .0, "FullSaveHero");
+            let mut players = app.world_mut().query::<&Player>();
+            assert_eq!(
+                players.iter(app.world()).len(),
+                0,
+                "linkdead character must not keep a Player"
+            );
 
             // LinkdeadAnnounce emitted
             let messages = app.world().resource::<Messages<LinkdeadAnnounce>>();
@@ -731,23 +712,11 @@ mod tests {
             };
             let acct_e = app.world_mut().spawn(account.clone()).id();
 
-            let character = Character {
-                id: GrimId::new(),
-                name: "RoomHero".into(),
-                account_id: account.id,
-                created_at: Utc::now(),
-                last_room: None,
-                roles: Vec::new(), // starts with no last_room
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-            };
+            let character = stored("RoomHero", account.id); // starts with no last_room
+            let (name, actor, ch) = character.clone().into_components();
             let char_e = app
                 .world_mut()
-                .spawn((character.clone(), InRoom { room: room_e }))
+                .spawn((name, actor, ch, InRoom { room: room_e }))
                 .id();
 
             let client = Client {
@@ -763,7 +732,7 @@ mod tests {
 
             // Character file shows last_room populated from InRoom
             let char_path = format!("data/characters/{}.json", character.name);
-            let saved: Character =
+            let saved: StoredCharacter =
                 serde_json::from_str(&fs::read_to_string(&char_path).unwrap()).unwrap();
             let loc = saved.last_room.expect("expected last_room to be set");
             assert_eq!(loc.area, "test_area");
@@ -795,21 +764,8 @@ mod tests {
             };
             let acct_e = app.world_mut().spawn(account.clone()).id();
 
-            let character = Character {
-                id: GrimId::new(),
-                name: "HistoryHero".into(),
-                account_id: account.id,
-                created_at: Utc::now(),
-                last_room: None,
-                roles: Vec::new(),
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-            };
-            let char_e = app.world_mut().spawn(character.clone()).id();
+            let character = stored("HistoryHero", account.id);
+            let char_e = spawn_pc(&mut app, &character);
 
             let client = Client {
                 account: Some(acct_e),
@@ -823,10 +779,10 @@ mod tests {
             app.update();
 
             // Character should now have the OutputHistory
-            let mut hist_query = app.world_mut().query::<(&Character, &OutputHistory)>();
+            let mut hist_query = app.world_mut().query::<(&GrimName, &OutputHistory)>();
             let results: Vec<_> = hist_query.iter(app.world()).collect();
             assert_eq!(results.len(), 1);
-            assert_eq!(results[0].0.name, "HistoryHero");
+            assert_eq!(results[0].0 .0, "HistoryHero");
             assert_eq!(
                 results[0].1.lines.iter().collect::<Vec<_>>(),
                 vec!["line 1", "line 2"]
@@ -939,20 +895,7 @@ mod tests {
             fs::create_dir_all(dir.join("characters")).unwrap();
 
             // Seed a character file in the configured dir → it must load from there.
-            let seeded = Character {
-                id: GrimId::new(),
-                name: "CfgHero".into(),
-                account_id: GrimId::new(),
-                created_at: Utc::now(),
-                last_room: None,
-                roles: Vec::new(),
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-            };
+            let seeded = stored("CfgHero", GrimId::new());
             fs::write(
                 dir.join("characters").join("CfgHero.json"),
                 serde_json::to_string(&seeded).unwrap(),
@@ -1036,24 +979,16 @@ mod tests {
             // A character standing in a room, with last_room already refreshed by
             // grim-world's move handler (simulated here by setting it directly).
             let room = app.world_mut().spawn(()).id();
-            let character = Character {
-                id: GrimId::new(),
-                name: "Rover".into(),
-                account_id: GrimId::new(),
-                created_at: Utc::now(),
-                last_room: Some(RoomLocation {
-                    area: "haven".into(),
-                    room: "square".into(),
-                }),
-                roles: Vec::new(),
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-            };
-            let actor = app.world_mut().spawn((character, InRoom { room })).id();
+            let mut character = stored("Rover", GrimId::new());
+            character.last_room = Some(RoomLocation {
+                area: "haven".into(),
+                room: "square".into(),
+            });
+            let (name, actor_c, ch) = character.into_components();
+            let actor = app
+                .world_mut()
+                .spawn((name, actor_c, ch, InRoom { room }))
+                .id();
 
             // Emit the move; save_on_move should write the character to disk.
             app.world_mut().write_message(MoveEvent {
@@ -1066,7 +1001,7 @@ mod tests {
 
             let path = dir.join("characters").join("Rover.json");
             assert!(path.exists(), "move must persist the character to disk");
-            let saved: Character =
+            let saved: StoredCharacter =
                 serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
             let loc = saved
                 .last_room
@@ -1074,10 +1009,10 @@ mod tests {
             assert_eq!(loc.area, "haven");
             assert_eq!(loc.room, "square");
 
-            // A non-character mover (no Character component) is ignored, not an error.
-            let npc = app.world_mut().spawn(InRoom { room }).id();
+            // A non-PC mover (no Character component) is ignored, not an error.
+            let creature = app.world_mut().spawn(InRoom { room }).id();
             app.world_mut().write_message(MoveEvent {
-                actor: npc,
+                actor: creature,
                 from: room,
                 to: room,
                 direction: grim_engine_types::cardinal::Cardinal::South,

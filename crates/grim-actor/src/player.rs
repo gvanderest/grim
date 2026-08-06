@@ -1,17 +1,25 @@
-//! Player-connection markers: [`Player`] (a character controlled by a live or
-//! linkdead connection), [`Linkdead`] (disconnected but still in-world), and
-//! [`OutputHistory`] (the recent-output ring buffer replayed on reconnect).
+//! Player-connection markers: [`Player`] (present only while a character is
+//! controlled by a live connection), [`Linkdead`] (disconnected but still
+//! in-world), and [`OutputHistory`] (the recent-output ring buffer replayed on
+//! reconnect).
+//!
+//! **Presence is the online signal.** A character has a [`Player`] iff a
+//! connection is currently driving it; a disconnected-but-in-world character
+//! carries [`Linkdead`] and **no** `Player`. So `connection` is a plain
+//! `Entity`, never optional — there is no "linkdead `Player`".
 
 use std::collections::VecDeque;
 
 use bevy::prelude::*;
 
-/// Marks a character as player-controlled and links to their connection for output.
-/// `connection: None` means the player is linkdead (disconnected but still in-world).
+/// Marks a character as player-controlled and links to its live connection for
+/// output. Present **only while connected**: on disconnect the `Player` is
+/// removed and [`Linkdead`] inserted, and on reconnect the reverse. So a being
+/// with a `Player` is online, and one without (but with `Character`) is linkdead.
 #[derive(Component, Debug)]
 pub struct Player {
-    /// The `Connection` entity to send output to, or `None` if linkdead.
-    pub connection: Option<Entity>,
+    /// The `Connection` entity to send output to.
+    pub connection: Entity,
 }
 
 /// A bounded ring buffer of the lines most recently sent to a player, replayed

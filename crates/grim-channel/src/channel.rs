@@ -1,7 +1,7 @@
 use grim_text::tr;
 
 use bevy::prelude::*;
-use grim_actor::{Character, InRoom, Player};
+use grim_actor::{Character, InRoom};
 use grim_engine_types::components::Name;
 use grim_engine_types::events::{
     Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
@@ -75,7 +75,10 @@ fn deliver_whisper(
 /// players; `self` targets the sender.
 fn handle_tell(
     mut engine: MessageReader<EngineCommand>,
-    players: Query<(Entity, &Name, &Player)>,
+    // Player characters, online or linkdead. A PC always carries `Character`
+    // (a linkdead one keeps it, having only lost its `Player`), while mobs carry
+    // `Creature` instead — so `With<Character>` is exactly "a PC in the world".
+    players: Query<(Entity, &Name), With<Character>>,
     names: Query<&Name>,
     mut info: MessageWriter<InfoMessage>,
     mut commands: Commands,
@@ -94,8 +97,8 @@ fn handle_tell(
             // to a linkdead player is fine; they'll see it when they return.
             players
                 .iter()
-                .find(|(_, n, _)| n.0.to_ascii_lowercase().starts_with(&want))
-                .map(|(e, _, _)| e)
+                .find(|(_, n)| n.0.to_ascii_lowercase().starts_with(&want))
+                .map(|(e, _)| e)
         };
 
         let Some(recipient) = recipient else {
@@ -115,7 +118,9 @@ fn handle_tell(
 fn handle_reply(
     mut engine: MessageReader<EngineCommand>,
     last: Query<&LastWhisperFrom>,
-    players: Query<&Player>,
+    // A repliable target is a PC still in the world (online or linkdead), i.e.
+    // one that still has `Character`; a fully-quit character is despawned.
+    players: Query<(), With<Character>>,
     names: Query<&Name>,
     mut info: MessageWriter<InfoMessage>,
     mut commands: Commands,
@@ -258,8 +263,7 @@ fn handle_gecho(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_actor::{Character, InRoom, Player, Role};
-    use grim_engine_types::character::Gender;
+    use grim_actor::{Character, InRoom, Linkdead, Player, Role};
     use grim_engine_types::components::Name;
     use grim_engine_types::events::{
         Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
@@ -269,23 +273,23 @@ mod tests {
 
     use chrono::Utc;
 
+    /// A bare PC `Character` with the given roles (no `Name`/`Actor` needed for
+    /// the admin-gate reads these tests exercise).
+    fn character(roles: Vec<Role>) -> Character {
+        Character {
+            id: GrimId::new(),
+            account_id: GrimId::new(),
+            created_at: Utc::now(),
+            last_room: None,
+            roles,
+            class: String::new(),
+            title: None,
+            restrings: std::collections::HashMap::new(),
+        }
+    }
+
     fn spawn_admin(app: &mut App) -> Entity {
-        app.world_mut()
-            .spawn(Character {
-                id: GrimId::new(),
-                name: "Admin".into(),
-                account_id: GrimId::new(),
-                created_at: Utc::now(),
-                last_room: None,
-                roles: vec![Role::Admin],
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-            })
-            .id()
+        app.world_mut().spawn(character(vec![Role::Admin])).id()
     }
 
     fn test_app() -> App {
@@ -301,12 +305,15 @@ mod tests {
         c.read(m).map(|i| (i.target, i.text.clone())).collect()
     }
 
+    /// An online PC: `Name + Character + Player`. `tell`/`reply` resolve targets
+    /// by `Character` (PCs, online or linkdead), so the target carries one.
     fn spawn_player(app: &mut App, name: &str) -> Entity {
         app.world_mut()
             .spawn((
                 Name(name.into()),
+                character(Vec::new()),
                 Player {
-                    connection: Some(Entity::PLACEHOLDER),
+                    connection: Entity::PLACEHOLDER,
                 },
             ))
             .id()
@@ -371,9 +378,11 @@ mod tests {
         // it when they return.
         let mut app = test_app();
         let alice = spawn_player(&mut app, "Alice");
+        // Linkdead now means NO `Player` (present-only-while-connected). A
+        // linkdead PC keeps `Name + Character` and carries the `Linkdead` marker.
         let bob = app
             .world_mut()
-            .spawn((Name("Bob".into()), Player { connection: None }))
+            .spawn((Name("Bob".into()), character(Vec::new()), Linkdead))
             .id();
         app.world_mut().write_message(EngineCommand {
             client: alice,

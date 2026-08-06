@@ -4,9 +4,10 @@
 //! against `grim_world`'s room topology + address lookups.
 
 use bevy::prelude::*;
-use grim_engine_types::components::RoomLocation;
 use grim_engine_types::events::{Command, EngineCommand, InfoMessage, LookRoom, MoveEvent};
-use grim_world::{resolve_room_address, room_location, Area, Exits, Room, RoomLookup};
+use grim_world::{
+    resolve_room_address, room_location, Area, Exits, Room, RoomLocation, RoomLookup,
+};
 
 use crate::character::Character;
 use crate::placement::InRoom;
@@ -139,7 +140,10 @@ pub(crate) fn handle_goto(
         match resolve_room_address(target, &rooms, &areas) {
             RoomLookup::Found(to) => {
                 let loc = rooms.get(to).ok().and_then(|(_, r)| {
-                    areas.get(r.area).ok().map(|(_, a)| persisted_location(r, a))
+                    areas
+                        .get(r.area)
+                        .ok()
+                        .map(|(_, a)| persisted_location(r, a))
                 });
                 place_actor(actor, to, loc, &mut inroom, &mut characters);
                 look_room.write(LookRoom {
@@ -206,6 +210,7 @@ mod tests {
     use grim_engine_types::components::Name as GrimName;
     use grim_engine_types::GrimId;
 
+    use crate::actor::Actor;
     use crate::character::Role;
 
     fn test_app() -> App {
@@ -252,17 +257,19 @@ mod tests {
         app.world_mut()
             .spawn((
                 InRoom { room },
+                GrimName("Admin".into()),
+                Actor {
+                    race: String::new(),
+                    level: 1,
+                    gender: Gender::Neutral,
+                },
                 Character {
                     id: GrimId::new(),
-                    name: "Admin".into(),
                     account_id: GrimId::new(),
                     created_at: chrono::Utc::now(),
                     last_room: None,
                     roles,
-                    gender: Gender::Neutral,
-                    race: String::new(),
                     class: String::new(),
-                    level: 1,
                     title: None,
                     restrings: std::collections::HashMap::new(),
                 },
@@ -356,17 +363,19 @@ mod tests {
                 .world_mut()
                 .spawn((
                     InRoom { room: room1 },
+                    GrimName("Walker".into()),
+                    Actor {
+                        race: String::new(),
+                        level: 1,
+                        gender: Gender::Neutral,
+                    },
                     Character {
                         id: GrimId::new(),
-                        name: "Walker".into(),
                         account_id: GrimId::new(),
                         created_at: chrono::Utc::now(),
                         last_room: None,
                         roles: Vec::new(),
-                        gender: Gender::Neutral,
-                        race: String::new(),
                         class: String::new(),
-                        level: 1,
                         title: None,
                         restrings: std::collections::HashMap::new(),
                     },

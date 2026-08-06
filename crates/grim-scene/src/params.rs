@@ -6,19 +6,20 @@
 //! resume, and output systems.
 
 use bevy::prelude::*;
-use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player};
-use grim_engine_types::components::{Name as GrimName, RoomLocation};
+use grim_actor::{Actor, Character, InRoom, Linkdead, OutputHistory, Player};
+use grim_engine_types::components::Name as GrimName;
 use grim_engine_types::events::{Command, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce};
 use grim_networking::DisconnectRequest;
-use grim_world::{Area, ClassRegistry, RaceRegistry, Room, StartingRoom};
+use grim_world::{Area, ClassRegistry, RaceRegistry, Room, RoomLocation, StartingRoom};
 
 use crate::session::ConnectedAt;
 use crate::validation::ReservedNamePrefixes;
 
 /// The online-characters query shared by the WHO / WHERE renderers and the
 /// post-login auto-look: each player entity with its display name, current
-/// room, optional [`Character`] build (WHO stats), and optional
-/// [`ConnectedAt`] (the WHO connect-time sort tiebreak).
+/// room, optional [`Actor`] base (race/level/gender WHO stats), optional
+/// [`Character`] (admin/title/restrings WHO stats), and optional [`ConnectedAt`]
+/// (the WHO connect-time sort tiebreak).
 pub(crate) type PlayerChars<'w, 's> = Query<
     'w,
     's,
@@ -26,6 +27,7 @@ pub(crate) type PlayerChars<'w, 's> = Query<
         Entity,
         &'static GrimName,
         &'static InRoom,
+        Option<&'static Actor>,
         Option<&'static Character>,
         Option<&'static ConnectedAt>,
     ),
@@ -87,7 +89,16 @@ impl RoomResolver<'_, '_> {
 /// `handle_client_input` within Bevy's 16-parameter limit.
 #[derive(bevy::ecs::system::SystemParam)]
 pub(crate) struct WorldEntry<'w, 's> {
-    pub(crate) characters: Query<'w, 's, (Entity, &'static Character, &'static GrimName)>,
+    pub(crate) characters: Query<
+        'w,
+        's,
+        (
+            Entity,
+            &'static Character,
+            &'static Actor,
+            &'static GrimName,
+        ),
+    >,
     pub(crate) players: Query<'w, 's, &'static Player>,
     pub(crate) linkdead: Query<'w, 's, &'static Linkdead>,
     pub(crate) rooms: RoomResolver<'w, 's>,

@@ -75,7 +75,6 @@ pub(crate) fn register(app: &mut App) {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use grim_engine_types::character::Gender;
     use grim_engine_types::GrimId;
     use grim_world::ShutdownPlugin;
 
@@ -93,15 +92,11 @@ mod tests {
         app.world_mut()
             .spawn(Character {
                 id: GrimId::new(),
-                name: "Tester".into(),
                 account_id: GrimId::new(),
                 created_at: Utc::now(),
                 last_room: None,
                 roles,
-                gender: Gender::Neutral,
-                race: String::new(),
                 class: String::new(),
-                level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
             })

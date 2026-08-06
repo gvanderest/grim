@@ -5,19 +5,29 @@
 **Depends on:** `grim-engine-types`, `grim-world`, `grim-networking`, `grim-color`
 
 An **actor** is any entity that can act in the world and be placed in a room —
-player characters today, mobs/NPCs later. This crate owns the being components
-and the command handlers that read them. It sits strictly **above** the
-being-free `grim-world`: it depends on `grim-world` (room topology + address
-lookups + shutdown machinery) and never the reverse.
+player characters and creatures (mobs). Every being carries the shared `Actor`
+base (race/level/gender); a PC additionally carries a `Character` (account
+state) and, *while connected*, a `Player`; a mob carries a `Creature` marker.
+This crate owns those being components, the flat `StoredCharacter` disk DTO, and
+the command handlers that read them. It sits strictly **above** the being-free
+`grim-world`: it depends on `grim-world` (room topology + address lookups +
+shutdown machinery + `RoomLocation`) and never the reverse.
+
+Entity composition: online PC = `Name + Actor + Character + Player + InRoom`;
+linkdead PC = `Name + Actor + Character + Linkdead + InRoom` (no `Player`);
+creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the
+`Name` component (`grim_engine_types::components::Name`), never on `Character`.
 
 ## Components
 
 | Component | File | Purpose |
 |---|---|---|
-| `Character` | `src/character.rs` | A persisted being belonging to an account; carries name, roles, build, title, restrings, `last_room`. |
-| `Player` | `src/player.rs` | Marks a character player-controlled; links to its `Connection` (`None` = linkdead). |
+| `Actor` | `src/actor.rs` | Shared "alive thing" base carried by every being (PC + creature): `race`, `level`, `gender`. Movement/perception/WHO read build data here. |
+| `Creature` | `src/actor.rs` | Marks a being as a non-player mob (replaces the former `grim_world::Npc`). |
+| `Character` | `src/character.rs` | PC-only being belonging to an account; carries `id`, `account_id`, `created_at`, roles, `class`, `title`, `restrings`, `last_room`. No `name`/`race`/`level`/`gender` (→ `Name`/`Actor`). |
+| `Player` | `src/player.rs` | Present **only while connected**; links to the live `Connection`. Absence (with `Character`) = linkdead. |
 | `OutputHistory` | `src/player.rs` | Bounded ring buffer of recent output lines, for reconnect. |
-| `Linkdead` | `src/player.rs` | Character is in-world but its player disconnected. |
+| `Linkdead` | `src/player.rs` | Character is in-world but its player disconnected (no `Player`). |
 | `InRoom` | `src/placement.rs` | Which room an actor currently stands in. |
 
 ## Systems
@@ -59,6 +69,7 @@ Non-component types this crate defines.
 | Type | Kind | File | Purpose |
 |---|---|---|---|
 | `Role` | serde enum (`Admin`) | `src/character.rs` | A privilege a character holds; stored in `Character.roles` and gates admin verbs. Not an ECS component. |
+| `StoredCharacter` | serde struct | `src/stored.rs` | The flat on-disk DTO for a PC — the **only** serde surface. `into_components()`/`from_components()` bridge it to `Name + Actor + Character`. Keeps the pre-split JSON layout (every optional field `#[serde(default)]`) so old `data/characters/<name>.json` still loads. |
 
 ## Notes
 - **One plugin:** `ActorPlugin` (`src/plugin.rs`) calls each command's
@@ -69,9 +80,15 @@ Non-component types this crate defines.
   `grim_world::WorldPlugin`; the shutdown countdown/signal machinery by
   `grim_world::ShutdownPlugin`. A full stack composes those alongside
   `ActorPlugin` (see `GrimHeadlessPlugins`).
-- `Gender` and `RoomLocation` stay in `grim-engine-types` (the session
-  `ClientState` references `Gender`, and hoisting `RoomLocation` would cycle);
-  `Character` points *up* at them. See ARCHITECTURE.md §4 and ADR-0001.
+- **`Player` is present only while connected.** On disconnect, `save_on_disconnect`
+  (grim-persistence) removes `Player` and inserts `Linkdead`; on reconnect the
+  scene inserts `Player` and removes `Linkdead`. So online ⇔ has `Player`,
+  linkdead ⇔ has `Character` and no `Player`. Takeover keeps the *live* `Player`
+  (whose `connection` differs from the closing one) untouched.
+- `Gender` stays in `grim-engine-types` (the session `ClientState` references it);
+  `Actor`/`StoredCharacter` point *up* at it. `RoomLocation` now lives in
+  `grim-world` (`Character.last_room` and `StoredCharacter.last_room` point up at
+  it). See ARCHITECTURE.md §4 and ADR-0001.
 
 ---
 *Format: [`docs/README.template.md`](../../docs/README.template.md). Improve over time.*

@@ -13,7 +13,7 @@ use std::sync::Arc;
 use bevy::log::{error, info, warn};
 use bevy::prelude::*;
 use grim_actor::{Character, Linkdead};
-use grim_engine_types::components::{Client, ClientState};
+use grim_engine_types::components::{Client, ClientState, Name as GrimName};
 use grim_networking::{Connection, HandoverEntry, HandoverManifest};
 use sendfd::{RecvWithFd, SendWithFd};
 
@@ -206,11 +206,13 @@ pub(crate) fn install_copyover_signal(signal: Res<CopyoverSignal>) {
 /// If `SIGUSR2` fired, snapshot the in-game connections and ask the tokio thread
 /// to hand them to a successor process. Runs once — `started` latches so a
 /// second signal mid-handoff is ignored.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn poll_copyover_signal(
     signal: Res<CopyoverSignal>,
     bridge: Res<NetworkBridge>,
     clients: Query<&Client>,
     characters: Query<&Character>,
+    names: Query<&GrimName>,
     linkdead: Query<&Linkdead>,
     connections: Query<&Connection>,
     mut started: Local<bool>,
@@ -235,7 +237,13 @@ pub(crate) fn poll_copyover_signal(
         if linkdead.get(char_entity).is_ok() {
             continue;
         }
-        let Ok(character) = characters.get(char_entity) else {
+        // A bound, in-game character is a PC: confirm the `Character` being and
+        // read its display name from the `Name` component (post-split, the name
+        // no longer lives on `Character`).
+        if characters.get(char_entity).is_err() {
+            continue;
+        }
+        let Ok(name) = names.get(char_entity) else {
             continue;
         };
         let Ok(conn) = connections.get(client.connection) else {
@@ -243,7 +251,7 @@ pub(crate) fn poll_copyover_signal(
         };
         list.push(CopyoverConn {
             conn_id: conn.id,
-            character: character.name.clone(),
+            character: name.0.clone(),
             echo_hidden: conn.echo_hidden,
         });
     }

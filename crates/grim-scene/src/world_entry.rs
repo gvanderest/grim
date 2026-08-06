@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
-use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player};
+use grim_actor::{Actor, Character, InRoom, Linkdead, OutputHistory, Player, StoredCharacter};
 use grim_engine_types::components::{Client, ClientState, Description, Name as GrimName};
 use grim_engine_types::events::LinkdeadAnnounce;
 use grim_engine_types::GrimId;
@@ -33,7 +33,7 @@ pub(crate) fn enter_world_by_name(
     account_id: GrimId,
     name: &str,
     commands: &mut Commands,
-    characters: &Query<(Entity, &Character, &GrimName)>,
+    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
     players: &Query<&Player>,
     linkdead: &Query<&Linkdead>,
     histories: &mut Query<&mut OutputHistory>,
@@ -55,9 +55,9 @@ pub(crate) fn enter_world_by_name(
     // Prefer a resident entity for this name (linkdead beats online).
     let resident = characters
         .iter()
-        .filter(|(_, _, n)| n.0.eq_ignore_ascii_case(name))
-        .max_by_key(|(e, _, _)| if linkdead.get(*e).is_ok() { 1 } else { 0 })
-        .map(|(e, c, _)| (e, c.account_id));
+        .filter(|(_, _, _, n)| n.0.eq_ignore_ascii_case(name))
+        .max_by_key(|(e, _, _, _)| if linkdead.get(*e).is_ok() { 1 } else { 0 })
+        .map(|(e, c, _, _)| (e, c.account_id));
 
     if let Some((char_entity, char_account)) = resident {
         // Fail closed: the character must belong to the authed account.
@@ -125,12 +125,9 @@ fn reconnect_linkdead(
     announce_linkdead: &mut MessageWriter<LinkdeadAnnounce>,
 ) {
     commands.entity(char_entity).remove::<Linkdead>();
-    commands.entity(char_entity).insert((
-        Player {
-            connection: Some(conn),
-        },
-        ConnectedAt(Utc::now()),
-    ));
+    commands
+        .entity(char_entity)
+        .insert((Player { connection: conn }, ConnectedAt(Utc::now())));
     client.character = Some(char_entity);
     client.state = ClientState::InGame;
     client.input_queue = std::collections::VecDeque::new();
@@ -162,33 +159,31 @@ fn takeover_resident(
     conn: Entity,
     client: &mut Client,
     commands: &mut Commands,
-    characters: &Query<(Entity, &Character, &GrimName)>,
+    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
     players: &Query<&Player>,
     rooms: &RoomResolver,
     starting: Entity,
     outputs: &mut MessageWriter<ConnectionOutput>,
     disconnect: &mut MessageWriter<DisconnectRequest>,
 ) {
-    // Online/offline resident → takeover: kick any existing session.
+    // Online resident → takeover: kick the existing session. (A resident with
+    // no `Player` is linkdead and handled by the reconnect path, not here.)
     if let Ok(player) = players.get(char_entity) {
-        if let Some(old_conn) = player.connection {
-            outputs.write(ConnectionOutput::new(
-                old_conn,
-                "Someone else has logged into this character.\n",
-            ));
-            disconnect.write(DisconnectRequest {
-                connection: old_conn,
-            });
-        }
+        let old_conn = player.connection;
+        outputs.write(ConnectionOutput::new(
+            old_conn,
+            "Someone else has logged into this character.\n",
+        ));
+        disconnect.write(DisconnectRequest {
+            connection: old_conn,
+        });
     }
     let last = characters
         .get(char_entity)
         .ok()
-        .and_then(|(_, c, _)| c.last_room.clone());
+        .and_then(|(_, c, _, _)| c.last_room.clone());
     commands.entity(char_entity).insert((
-        Player {
-            connection: Some(conn),
-        },
+        Player { connection: conn },
         ConnectedAt(Utc::now()),
         InRoom {
             room: rooms.placement(last.as_ref(), starting),
@@ -203,9 +198,10 @@ fn takeover_resident(
 }
 
 /// Spawn a fresh in-world entity for a character loaded from disk and advance
-/// the session to the MOTD.
+/// the session to the MOTD. `loaded` is the flat [`StoredCharacter`] DTO; it
+/// splits into `Name + Actor + Character`.
 fn spawn_from_disk(
-    loaded: Character,
+    loaded: StoredCharacter,
     conn: Entity,
     client: &mut Client,
     commands: &mut Commands,
@@ -214,15 +210,14 @@ fn spawn_from_disk(
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
     let last = loaded.last_room.clone();
-    let canonical = loaded.name.clone();
+    let (name, actor, character) = loaded.into_components();
     let char_entity = commands
         .spawn((
-            loaded,
-            GrimName(canonical),
+            name,
+            actor,
+            character,
             Description("A new adventurer.".into()),
-            Player {
-                connection: Some(conn),
-            },
+            Player { connection: conn },
             ConnectedAt(Utc::now()),
             InRoom {
                 room: rooms.placement(last.as_ref(), starting),

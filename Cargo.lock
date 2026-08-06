@@ -1069,6 +1069,7 @@ dependencies = [
  "bevy",
  "chrono",
  "grim-engine-types",
+ "serde",
  "signal-hook",
 ]
 

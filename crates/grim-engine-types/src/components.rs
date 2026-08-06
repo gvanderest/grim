@@ -95,19 +95,12 @@ pub struct Account {
     pub created_at: DateTime<Utc>,
 }
 
-/// The stable, entity-independent storage location of a room: area + room
-/// `friendly_id`s. Persisted on a character (`grim_actor::Character.last_room`)
-/// so a player can be placed back into the *new* instance of the same room after
-/// a restart or copyover. Kept here — not in `grim-world` — because moving it up
-/// would force `grim-engine-types` to depend on `grim-world` (a cycle); step 3
-/// relocates it once `Character` splits.
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct RoomLocation {
-    pub area: String,
-    pub room: String,
-}
+// `RoomLocation` used to live here. Placement Phase 2a step 3 relocated it to
+// `grim-world` (the being-free world layer) once `Character` split, so the type
+// now sits below all its consumers with no reverse edge. See
+// `grim_world::RoomLocation`.
 
-// ─── Descriptive (shared by characters, NPCs, items) ─────────────────
+// ─── Descriptive (shared by characters, creatures, items) ────────────
 
 /// Display name for any visible entity.
 #[derive(Component, Debug, Clone)]
