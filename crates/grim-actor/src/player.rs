@@ -30,6 +30,11 @@ impl OutputHistory {
         }
     }
     pub fn push(&mut self, line: &str) {
+        // A zero-capacity history retains nothing — bail before storing, else
+        // the pop-then-push below would leave one line despite `max == 0`.
+        if self.max == 0 {
+            return;
+        }
         if self.lines.len() >= self.max {
             self.lines.pop_front();
         }
@@ -66,5 +71,18 @@ mod tests {
         assert!(h.lines.is_empty());
         // A second drain yields nothing.
         assert!(h.drain().is_empty());
+    }
+
+    #[test]
+    fn output_history_zero_capacity_retains_nothing() {
+        let mut h = OutputHistory::with_max(0);
+        h.push("a");
+        h.push("b");
+        assert!(h.lines.is_empty(), "max == 0 must retain nothing");
+        assert!(h.drain().is_empty());
+        // `default()` is also zero-capacity — same contract.
+        let mut d = OutputHistory::default();
+        d.push("x");
+        assert!(d.lines.is_empty());
     }
 }

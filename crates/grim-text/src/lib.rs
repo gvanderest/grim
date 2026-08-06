@@ -19,23 +19,11 @@
 //! this crate Bevy-free and preserves current behaviour exactly. The `include_str!`
 //! that used to reach out of the crate into the workspace-root `locales/` is gone.
 
+#[macro_use]
+mod macros;
 mod catalog;
 
 pub use catalog::tr;
-
-/// Look up and interpolate a catalog key with `t!()`-style syntax.
-///
-/// ```ignore
-/// tr!("login.prompt");
-/// tr!("social.say.third_party", speaker = speaker, text = text);
-/// ```
-#[macro_export]
-macro_rules! tr {
-    ($key:expr $(, $arg:ident = $val:expr)* $(,)?) => {{
-        let args: &[(&str, &str)] = &[$((stringify!($arg), $val.as_ref())),*];
-        $crate::tr($key, args)
-    }};
-}
 
 #[cfg(test)]
 mod tests {

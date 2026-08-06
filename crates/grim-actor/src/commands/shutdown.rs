@@ -25,6 +25,11 @@ fn handle_shutdown_command(
     mut broadcast: MessageWriter<ServerBroadcast>,
     mut commands: Commands,
 ) {
+    // `active` reflects last tick's resource; `insert_resource` below only lands
+    // at the next sync point. Track within this batch too, so two admin
+    // `shutdown`s read in the same tick schedule exactly one countdown (the
+    // first) rather than stacking two.
+    let mut scheduled = false;
     for cmd in engine.read() {
         let Command::Shutdown { seconds } = cmd.command else {
             continue;
@@ -42,7 +47,7 @@ fn handle_shutdown_command(
         if !is_admin {
             continue;
         }
-        if active.is_some() {
+        if active.is_some() || scheduled {
             info.write(InfoMessage {
                 target: actor,
                 text: "A shutdown is already scheduled.\n".into(),
@@ -53,6 +58,7 @@ fn handle_shutdown_command(
             text: warn_text(seconds),
         });
         commands.insert_resource(ActiveShutdown(ShutdownCountdown::new(seconds)));
+        scheduled = true;
     }
 }
 
@@ -153,6 +159,32 @@ mod tests {
         });
         app.update();
 
+        let infos = drain::<InfoMessage>(&app);
+        assert!(infos.iter().any(|i| i.contains("already scheduled")));
+    }
+
+    #[test]
+    fn two_admin_shutdowns_in_one_tick_schedule_only_one() {
+        let mut app = test_app();
+        let actor = spawn_character(&mut app, vec![Role::Admin]);
+        // Both land in the same batch, read before either `insert_resource`
+        // applies. The loop-local guard must still schedule exactly one.
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Shutdown { seconds: 30 },
+        });
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Shutdown { seconds: 5 },
+        });
+        app.update();
+
+        assert!(app.world().get_resource::<ActiveShutdown>().is_some());
+        // First wins: one broadcast (for 30s), and the second request is
+        // rejected with the "already scheduled" notice.
+        let casts = drain::<ServerBroadcast>(&app);
+        assert_eq!(casts.len(), 1, "exactly one countdown announced: {casts:?}");
+        assert!(casts[0].contains("30"));
         let infos = drain::<InfoMessage>(&app);
         assert!(infos.iter().any(|i| i.contains("already scheduled")));
     }

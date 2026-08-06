@@ -8,10 +8,11 @@
 #   - shell files (lib.rs / mod.rs):   <=  80 lines  (doc + mod decls + re-exports)
 #
 # It ALSO enforces that shell files (lib.rs / mod.rs) contain **no definitions**
-# — only module declarations and re-exports. A `fn` / `struct` / `enum` /
-# `trait` / `impl` in a lib.rs or mod.rs is a violation: move it to a sibling
-# concern module. Only the production region (before the first `#[cfg(test)]`)
-# is scanned, so inline test modules are exempt.
+# — only module declarations and re-exports. Any `fn` / `struct` / `enum` /
+# `trait` / `impl` / `union` / `type` / `const` / `static` / `macro_rules!` in a
+# lib.rs or mod.rs is a violation (at any visibility — `pub`, `pub(crate)`, …):
+# move it to a sibling concern module. Only the production region (before the
+# first `#[cfg(test)]`) is scanned, so inline test modules are exempt.
 #
 # Test code is EXEMPT (tests are kept inline but split by concern; they do not
 # count toward a file's size). A file's test code is:
@@ -77,9 +78,13 @@ for f in "${files[@]}"; do
     # exempt. Match `fn`/`struct`/`enum`/`trait` (with optional pub/async) and
     # `impl` (with optional pub/unsafe) anchored at line start.
     if [[ "$kind" == "shell" && "$prod" -gt 0 ]]; then
+        # `pub`, `pub(crate)`, `pub(super)`, `pub(in ...)` all count as a
+        # definition's visibility — match the bare keyword or a `pub(...)` form.
+        vis='(pub([[:space:]]+|\([^)]*\)[[:space:]]*))?'
         defs=$(head -n "$prod" "$f" | grep -nE \
-            -e '^[[:space:]]*(pub[[:space:]]+)?(async[[:space:]]+)?(fn|struct|enum|trait)\b' \
-            -e '^[[:space:]]*(pub[[:space:]]+)?(unsafe[[:space:]]+)?impl\b' || true)
+            -e "^[[:space:]]*${vis}(async[[:space:]]+)?(const[[:space:]]+)?(unsafe[[:space:]]+)?(fn|struct|enum|trait|union|type|const|static)\b" \
+            -e "^[[:space:]]*${vis}(unsafe[[:space:]]+)?impl\b" \
+            -e '^[[:space:]]*macro_rules![[:space:]]*' || true)
         if [[ -n "$defs" ]]; then
             echo "FAIL (no defs in ${base}): ${f} contains definitions — move them to a sibling module:"
             echo "$defs" | sed 's/^/    /'

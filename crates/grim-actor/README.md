@@ -15,7 +15,6 @@ lookups + shutdown machinery) and never the reverse.
 | Component | File | Purpose |
 |---|---|---|
 | `Character` | `src/character.rs` | A persisted being belonging to an account; carries name, roles, build, title, restrings, `last_room`. |
-| `Role` | `src/character.rs` | A privilege a character holds (`Admin`); gates admin verbs. |
 | `Player` | `src/player.rs` | Marks a character player-controlled; links to its `Connection` (`None` = linkdead). |
 | `OutputHistory` | `src/player.rs` | Bounded ring buffer of recent output lines, for reconnect. |
 | `Linkdead` | `src/player.rs` | Character is in-world but its player disconnected. |
@@ -53,6 +52,13 @@ Player-facing verbs and where to find their handlers.
 | `DisconnectRequest` | Message (from `grim-networking`) | `src/commands/quit.rs` |
 | `LookRoom` / `LookEntity` / `MoveEvent` | Message (world-happening events, **registered by `grim_world::WorldPlugin`**) | emitted by `look`/`movement` |
 | `ServerBroadcast` | Message (**registered by `grim_world::ShutdownPlugin`**) | `src/commands/shutdown.rs` |
+
+## Types
+Non-component types this crate defines.
+
+| Type | Kind | File | Purpose |
+|---|---|---|---|
+| `Role` | serde enum (`Admin`) | `src/character.rs` | A privilege a character holds; stored in `Character.roles` and gates admin verbs. Not an ECS component. |
 
 ## Notes
 - **One plugin:** `ActorPlugin` (`src/plugin.rs`) calls each command's

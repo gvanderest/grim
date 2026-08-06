@@ -192,6 +192,9 @@ mod tests {
     use super::*;
     use grim_engine_types::cardinal::Cardinal;
     use grim_engine_types::character::Gender;
+    // The project display-name component, aliased to dodge Bevy's prelude `Name`
+    // (the glob above brings Bevy's in scope). See AGENTS.md.
+    use grim_engine_types::components::Name as GrimName;
     use grim_engine_types::GrimId;
 
     use crate::character::Role;
@@ -564,7 +567,7 @@ mod tests {
                     description: String::new(),
                     area,
                 },
-                Name("Town Square".into()),
+                GrimName("Town Square".into()),
                 Exits::default(),
             ));
             let start = spawn_room(&mut app, "forest", "clearing", Exits::default());
