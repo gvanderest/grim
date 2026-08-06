@@ -1,11 +1,12 @@
 use bevy::log::info;
 use bevy::prelude::*;
 use grim_engine_types::components::{
-    Account, Area, Character, Client, InRoom, Linkdead, OutputHistory, Player, Room, RoomLocation,
+    Account, Character, Client, InRoom, Linkdead, OutputHistory, Player, RoomLocation,
 };
 use grim_engine_types::events::{LinkdeadAnnounce, MoveEvent};
 use grim_engine_types::GrimId;
 use grim_networking::{Connection, ConnectionClosed};
+use grim_world::{Area, Room};
 use std::fs;
 use std::path::PathBuf;
 

@@ -3,7 +3,9 @@
 //! it. Movement and admin `goto` build on these; see `docs/adr/0001`.
 
 use bevy::prelude::*;
-use grim_engine_types::components::{Area, Room, RoomLocation};
+use grim_engine_types::components::RoomLocation;
+
+use super::topology::{Area, Room};
 
 /// Resolve a room entity to its stable, entity-independent storage location
 /// (area + room `friendly_id`s). These survive a world reseed, so persisting

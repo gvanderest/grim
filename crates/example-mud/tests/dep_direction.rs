@@ -87,10 +87,19 @@ const ALLOWED_NORMAL: &[Edge] = &[
     ("grim-world", "grim-color"),
     ("grim-channel", "grim-engine-types"),
     ("grim-channel", "grim-text"),
+    // NOTE (Placement Phase 2a): the world-topology types (Area/Room/Exits/
+    // StartingRoom) moved into grim-world. grim-channel reads `Room`, so it now
+    // depends on grim-world. grim-world does not depend on grim-channel, so this
+    // adds no cycle.
+    ("grim-channel", "grim-world"),
     // `grim-persistence` loads/saves accounts + characters (→ god-types) and reacts
     // to connection lifecycle events (→ grim-networking).
     ("grim-persistence", "grim-engine-types"),
     ("grim-persistence", "grim-networking"),
+    // NOTE (Placement Phase 2a): persistence reads `Area`/`Room` (world topology
+    // moved into grim-world), so it now depends on grim-world. grim-world does not
+    // depend on grim-persistence, so this adds no cycle.
+    ("grim-persistence", "grim-world"),
     // ── Facade + binary ────────────────────────────────────────────────────────
     // NOTE (divergence #4): absent from §4's subsystem diagram. The facade `grim`
     // depends on and re-exports every subsystem (GrimDefaultPlugins, §1/§8 step 9);

@@ -1,10 +1,11 @@
 use grim_text::tr;
 
 use bevy::prelude::*;
-use grim_engine_types::components::{Character, InRoom, Name, Player, Room};
+use grim_engine_types::components::{Character, InRoom, Name, Player};
 use grim_engine_types::events::{
     Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
 };
+use grim_world::Room;
 
 /// The last player who whispered (`tell`/`whisper`) this character, so `reply`
 /// can answer them. Set on delivery; points at a (boot-local) player entity, so
@@ -256,11 +257,12 @@ fn handle_gecho(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_engine_types::components::{Character, Gender, InRoom, Name, Player, Role, Room};
+    use grim_engine_types::components::{Character, Gender, InRoom, Name, Player, Role};
     use grim_engine_types::events::{
         Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
     };
     use grim_engine_types::GrimId;
+    use grim_world::Room;
 
     use chrono::Utc;
 

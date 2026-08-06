@@ -2,10 +2,11 @@
 //! shared [`place_actor`] seam every "put actor in room X" path routes through.
 
 use bevy::prelude::*;
-use grim_engine_types::components::{Area, Character, Exits, InRoom, Room, RoomLocation};
+use grim_engine_types::components::{Character, InRoom, RoomLocation};
 use grim_engine_types::events::{Command, EngineCommand, InfoMessage, LookRoom, MoveEvent};
 
 use super::area::{resolve_room_address, room_location, RoomLookup};
+use super::topology::{Area, Exits, Room};
 
 /// The single seam every "put actor in room X" path routes through: set the
 /// actor's `InRoom` and refresh their persisted location. Per ADR-0001 the

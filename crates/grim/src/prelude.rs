@@ -5,4 +5,6 @@
 pub use grim_channel::LastWhisperFrom;
 pub use grim_engine_types::prelude::*;
 pub use grim_scene::{ConnectedAt, ReservedNamePrefixes};
-pub use grim_world::{ClassDef, ClassRegistry, Npc, RaceDef, RaceRegistry};
+pub use grim_world::{
+    Area, ClassDef, ClassRegistry, Exits, Npc, RaceDef, RaceRegistry, Room, StartingRoom,
+};

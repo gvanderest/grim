@@ -956,6 +956,7 @@ dependencies = [
  "chrono",
  "grim-engine-types",
  "grim-text",
+ "grim-world",
 ]
 
 [[package]]
@@ -1013,6 +1014,7 @@ dependencies = [
  "chrono",
  "grim-engine-types",
  "grim-networking",
+ "grim-world",
  "serde_json",
 ]
 
