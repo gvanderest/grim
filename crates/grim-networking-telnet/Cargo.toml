@@ -15,3 +15,6 @@ signal-hook = { workspace = true }
 sendfd = { workspace = true }
 sd-notify = { workspace = true }
 rustix = { workspace = true }
+
+[dev-dependencies]
+chrono = { workspace = true }

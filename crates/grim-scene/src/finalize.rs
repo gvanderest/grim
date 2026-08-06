@@ -17,6 +17,7 @@ use grim_engine_types::components::{Account, Client, ClientState, Description, G
 use grim_engine_types::GrimId;
 use grim_networking::ConnectionOutput;
 use grim_persistence::{load_character_by_name, PersistenceConfig};
+use grim_text::tr;
 
 use crate::formatter;
 use crate::params::{SessionRes, WorldEntry};
@@ -188,7 +189,7 @@ pub(crate) fn finalize_character(
             char_name,
             actor,
             character,
-            Description("A new adventurer.".into()),
+            Description(tr!("character.default_description")),
             Player { connection: conn },
             ConnectedAt(Utc::now()),
             InRoom {

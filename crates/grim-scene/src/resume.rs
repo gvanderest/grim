@@ -5,11 +5,12 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
-use grim_actor::{Character, InRoom, OutputHistory, Player};
+use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player};
 use grim_engine_types::components::{Account, Client, ClientState, Description, Name as GrimName};
 use grim_engine_types::events::LookRoom;
 use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
 use grim_persistence::{load_character_by_name, PersistenceConfig};
+use grim_text::tr;
 use grim_world::StartingRoom;
 
 use crate::params::RoomResolver;
@@ -105,11 +106,17 @@ fn resolve_resumed(
             return None;
         };
         let r = rooms.placement(character.last_room.as_ref(), starting_room);
-        commands.entity(resident).insert((
-            Player { connection: conn },
-            ConnectedAt(Utc::now()),
-            InRoom { room: r },
-        ));
+        // The resident may be linkdead (has `Character`, no `Player`); bringing
+        // it back online must both attach the `Player` and clear `Linkdead` in
+        // the same deferred command set, or it would be online AND linkdead.
+        commands
+            .entity(resident)
+            .insert((
+                Player { connection: conn },
+                ConnectedAt(Utc::now()),
+                InRoom { room: r },
+            ))
+            .remove::<Linkdead>();
         Some((acct, resident, r))
     } else {
         // Not resident: load from disk and spawn a fresh entity.
@@ -129,7 +136,7 @@ fn resolve_resumed(
                 name,
                 actor,
                 character,
-                Description("A new adventurer.".into()),
+                Description(tr!("character.default_description")),
                 Player { connection: conn },
                 ConnectedAt(Utc::now()),
                 InRoom { room: r },

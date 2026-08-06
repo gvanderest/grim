@@ -5,20 +5,17 @@
 **Depends on:** `grim-color` (re-exported), plus `bevy`, `serde`, `nanoid`, `chrono`.
 
 ## Components
+Only the primitives this crate still owns. The being components
+(`Character`/`Actor`/`Creature`/`Player`/`InRoom`/`OutputHistory`/`Linkdead`) live
+in **`grim-actor`**, and the world-topology components (`Area`/`Room`/`Exits`) plus
+`RoomLocation` live in **`grim-world`** — see those crates' READMEs.
+
 | Component | File | Purpose |
 |---|---|---|
 | `Client` | `src/components.rs` | Session state machine, one per connection (holds `ClientState`, account/character links, input queue, cooldown). |
 | `Account` | `src/components.rs` | Persisted account: identifier, password hash, owned character IDs. |
-| `Character` | `src/components.rs` | Persisted character: name, roles, gender/race/class, level, title, restrings, last room. |
-| `Area` | `src/components.rs` | An area — a collection of rooms. |
-| `Room` | `src/components.rs` | A room: name, description, owning area, exits. |
-| `Exits` | `src/components.rs` | `HashMap<Cardinal, Entity>` of a room's exits. |
-| `InRoom` | `src/components.rs` | Which room an entity is currently in. |
-| `Name` | `src/components.rs` | Display name for any visible entity. |
+| `Name` | `src/components.rs` | Display name for any visible entity (a being's name lives here, not on `Character`). |
 | `Description` | `src/components.rs` | Long description shown by `look <target>`. |
-| `Player` | `src/components.rs` | Marks a character player-controlled; links to its `Connection` (`None` = linkdead). |
-| `OutputHistory` | `src/components.rs` | Bounded ring buffer of recent output lines. |
-| `Linkdead` | `src/components.rs` | Marker: character still in-world but player disconnected. |
 
 ## Systems
 None. This crate is type definitions only — no `Plugin`, no `add_systems`, no observers.

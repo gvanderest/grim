@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use bevy::log::{error, info, warn};
 use bevy::prelude::*;
-use grim_actor::{Character, Linkdead};
+use grim_actor::{Character, Linkdead, Player};
 use grim_engine_types::components::{Client, ClientState, Name as GrimName};
 use grim_networking::{Connection, HandoverEntry, HandoverManifest};
 use sendfd::{RecvWithFd, SendWithFd};
@@ -213,6 +213,7 @@ pub(crate) fn poll_copyover_signal(
     clients: Query<&Client>,
     characters: Query<&Character>,
     names: Query<&GrimName>,
+    players: Query<&Player>,
     linkdead: Query<&Linkdead>,
     connections: Query<&Connection>,
     mut started: Local<bool>,
@@ -246,6 +247,18 @@ pub(crate) fn poll_copyover_signal(
         let Ok(name) = names.get(char_entity) else {
             continue;
         };
+        // Takeover guard: after a takeover the old `Client` lingers until its
+        // `ConnectionClosed` is processed, but the character's live `Player`
+        // already points at the NEW connection. Only the session that actually
+        // owns the character (its connection == the live `Player.connection`)
+        // may carry across — otherwise a copyover in that window would hand off
+        // BOTH connections for one character.
+        let Ok(player) = players.get(char_entity) else {
+            continue;
+        };
+        if player.connection != client.connection {
+            continue;
+        }
         let Ok(conn) = connections.get(client.connection) else {
             continue;
         };
@@ -277,6 +290,86 @@ pub(crate) fn finish_copyover(done: Res<CopyoverDone>, mut exit: MessageWriter<A
 mod tests {
     use super::*;
     use std::os::fd::AsRawFd;
+
+    /// Takeover/copyover regression: after a takeover the old `Client` lingers
+    /// (its `ConnectionClosed` not yet processed) while the character's live
+    /// `Player` already points at the NEW connection. A copyover firing in that
+    /// window must hand off ONLY the new connection, not both.
+    #[test]
+    fn copyover_manifest_skips_taken_over_old_connection() {
+        use crate::bridge::NetworkEvent;
+        use grim_actor::{Character, Player};
+        use grim_engine_types::components::{Client, ClientState, Name as GrimName};
+        use grim_engine_types::GrimId;
+        use grim_networking::Connection;
+        use std::sync::Mutex;
+
+        fn conn(id: usize) -> Connection {
+            Connection {
+                id,
+                addr: ([127, 0, 0, 1], 40000 + id as u16).into(),
+                echo_hidden: false,
+            }
+        }
+        fn ingame(connection: Entity, character: Entity) -> Client {
+            Client {
+                state: ClientState::InGame,
+                character: Some(character),
+                ..Client::new(connection)
+            }
+        }
+
+        let mut app = App::new();
+        let signal = CopyoverSignal::default();
+        signal.0.store(true, Ordering::SeqCst);
+        app.insert_resource(signal);
+
+        let (to_net_tx, mut to_net_rx) = tokio::sync::mpsc::channel::<NetworkCommand>(16);
+        let (_from_tx, from_rx) = std::sync::mpsc::channel::<NetworkEvent>();
+        app.insert_resource(NetworkBridge {
+            to_network: to_net_tx,
+            from_network: std::sync::Arc::new(Mutex::new(from_rx)),
+        });
+        app.add_systems(Update, poll_copyover_signal);
+
+        let conn_old = app.world_mut().spawn(conn(1)).id();
+        let conn_new = app.world_mut().spawn(conn(2)).id();
+        // The character's live Player points at the NEW connection (post-takeover).
+        let character = app
+            .world_mut()
+            .spawn((
+                GrimName("Hero".into()),
+                Character {
+                    id: GrimId::new(),
+                    account_id: GrimId::new(),
+                    created_at: chrono::Utc::now(),
+                    last_room: None,
+                    roles: Vec::new(),
+                    class: String::new(),
+                    title: None,
+                    restrings: std::collections::HashMap::new(),
+                },
+                Player {
+                    connection: conn_new,
+                },
+            ))
+            .id();
+        // Old lingering session + new owning session, both bound to the character.
+        app.world_mut().spawn(ingame(conn_old, character));
+        app.world_mut().spawn(ingame(conn_new, character));
+
+        app.update();
+
+        let cmd = to_net_rx.try_recv().expect("a Copyover command was sent");
+        let NetworkCommand::Copyover { conns } = cmd else {
+            panic!("expected NetworkCommand::Copyover");
+        };
+        assert_eq!(conns.len(), 1, "only the owning connection carries across");
+        assert_eq!(
+            conns[0].conn_id, 2,
+            "the new (owning) connection, not the old"
+        );
+    }
 
     /// The copyover framing round-trips the manifest and real fds over a unix
     /// socket in-process (no child spawn). Covers the `write_handoff`/`read_handoff`
