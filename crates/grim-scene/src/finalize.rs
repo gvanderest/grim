@@ -12,10 +12,8 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
-use grim_actor::{Character, InRoom, Player};
-use grim_engine_types::components::{
-    Account, Client, ClientState, Description, Gender, Name as GrimName,
-};
+use grim_actor::{InRoom, Player, StoredCharacter};
+use grim_engine_types::components::{Account, Client, ClientState, Description, Gender};
 use grim_engine_types::GrimId;
 use grim_networking::ConnectionOutput;
 use grim_persistence::{load_character_by_name, PersistenceConfig};
@@ -75,32 +73,30 @@ pub(crate) fn backfill_and_enter(
     };
     let account_id = account.id;
     // Update the character with the picked build data.
-    if let Some(mut character) = load_character_by_name(&res.persistence, &name) {
-        character.gender = gender;
-        character.race = race;
-        character.class = class;
+    if let Some(mut stored) = load_character_by_name(&res.persistence, &name) {
+        stored.gender = gender;
+        stored.race = race;
+        stored.class = class;
         // Write the JSON under the character's OWN stored name (letters-only, set
         // through validate_character_name at creation), not the raw input, so the
         // path can't be steered outside characters_dir.
+        let cname = stored.name.clone();
         let path = res
             .persistence
             .characters_dir()
-            .join(format!("{}.json", character.name));
+            .join(format!("{cname}.json"));
         let _ = std::fs::create_dir_all(res.persistence.characters_dir());
-        if let Ok(json) = serde_json::to_string_pretty(&character) {
+        if let Ok(json) = serde_json::to_string_pretty(&stored) {
             let _ = std::fs::write(path, json);
         }
         // If the character is already resident (linkdead / in-world), its ECS
-        // `Character` component is stale — `enter_world_by_name` reuses the
-        // existing entity rather than re-reading disk. Refresh the component so a
-        // later move/disconnect save can't overwrite the corrected JSON with the
-        // old empty race/class.
-        if let Some((entity, _, _)) = world
-            .characters
-            .iter()
-            .find(|(_, _, n)| n.0 == character.name)
-        {
-            commands.entity(entity).insert(character);
+        // `Actor`/`Character` components are stale — `enter_world_by_name` reuses
+        // the existing entity rather than re-reading disk. Refresh them (the
+        // build data lives on `Actor` + `Character`) so a later move/disconnect
+        // save can't overwrite the corrected JSON with the old empty race/class.
+        if let Some((entity, _, _, _)) = world.characters.iter().find(|(_, _, _, n)| n.0 == cname) {
+            let (_, actor, character) = stored.into_components();
+            commands.entity(entity).insert((actor, character));
         }
     }
     world_entry::enter_world_by_name(
@@ -161,7 +157,9 @@ pub(crate) fn finalize_character(
         return;
     }
     let char_id = GrimId::new();
-    let character = Character {
+    // The flat DTO is the disk surface; it splits into `Name + Actor + Character`
+    // for the live entity.
+    let stored = StoredCharacter {
         id: char_id,
         name: name.clone(),
         account_id: account.id,
@@ -181,17 +179,17 @@ pub(crate) fn finalize_character(
         .characters_dir()
         .join(format!("{name}.json"));
     let _ = std::fs::create_dir_all(res.persistence.characters_dir());
-    if let Ok(json) = serde_json::to_string_pretty(&character) {
+    if let Ok(json) = serde_json::to_string_pretty(&stored) {
         let _ = std::fs::write(path, json);
     }
+    let (char_name, actor, character) = stored.into_components();
     let char_entity = commands
         .spawn((
+            char_name,
+            actor,
             character,
-            GrimName(name.clone()),
             Description("A new adventurer.".into()),
-            Player {
-                connection: Some(conn),
-            },
+            Player { connection: conn },
             ConnectedAt(Utc::now()),
             InRoom {
                 room: res.starting.0,

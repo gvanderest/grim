@@ -69,13 +69,38 @@ registered it, and hands the remainder to that plugin. The Router knows nothing
 about transports.
 
 **Actor**:
-The entity a **Command** is attributed to. Usually a character, but not
-necessarily. The "beings" that can act and be placed in a room — `Character`,
-`Player`, `InRoom`, `Linkdead`, `OutputHistory`, `Role` — live in the
-`grim-actor` crate as of Placement Phase 2a step 2, above the being-free
-`grim-world`. (This step *relocated* those beings as-is; `Character` is still the
-single PC struct — splitting it into an `Actor`/`Creature`/`Character` hierarchy
-is step 3.)
+The entity a **Command** is attributed to, and the shared component base every
+being carries. As of Placement Phase 2a step 3 the being model is a small
+hierarchy, all in the `grim-actor` crate above the being-free `grim-world`:
+
+- **`Actor`** — the "alive thing" base on *every* being (PC and creature):
+  `race`, `level`, `gender`. Movement, perception, and WHO read build data here,
+  so the same code serves players and mobs.
+- **`Character`** — the **PC-only** extension: `id`, `account_id`, `created_at`,
+  `roles`, `class`, `title`, `restrings`, `last_room`. A creature has none of
+  this. `Character` no longer stores a name/race/level/gender — those live on the
+  `Name` component and `Actor`.
+- **`Creature`** — a unit marker for a non-player being (a mob). Replaces the old
+  `grim_world::Npc`; creatures are beings, so the marker sits in the actor layer.
+- **`Player`** — present **only while a connection is driving the character**. It
+  is *not* a persistent trait of the being; it is attached on login/reconnect and
+  removed on disconnect. Online ⇔ has `Player`; **linkdead ⇔ has `Character` and
+  no `Player`** (marked with `Linkdead`).
+- **`Name`** (`grim-engine-types`), **`InRoom`**, **`OutputHistory`**, **`Linkdead`**,
+  and **`Role`** round out the being components.
+
+The display name always lives in the `Name` component, never on a being struct.
+Composition:
+
+| Being | Components |
+|---|---|
+| Online PC | `Name + Actor + Character + Player + InRoom` |
+| Linkdead PC | `Name + Actor + Character + Linkdead + InRoom` (no `Player`) |
+| Creature (mob) | `Name + Actor + Creature + InRoom` |
+
+A PC's on-disk form is the flat `StoredCharacter` DTO (the only serde surface),
+which splits into `Name + Actor + Character` and preserves the pre-split JSON
+layout so old character files still load.
 
 **Alias**:
 A player-defined shorthand that expands to one **Command** before the **Router**

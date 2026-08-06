@@ -114,8 +114,8 @@ plugin registering five scenes. That is correct and not a violation.
 | `grim-scene` | `GrimScenePlugin` | the Scene stack, input routing, output policy |
 | `grim-auth` | `GrimAuthPlugin` | login, account/character creation, selection, MOTD scenes |
 | `grim-editor` | `GrimEditorPlugin` | the Editor scene |
-| `grim-world` | `GrimWorldPlugin` | rooms, areas, exits, room-address lookups (being-free) |
-| `grim-actor` | `ActorPlugin` | the beings (`Character`/`Player`/`InRoom`/…) + the being-reading verbs (`look`/`move`/`goto`/`quit`/`title`/`shutdown`) |
+| `grim-world` | `GrimWorldPlugin` | rooms, areas, exits, room-address lookups, `RoomLocation` (being-free) |
+| `grim-actor` | `ActorPlugin` | the beings — `Actor` base + PC `Character` + `Creature` mob marker + `Player`/`InRoom`/… and the `StoredCharacter` disk DTO — plus the being-reading verbs (`look`/`move`/`goto`/`quit`/`title`/`shutdown`) |
 | `grim-channel` | `GrimChannelPlugin` | channel registry, audience, eligibility (§7) |
 | `grim-persistence` | `GrimPersistencePlugin` | account/character save and load, player aliases, channel toggles |
 | `grim` | — | facade: re-exports and a default plugin group |
@@ -601,6 +601,25 @@ redesigns were deliberately deferred rather than done blind — see
 - **Step 9 — facade inversion.** `grim` depends on the subsystems, re-exports them, and
   provides `GrimDefaultPlugins`; `grim-scene` and `grim-networking-telnet` no longer
   depend on the facade. `example-mud` depends on `grim` alone.
+
+### Placement Phase 2a
+
+Beyond the decomposition steps above, Placement Phase 2a carved the beings into
+their own layer and split the monolithic PC struct:
+
+- **Step 2 — `grim-actor`.** The being components and the being-reading verbs
+  moved out of `grim-world` into `grim-actor`, above the being-free world.
+- **Step 3 — Actor/Character/Creature split (resolved).** The monolithic
+  `Character` became a shared `Actor` base (race/level/gender, on every being) +
+  a PC-only `Character` (account/roles/class/title/restrings/last_room); the
+  `Npc` marker became `grim_actor::Creature`; `RoomLocation` moved from
+  `grim-engine-types` down into `grim-world`; and `Player` became a
+  present-only-while-connected attachment (`{ connection: Entity }`, no longer
+  optional) — **linkdead is now the absence of `Player`**, not a `Player` with a
+  null connection. The display name lives on the `Name` component throughout, and
+  a PC's single on-disk form is the flat `StoredCharacter` DTO (the only serde
+  surface), which keeps the pre-split JSON layout so old character files still
+  load unchanged.
 
 ### Deferred within the decomposition
 

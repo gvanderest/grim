@@ -1,5 +1,7 @@
 //! The `quit` command: request a clean disconnect of the actor's underlying
-//! connection. Reads the actor's [`Player`] to find the connection to close.
+//! connection. Reads the actor's [`Player`] to find the connection to close. A
+//! linkdead actor has no `Player`, so it has no connection to close and is
+//! skipped.
 
 use bevy::prelude::*;
 use grim_engine_types::events::{Command, EngineCommand};
@@ -18,9 +20,9 @@ pub(crate) fn handle_quit(
             continue;
         };
         if let Ok(player) = players.get(cmd.client) {
-            if let Some(conn) = player.connection {
-                disconnect.write(DisconnectRequest { connection: conn });
-            }
+            disconnect.write(DisconnectRequest {
+                connection: player.connection,
+            });
         }
     }
 }
@@ -53,12 +55,7 @@ mod tests {
     fn quit_requests_disconnect_of_the_players_connection() {
         let mut app = test_app();
         let conn = app.world_mut().spawn(()).id();
-        let actor = app
-            .world_mut()
-            .spawn(Player {
-                connection: Some(conn),
-            })
-            .id();
+        let actor = app.world_mut().spawn(Player { connection: conn }).id();
         app.world_mut().write_message(EngineCommand {
             client: actor,
             command: Command::Quit,
@@ -68,9 +65,11 @@ mod tests {
     }
 
     #[test]
-    fn quit_for_linkdead_player_emits_nothing() {
+    fn quit_for_linkdead_actor_emits_nothing() {
+        // Linkdead now means NO `Player`, so there is no connection to close.
+        use crate::player::Linkdead;
         let mut app = test_app();
-        let actor = app.world_mut().spawn(Player { connection: None }).id();
+        let actor = app.world_mut().spawn(Linkdead).id();
         app.world_mut().write_message(EngineCommand {
             client: actor,
             command: Command::Quit,

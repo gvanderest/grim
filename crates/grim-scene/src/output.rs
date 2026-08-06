@@ -99,11 +99,13 @@ pub(crate) fn format_output(
 }
 
 /// The connection entity for a recipient, from its `Player`, else the entity.
+/// A linkdead recipient has no `Player`, so this falls back to the entity (its
+/// `OutputHistory` buffers what is written there — see [`capture_output`]).
 fn find_conn(target: Entity, room_occupants: &Occupants) -> Entity {
     room_occupants
         .get(target)
         .ok()
-        .and_then(|(_, _, p, _)| p.as_ref().and_then(|p| p.connection))
+        .and_then(|(_, _, p, _)| p.map(|p| p.connection))
         .unwrap_or(target)
 }
 
@@ -215,12 +217,10 @@ fn emit_yell(
             continue;
         }
         if let Some(p) = player {
-            if let Some(conn) = p.connection {
-                outputs.write(ConnectionOutput {
-                    prepend_newline: true,
-                    ..ConnectionOutput::new(conn, formatted.clone())
-                });
-            }
+            outputs.write(ConnectionOutput {
+                prepend_newline: true,
+                ..ConnectionOutput::new(p.connection, formatted.clone())
+            });
         }
     }
 }
@@ -240,12 +240,10 @@ fn emit_ooc(
             continue;
         }
         if let Some(p) = player {
-            if let Some(conn) = p.connection {
-                outputs.write(ConnectionOutput {
-                    prepend_newline: true,
-                    ..ConnectionOutput::new(conn, formatted.clone())
-                });
-            }
+            outputs.write(ConnectionOutput {
+                prepend_newline: true,
+                ..ConnectionOutput::new(p.connection, formatted.clone())
+            });
         }
     }
 }
@@ -270,9 +268,7 @@ fn emit_gecho(
         let Some(p) = player else {
             continue;
         };
-        let Some(conn) = p.connection else {
-            continue;
-        };
+        let conn = p.connection;
         let is_other_admin = entity != ev.actor
             && characters
                 .get(entity)
@@ -321,11 +317,7 @@ fn emit_info(
 /// Falls back to the input entity if no Player component found.
 #[allow(dead_code)]
 fn find_connection(entity: Entity, players: &Query<&Player>) -> Entity {
-    players
-        .get(entity)
-        .ok()
-        .and_then(|p| p.connection)
-        .unwrap_or(entity)
+    players.get(entity).map(|p| p.connection).unwrap_or(entity)
 }
 
 /// Capture every `ConnectionOutput` into the connection's `OutputHistory` for
@@ -357,12 +349,10 @@ fn broadcast_to_room(
             continue;
         }
         if let Some(p) = player {
-            if let Some(conn) = p.connection {
-                outputs.write(ConnectionOutput {
-                    prepend_newline: true,
-                    ..ConnectionOutput::new(conn, text.to_string())
-                });
-            }
+            outputs.write(ConnectionOutput {
+                prepend_newline: true,
+                ..ConnectionOutput::new(p.connection, text.to_string())
+            });
         }
     }
 }
@@ -388,12 +378,10 @@ fn broadcast_global(
 ) {
     for (_, _, player, _) in occupants.iter() {
         if let Some(p) = player {
-            if let Some(conn) = p.connection {
-                outputs.write(ConnectionOutput {
-                    prepend_newline: true,
-                    ..ConnectionOutput::new(conn, text.to_string())
-                });
-            }
+            outputs.write(ConnectionOutput {
+                prepend_newline: true,
+                ..ConnectionOutput::new(p.connection, text.to_string())
+            });
         }
     }
 }

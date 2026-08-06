@@ -6,7 +6,7 @@ use std::cmp::Ordering;
 
 use bevy::prelude::*;
 use chrono::{DateTime, Utc};
-use grim_actor::{Character, Linkdead};
+use grim_actor::{Actor, Character, Linkdead, StoredCharacter};
 use grim_engine_types::components::{Client, ClientState, Gender, Name as GrimName};
 use grim_engine_types::events::{Command, EngineCommand, LogoutAnnounce};
 use grim_networking::{ConnectionOutput, DisconnectRequest};
@@ -23,7 +23,7 @@ pub(crate) fn handle_ingame(
     client: &mut Client,
     conn: Entity,
     text: &str,
-    characters: &Query<(Entity, &Character, &GrimName)>,
+    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
     player_chars: &PlayerChars,
     linkdead: &Query<&Linkdead>,
     rooms: &RoomResolver,
@@ -86,7 +86,7 @@ pub(crate) fn handle_ingame(
                 // admin-gated command byte-identical for non-admins.
                 let is_admin = characters
                     .get(char_entity)
-                    .map(|(_, c, _)| c.is_admin())
+                    .map(|(_, c, _, _)| c.is_admin())
                     .unwrap_or(false);
                 dispatch_admin_gated(cmd, is_admin, conn, &mut client.input_queue, outputs);
             }
@@ -157,12 +157,14 @@ fn gender_char(gender: Gender) -> &'static str {
 fn format_who(player_chars: &PlayerChars, linkdead: &Query<&Linkdead>, res: &SessionRes) -> String {
     let mut data: Vec<WhoData> = player_chars
         .iter()
-        .filter_map(|(e, n, _, character, connected)| {
+        .filter_map(|(e, n, _, actor, character, connected)| {
             let ch = character?;
+            // Race/level/gender live on the shared `Actor` base now.
+            let actor = actor?;
             let is_admin = ch.is_admin();
             let race_abbrev = res
                 .races
-                .get(&ch.race)
+                .get(&actor.race)
                 .map(|r| r.abbrev.clone())
                 .unwrap_or_default();
             let class_abbrev = res
@@ -173,12 +175,12 @@ fn format_who(player_chars: &PlayerChars, linkdead: &Query<&Linkdead>, res: &Ses
             let level_text = if is_admin {
                 "IMM".to_string()
             } else {
-                ch.level.to_string()
+                actor.level.to_string()
             };
             Some(WhoData {
                 key: WhoKey {
                     is_admin,
-                    level: ch.level,
+                    level: actor.level,
                     // Fall back to creation time if (impossibly) unstamped, so
                     // the tiebreak stays deterministic rather than panicking.
                     connected_at: connected.map_or(ch.created_at, |c| c.0),
@@ -186,7 +188,7 @@ fn format_who(player_chars: &PlayerChars, linkdead: &Query<&Linkdead>, res: &Ses
                 },
                 row: WhoRow {
                     level: level_text,
-                    gender: gender_char(ch.gender).to_string(),
+                    gender: gender_char(actor.gender).to_string(),
                     race: race_abbrev,
                     class: class_abbrev,
                     guild: String::new(),
@@ -210,10 +212,10 @@ fn format_where(char_entity: Entity, player_chars: &PlayerChars, rooms: &RoomRes
     let actor_area = player_chars
         .get(char_entity)
         .ok()
-        .and_then(|(_, _, ir, _, _)| rooms.rooms.get(ir.room).ok().map(|(_, r, _)| r.area));
+        .and_then(|(_, _, ir, _, _, _)| rooms.rooms.get(ir.room).ok().map(|(_, r, _)| r.area));
     let mut entries: Vec<(String, String)> = Vec::new();
     if let Some(area) = actor_area {
-        for (e, n, ir, _, _) in player_chars.iter() {
+        for (e, n, ir, _, _, _) in player_chars.iter() {
             if e == char_entity {
                 continue;
             }
@@ -270,7 +272,7 @@ pub(crate) fn process_command_queue(
     mut announce_logout: MessageWriter<LogoutAnnounce>,
     mut disconnect: MessageWriter<DisconnectRequest>,
     player_chars: Query<(Entity, &GrimName)>,
-    characters: Query<&Character>,
+    characters: Query<(&GrimName, &Actor, &Character)>,
     persistence: Res<grim_persistence::PersistenceConfig>,
     mut commands: Commands,
 ) {
@@ -297,12 +299,13 @@ pub(crate) fn process_command_queue(
                 // `save_on_disconnect`). The Client is despawned too, so the
                 // ensuing `ConnectionClosed` finds no client and no linkdead is set.
                 if let Some(char_entity) = client.character {
-                    if let Ok(ch) = characters.get(char_entity) {
+                    if let Ok((name, actor, ch)) = characters.get(char_entity) {
+                        let stored = StoredCharacter::from_components(name, actor, ch);
                         let path = persistence
                             .characters_dir()
-                            .join(format!("{}.json", ch.name));
+                            .join(format!("{}.json", name.0));
                         let _ = std::fs::create_dir_all(persistence.characters_dir());
-                        if let Ok(json) = serde_json::to_string_pretty(ch) {
+                        if let Ok(json) = serde_json::to_string_pretty(&stored) {
                             let _ = std::fs::write(path, json);
                         }
                     }

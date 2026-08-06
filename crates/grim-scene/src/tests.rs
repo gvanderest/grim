@@ -4,7 +4,9 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
-use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player, Role};
+use grim_actor::{
+    Actor, Character, InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter,
+};
 use grim_channel::ChannelPlugin;
 use grim_engine_types::components::Name as GrimName;
 use grim_engine_types::components::*;
@@ -57,18 +59,18 @@ fn spawn_room(app: &mut App) -> Entity {
         .id()
 }
 
-fn spawn_ingame(app: &mut App, conn: Entity, character: Character) -> Entity {
+fn spawn_ingame(app: &mut App, conn: Entity, stored: StoredCharacter) -> Entity {
+    let (name, actor, character) = stored.into_components();
     let char_entity = app
         .world_mut()
         .spawn((
+            name,
+            actor,
             character,
-            GrimName("Hero".into()),
             InRoom {
                 room: Entity::PLACEHOLDER,
             },
-            Player {
-                connection: Some(conn),
-            },
+            Player { connection: conn },
         ))
         .id();
     let mut client = Client::new(conn);
@@ -78,8 +80,10 @@ fn spawn_ingame(app: &mut App, conn: Entity, character: Character) -> Entity {
     char_entity
 }
 
-fn make_character(roles: Vec<Role>) -> Character {
-    Character {
+/// A flat [`StoredCharacter`] fixture ("Hero" by default). The post-split disk
+/// surface; split into `Name + Actor + Character` when spawning a live entity.
+fn make_character(roles: Vec<Role>) -> StoredCharacter {
+    StoredCharacter {
         id: GrimId::new(),
         name: "Hero".into(),
         account_id: GrimId::new(),
@@ -123,7 +127,7 @@ fn unique_dir(tag: &str) -> std::path::PathBuf {
 
 /// Write a character to the configured `characters/` dir as if it were saved
 /// there while logged out (no in-world entity).
-fn write_disk_char(dir: &std::path::Path, ch: &Character) {
+fn write_disk_char(dir: &std::path::Path, ch: &StoredCharacter) {
     std::fs::write(
         dir.join("characters").join(format!("{}.json", ch.name)),
         serde_json::to_string(ch).unwrap(),
@@ -180,7 +184,7 @@ mod reconnect {
         let _account_entity = app.world_mut().spawn(account).id();
 
         let char_uuid = GrimId::new();
-        let character = Character {
+        let stored = StoredCharacter {
             id: char_uuid,
             name: "Test".into(),
             account_id,
@@ -194,14 +198,15 @@ mod reconnect {
             title: None,
             restrings: std::collections::HashMap::new(),
         };
+        let (name, actor, character) = stored.into_components();
         let char_entity = app
             .world_mut()
             .spawn((
+                name,
+                actor,
                 character,
-                GrimName("Test".into()),
                 Description("A test character.".into()),
                 InRoom { room },
-                Player { connection: None },
                 Linkdead,
                 OutputHistory::with_max(100),
             ))
@@ -246,8 +251,9 @@ mod reconnect {
         let mut players = app.world_mut().query::<&Player>();
         let player = players.get(app.world(), char_entity);
         assert!(player.is_ok(), "Character should have Player component");
-        assert!(
-            player.unwrap().connection.is_some(),
+        assert_eq!(
+            player.unwrap().connection,
+            conn,
             "Player should be connected after reconnect"
         );
 
@@ -324,7 +330,7 @@ mod reconnect {
         let account_id = account.id;
         app.world_mut().spawn(account);
 
-        let character = Character {
+        let stored = StoredCharacter {
             id: char_uuid,
             name: "Test".into(),
             account_id,
@@ -338,14 +344,15 @@ mod reconnect {
             title: None,
             restrings: std::collections::HashMap::new(),
         };
+        let (name, actor, character) = stored.into_components();
         let char_entity = app
             .world_mut()
             .spawn((
+                name,
+                actor,
                 character,
-                GrimName("Test".into()),
                 Description("A test character.".into()),
                 InRoom { room },
-                Player { connection: None },
                 Linkdead,
                 OutputHistory::with_max(100),
             ))
@@ -402,8 +409,9 @@ mod reconnect {
         let mut players = app.world_mut().query::<&Player>();
         let player = players.get(app.world(), char_entity);
         assert!(player.is_ok(), "Character should have Player component");
-        assert!(
-            player.unwrap().connection.is_some(),
+        assert_eq!(
+            player.unwrap().connection,
+            conn,
             "Player should be connected after reconnect"
         );
 
@@ -455,7 +463,7 @@ mod reconnect {
 
         // Both copies share the character shape and differ only by id + build —
         // build them from one closure to keep the test flat.
-        let make_char = |id: GrimId, race: &str, class: &str| Character {
+        let make_char = |id: GrimId, race: &str, class: &str| StoredCharacter {
             id,
             name: "Test".into(),
             account_id: account_uuid,
@@ -472,21 +480,20 @@ mod reconnect {
 
         // Entity A: stale — loaded from disk, no Linkdead
         let stale_uuid = GrimId::new();
-        app.world_mut().spawn((
-            make_char(stale_uuid, "human", "warrior"),
-            GrimName("Test".into()),
-            Description("Stale copy.".into()),
-        ));
+        let (name, actor, character) = make_char(stale_uuid, "human", "warrior").into_components();
+        app.world_mut()
+            .spawn((name, actor, character, Description("Stale copy.".into())));
 
         // Entity B: real — in-world, went linkdead
+        let (name, actor, character) = make_char(GrimId::new(), "", "").into_components();
         let real_entity = app
             .world_mut()
             .spawn((
-                make_char(GrimId::new(), "", ""),
-                GrimName("Test".into()),
+                name,
+                actor,
+                character,
                 Description("Real character.".into()),
                 InRoom { room },
-                Player { connection: None },
                 Linkdead,
                 OutputHistory::with_max(100),
             ))
@@ -527,7 +534,7 @@ mod reconnect {
         assert!(
             players
                 .get(app.world(), real_entity)
-                .is_ok_and(|p| p.connection.is_some()),
+                .is_ok_and(|p| p.connection == conn),
             "the linkdead entity should be reconnected"
         );
         let mut linkdead = app.world_mut().query::<&Linkdead>();
@@ -569,7 +576,7 @@ mod reconnect {
 
         // Both entities share the same character shape (name/account/build) and
         // differ only by id — build them from one closure to keep the test flat.
-        let make_char = |id: GrimId| Character {
+        let make_char = |id: GrimId| StoredCharacter {
             id,
             name: "Test".into(),
             account_id: account_uuid,
@@ -585,21 +592,20 @@ mod reconnect {
         };
 
         // Entity A: stale (no Linkdead)
-        app.world_mut().spawn((
-            make_char(stale_uuid),
-            GrimName("Test".into()),
-            Description("Stale copy.".into()),
-        ));
+        let (name, actor, character) = make_char(stale_uuid).into_components();
+        app.world_mut()
+            .spawn((name, actor, character, Description("Stale copy.".into())));
 
         // Entity B: real (with Linkdead)
+        let (name, actor, character) = make_char(real_uuid).into_components();
         let real_entity = app
             .world_mut()
             .spawn((
-                make_char(real_uuid),
-                GrimName("Test".into()),
+                name,
+                actor,
+                character,
                 Description("Real character.".into()),
                 InRoom { room },
-                Player { connection: None },
                 Linkdead,
                 OutputHistory::with_max(100),
             ))
@@ -639,8 +645,9 @@ mod reconnect {
         let mut players = app.world_mut().query::<&Player>();
         let player = players.get(app.world(), real_entity);
         assert!(player.is_ok(), "Character should have Player component");
-        assert!(
-            player.unwrap().connection.is_some(),
+        assert_eq!(
+            player.unwrap().connection,
+            conn,
             "Player should be connected after reconnect"
         );
 
@@ -671,7 +678,7 @@ mod reconnect {
         });
         // Also present on disk (as save-on-disconnect would leave it) to prove
         // reconnect reuses the resident entity rather than spawning a disk copy.
-        let ch = Character {
+        let ch = StoredCharacter {
             id: char_id,
             name: "Linky".into(),
             account_id,
@@ -686,14 +693,15 @@ mod reconnect {
             restrings: std::collections::HashMap::new(),
         };
         write_disk_char(&dir, &ch);
+        let (name, actor, character) = ch.into_components();
         let char_entity = app
             .world_mut()
             .spawn((
-                ch,
-                GrimName("Linky".into()),
+                name,
+                actor,
+                character,
                 Description("A linkdead character.".into()),
                 InRoom { room },
-                Player { connection: None },
                 Linkdead,
                 OutputHistory::with_max(100),
             ))
@@ -720,11 +728,7 @@ mod reconnect {
         let mut ld = app.world_mut().query::<&Linkdead>();
         assert!(ld.get(app.world(), char_entity).is_err());
         let mut pq = app.world_mut().query::<&Player>();
-        assert!(pq
-            .get(app.world(), char_entity)
-            .unwrap()
-            .connection
-            .is_some());
+        assert_eq!(pq.get(app.world(), char_entity).unwrap().connection, conn);
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -865,7 +869,7 @@ mod output_format {
                 GrimName("Hero".into()),
                 InRoom { room },
                 Player {
-                    connection: Some(actor_conn),
+                    connection: actor_conn,
                 },
                 OutputHistory::with_max(100),
             ))
@@ -876,7 +880,7 @@ mod output_format {
                 GrimName("Bystander".into()),
                 InRoom { room },
                 Player {
-                    connection: Some(observer_conn),
+                    connection: observer_conn,
                 },
                 OutputHistory::with_max(100),
             ))
@@ -933,53 +937,57 @@ mod output_format {
         let normal_conn = mk_conn(&mut app, 3, 12347);
 
         let admin_char = |name: &str, conn: Entity| {
-            (
-                GrimName(name.into()),
-                InRoom { room },
-                Player {
-                    connection: Some(conn),
-                },
-                OutputHistory::with_max(100),
-                Character {
-                    id: GrimId::new(),
-                    account_id: GrimId::new(),
-                    name: name.into(),
-                    created_at: Utc::now(),
-                    last_room: None,
-                    roles: vec![Role::Admin],
-                    gender: Gender::Neutral,
-                    race: String::new(),
-                    class: String::new(),
-                    level: 1,
-                    title: None,
-                    restrings: std::collections::HashMap::new(),
-                },
-            )
-        };
-
-        let sender = app.world_mut().spawn(admin_char("Boss", sender_conn)).id();
-        let _admin2 = app.world_mut().spawn(admin_char("Deputy", admin2_conn));
-        let _normal = app.world_mut().spawn((
-            GrimName("Peon".into()),
-            InRoom { room },
-            Player {
-                connection: Some(normal_conn),
-            },
-            OutputHistory::with_max(100),
-            Character {
+            let (gname, actor, character) = StoredCharacter {
                 id: GrimId::new(),
                 account_id: GrimId::new(),
-                name: "Peon".into(),
+                name: name.into(),
                 created_at: Utc::now(),
                 last_room: None,
-                roles: Vec::new(),
+                roles: vec![Role::Admin],
                 gender: Gender::Neutral,
                 race: String::new(),
                 class: String::new(),
                 level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
+            }
+            .into_components();
+            (
+                gname,
+                actor,
+                character,
+                InRoom { room },
+                Player { connection: conn },
+                OutputHistory::with_max(100),
+            )
+        };
+
+        let sender = app.world_mut().spawn(admin_char("Boss", sender_conn)).id();
+        let _admin2 = app.world_mut().spawn(admin_char("Deputy", admin2_conn));
+        let (gname, actor, character) = StoredCharacter {
+            id: GrimId::new(),
+            account_id: GrimId::new(),
+            name: "Peon".into(),
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: String::new(),
+            class: String::new(),
+            level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
+        }
+        .into_components();
+        let _normal = app.world_mut().spawn((
+            gname,
+            actor,
+            character,
+            InRoom { room },
+            Player {
+                connection: normal_conn,
             },
+            OutputHistory::with_max(100),
         ));
 
         app.world_mut().write_message(GlobalEcho {
@@ -1038,9 +1046,7 @@ mod output_format {
         app.world_mut().spawn((
             GrimName("Hero".into()),
             InRoom { room },
-            Player {
-                connection: Some(conn),
-            },
+            Player { connection: conn },
             OutputHistory::with_max(100),
         ));
 
@@ -1078,9 +1084,7 @@ mod output_format {
         app.world_mut().spawn((
             GrimName("Hero".into()),
             InRoom { room },
-            Player {
-                connection: Some(conn),
-            },
+            Player { connection: conn },
             OutputHistory::with_max(100),
         ));
 
@@ -1118,9 +1122,7 @@ mod output_format {
         app.world_mut().spawn((
             GrimName("Hero".into()),
             InRoom { room },
-            Player {
-                connection: Some(conn),
-            },
+            Player { connection: conn },
             OutputHistory::with_max(100),
         ));
 
@@ -1158,9 +1160,7 @@ mod output_format {
         app.world_mut().spawn((
             GrimName("Hero".into()),
             InRoom { room },
-            Player {
-                connection: Some(conn),
-            },
+            Player { connection: conn },
             OutputHistory::with_max(100),
         ));
 
@@ -1291,7 +1291,7 @@ mod output_format {
                 GrimName("Mover".into()),
                 InRoom { room: from_room },
                 Player {
-                    connection: Some(actor_conn),
+                    connection: actor_conn,
                 },
                 OutputHistory::with_max(100),
             ))
@@ -1302,7 +1302,7 @@ mod output_format {
                 GrimName("Watcher".into()),
                 InRoom { room: from_room },
                 Player {
-                    connection: Some(observer_conn),
+                    connection: observer_conn,
                 },
                 OutputHistory::with_max(100),
             ))
@@ -1619,22 +1619,25 @@ mod character_select {
 
         // Spawn 3 characters (sorted C1, C2, C3 alphabetically by name)
         for (i, cid) in char_ids.iter().enumerate() {
+            let (name, actor, character) = StoredCharacter {
+                id: *cid,
+                name: format!("C{}", i + 1),
+                account_id,
+                created_at: Utc::now(),
+                last_room: None,
+                roles: Vec::new(),
+                gender: Gender::Neutral,
+                race: "human".into(),
+                class: "warrior".into(),
+                level: 1,
+                title: None,
+                restrings: std::collections::HashMap::new(),
+            }
+            .into_components();
             app.world_mut().spawn((
-                Character {
-                    id: *cid,
-                    name: format!("C{}", i + 1),
-                    account_id,
-                    created_at: Utc::now(),
-                    last_room: None,
-                    roles: Vec::new(),
-                    gender: Gender::Neutral,
-                    race: "human".into(),
-                    class: "warrior".into(),
-                    level: 1,
-                    title: None,
-                    restrings: std::collections::HashMap::new(),
-                },
-                GrimName(format!("C{}", i + 1)),
+                name,
+                actor,
+                character,
                 Description(format!("Character {}.", i + 1)),
                 InRoom { room },
             ));
@@ -1706,25 +1709,27 @@ mod character_select {
         app.world_mut().spawn(account);
 
         // Spawn linkdead character
+        let (name, actor, character) = StoredCharacter {
+            id: char_uuid,
+            name: "Linky".into(),
+            account_id,
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: String::new(),
+            class: String::new(),
+            level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
+        }
+        .into_components();
         app.world_mut().spawn((
-            Character {
-                id: char_uuid,
-                name: "Linky".into(),
-                account_id,
-                created_at: Utc::now(),
-                last_room: None,
-                roles: Vec::new(),
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-            },
-            GrimName("Linky".into()),
+            name,
+            actor,
+            character,
             Description("A linkdead character.".into()),
             InRoom { room },
-            Player { connection: None },
             Linkdead,
             OutputHistory::with_max(100),
         ));
@@ -1777,22 +1782,25 @@ mod character_select {
             characters: vec![char_a],
             created_at: Utc::now(),
         });
+        let (name, actor, character) = StoredCharacter {
+            id: char_a,
+            name: "Aragorn".into(),
+            account_id: account_a_id,
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: String::new(),
+            class: String::new(),
+            level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
+        }
+        .into_components();
         app.world_mut().spawn((
-            Character {
-                id: char_a,
-                name: "Aragorn".into(),
-                account_id: account_a_id,
-                created_at: Utc::now(),
-                last_room: None,
-                roles: Vec::new(),
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-            },
-            GrimName("Aragorn".into()),
+            name,
+            actor,
+            character,
             Description("Heir of Isildur.".into()),
             InRoom { room },
             OutputHistory::with_max(100),
@@ -1921,9 +1929,7 @@ mod ingame_commands {
             .spawn((
                 GrimName("Hero".into()),
                 InRoom { room },
-                Player {
-                    connection: Some(conn),
-                },
+                Player { connection: conn },
             ))
             .id();
 
@@ -2099,9 +2105,7 @@ mod ingame_commands {
             .spawn((
                 GrimName("Hero".into()),
                 InRoom { room },
-                Player {
-                    connection: Some(conn),
-                },
+                Player { connection: conn },
             ))
             .id();
 
@@ -2200,7 +2204,7 @@ mod disk_lifecycle {
         });
         write_disk_char(
             &dir,
-            &Character {
+            &StoredCharacter {
                 id: char_id,
                 name: "Disky".into(),
                 account_id,
@@ -2242,7 +2246,7 @@ mod disk_lifecycle {
             .filter(|(_, n, _)| n.0 == "Disky")
             .collect();
         assert_eq!(matches.len(), 1, "exactly one Disky entity should exist");
-        assert!(matches[0].2.connection.is_some(), "should be connected");
+        assert_eq!(matches[0].2.connection, conn, "should be connected");
 
         let mut cq = app.world_mut().query::<&Client>();
         let client = cq.iter(app.world()).find(|c| c.connection == conn).unwrap();
@@ -2272,7 +2276,7 @@ mod disk_lifecycle {
         });
         write_disk_char(
             &dir,
-            &Character {
+            &StoredCharacter {
                 id: char_id,
                 name: "Diskette".into(),
                 account_id,
@@ -2358,28 +2362,31 @@ mod disk_lifecycle {
 
         // The character is already online on `old_conn`.
         let old_conn = spawn_conn(&mut app, 1);
+        let (name, actor, character) = StoredCharacter {
+            id: char_id,
+            name: "Twinsie".into(),
+            account_id,
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: String::new(),
+            class: String::new(),
+            level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
+        }
+        .into_components();
         let char_entity = app
             .world_mut()
             .spawn((
-                Character {
-                    id: char_id,
-                    name: "Twinsie".into(),
-                    account_id,
-                    created_at: Utc::now(),
-                    last_room: None,
-                    roles: Vec::new(),
-                    gender: Gender::Neutral,
-                    race: String::new(),
-                    class: String::new(),
-                    level: 1,
-                    title: None,
-                    restrings: std::collections::HashMap::new(),
-                },
-                GrimName("Twinsie".into()),
+                name,
+                actor,
+                character,
                 Description("Already online.".into()),
                 InRoom { room },
                 Player {
-                    connection: Some(old_conn),
+                    connection: old_conn,
                 },
                 OutputHistory::with_max(100),
             ))
@@ -2425,7 +2432,7 @@ mod disk_lifecycle {
         let mut pq = app.world_mut().query::<&Player>();
         assert_eq!(
             pq.get(app.world(), char_entity).unwrap().connection,
-            Some(new_conn)
+            new_conn
         );
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -2519,20 +2526,20 @@ mod character_creation {
         send(&mut app, conn, "Mage");
         assert_eq!(state_of(&mut app, conn), ClientState::MotdPrompt);
 
-        let mut q = app.world_mut().query::<(&GrimName, &Character)>();
-        let (_, ch) = q
+        let mut q = app.world_mut().query::<(&GrimName, &Actor, &Character)>();
+        let (_, actor, ch) = q
             .iter(app.world())
-            .find(|(n, _)| n.0 == "Aria")
+            .find(|(n, _, _)| n.0 == "Aria")
             .expect("character spawned");
-        assert_eq!(ch.gender, Gender::Female);
-        assert_eq!(ch.race, "dwarf");
+        assert_eq!(actor.gender, Gender::Female);
+        assert_eq!(actor.race, "dwarf");
         assert_eq!(ch.class, "mage");
-        assert_eq!(ch.level, 1);
+        assert_eq!(actor.level, 1);
 
         // And it round-trips through disk with those fields present.
         let path = dir.join("characters").join("Aria.json");
         let json = std::fs::read_to_string(&path).expect("character json on disk");
-        let loaded: Character = serde_json::from_str(&json).unwrap();
+        let loaded: StoredCharacter = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.gender, Gender::Female);
         assert_eq!(loaded.race, "dwarf");
         assert_eq!(loaded.class, "mage");
@@ -2579,7 +2586,7 @@ mod character_creation {
     /// Write a character JSON to disk as if another session had created it. Uses
     /// race "elf" as a marker so a clobber is detectable.
     fn write_existing_character(dir: &std::path::Path, name: &str) {
-        let existing = Character {
+        let existing = StoredCharacter {
             id: GrimId::new(),
             name: name.into(),
             account_id: GrimId::new(),
@@ -2626,7 +2633,7 @@ mod character_creation {
         // The pre-existing character was NOT clobbered (still race "elf", not the
         // picker's "human").
         let json = std::fs::read_to_string(dir.join("characters").join("Racer.json")).unwrap();
-        let loaded: Character = serde_json::from_str(&json).unwrap();
+        let loaded: StoredCharacter = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.race, "elf");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2683,7 +2690,7 @@ mod legacy_backfill {
         });
         write_disk_char(
             dir,
-            &Character {
+            &StoredCharacter {
                 id: char_id,
                 name: char_name.into(),
                 account_id,
@@ -2731,7 +2738,7 @@ mod legacy_backfill {
         // The chosen build is persisted; id/account/level are preserved (level
         // still 1 — no XP system).
         let json = std::fs::read_to_string(dir.join("characters").join("Oldtimer.json")).unwrap();
-        let loaded: Character = serde_json::from_str(&json).unwrap();
+        let loaded: StoredCharacter = serde_json::from_str(&json).unwrap();
         assert_eq!(loaded.gender, Gender::Female);
         assert_eq!(loaded.race, "dwarf");
         assert_eq!(loaded.class, "mage");
@@ -2739,21 +2746,20 @@ mod legacy_backfill {
 
         // Exactly one in-world entity — backfill reused the normal world-entry
         // (spawn-from-disk) path, it did not duplicate the character.
-        let mut q = app.world_mut().query::<(&Character, &GrimName)>();
+        let mut q = app.world_mut().query::<(&Actor, &Character, &GrimName)>();
         assert_eq!(
             q.iter(app.world())
-                .filter(|(_, n)| n.0 == "Oldtimer")
+                .filter(|(_, _, n)| n.0 == "Oldtimer")
                 .count(),
             1,
             "backfill must not spawn a duplicate character entity"
         );
-        let ingame = q
+        let (actor, character, _) = q
             .iter(app.world())
-            .find(|(_, n)| n.0 == "Oldtimer")
-            .map(|(c, _)| c.clone())
+            .find(|(_, _, n)| n.0 == "Oldtimer")
             .unwrap();
-        assert_eq!(ingame.race, "dwarf");
-        assert_eq!(ingame.class, "mage");
+        assert_eq!(actor.race, "dwarf");
+        assert_eq!(character.class, "mage");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -2793,7 +2799,7 @@ mod legacy_backfill {
         });
         write_disk_char(
             &dir,
-            &Character {
+            &StoredCharacter {
                 id: char_id,
                 name: "Oldtimer".into(),
                 account_id,
@@ -2843,7 +2849,7 @@ mod legacy_backfill {
             characters: vec![char_id],
             created_at: Utc::now(),
         });
-        let legacy = Character {
+        let legacy = StoredCharacter {
             id: char_id,
             name: "Ghost".into(),
             account_id,
@@ -2858,15 +2864,16 @@ mod legacy_backfill {
             restrings: std::collections::HashMap::new(),
         };
         write_disk_char(&dir, &legacy);
+        let (name, actor, character) = legacy.into_components();
         // Resident but linkdead (as after a crash): entity exists, empty build.
         let entity = app
             .world_mut()
             .spawn((
-                legacy.clone(),
-                GrimName("Ghost".into()),
+                name,
+                actor,
+                character,
                 Description("A faded soul.".into()),
                 InRoom { room },
-                Player { connection: None },
                 Linkdead,
                 OutputHistory::with_max(100),
             ))
@@ -2882,11 +2889,15 @@ mod legacy_backfill {
         send(&mut app, conn, "cleric"); // class → backfill + reconnect
 
         // The live entity now carries the picked build (not the stale empty one).
+        let actor = app
+            .world()
+            .get::<Actor>(entity)
+            .expect("resident entity still present");
         let ch = app
             .world()
             .get::<Character>(entity)
             .expect("resident entity still present");
-        assert_eq!(ch.race, "elf");
+        assert_eq!(actor.race, "elf");
         assert_eq!(ch.class, "cleric");
         // No duplicate entity was spawned.
         let mut q = app.world_mut().query::<&GrimName>();

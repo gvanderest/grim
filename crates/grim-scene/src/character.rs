@@ -2,7 +2,7 @@
 //! the `CharacterSelect` / `CreateCharacter` / `MotdPrompt` state handlers.
 
 use bevy::prelude::*;
-use grim_actor::{Character, Linkdead, OutputHistory, Player};
+use grim_actor::{Actor, Character, Linkdead, OutputHistory, Player};
 use grim_engine_types::components::{Account, Client, ClientState, Name as GrimName};
 use grim_engine_types::events::{LinkdeadAnnounce, LoginAnnounce, LookRoom};
 use grim_engine_types::GrimId;
@@ -70,31 +70,32 @@ fn title_case_slug(slug: &str) -> String {
 /// `CharacterSelect` (index/name resolution) so numbering always agrees.
 pub(crate) fn account_character_list(
     account: &Account,
-    characters: &Query<(Entity, &Character, &GrimName)>,
+    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
     persistence: &PersistenceConfig,
 ) -> Vec<CharEntry> {
     let mut entries: Vec<CharEntry> = Vec::new();
-    for (e, ch, name) in characters.iter() {
+    for (e, ch, actor, name) in characters.iter() {
         if account.characters.contains(&ch.id) {
             entries.push(CharEntry {
                 id: ch.id,
                 name: name.0.clone(),
                 resident: Some(e),
-                level: ch.level,
-                race: ch.race.clone(),
+                // Level/race live on the shared `Actor` base now.
+                level: actor.level,
+                race: actor.race.clone(),
                 class: ch.class.clone(),
             });
         }
     }
-    for ch in load_account_characters(persistence, account.id) {
-        if !entries.iter().any(|e| e.id == ch.id) {
+    for stored in load_account_characters(persistence, account.id) {
+        if !entries.iter().any(|e| e.id == stored.id) {
             entries.push(CharEntry {
-                id: ch.id,
-                name: ch.name,
+                id: stored.id,
+                name: stored.name,
                 resident: None,
-                level: ch.level,
-                race: ch.race,
-                class: ch.class,
+                level: stored.level,
+                race: stored.race,
+                class: stored.class,
             });
         }
     }
@@ -112,7 +113,7 @@ pub(crate) fn character_select(
     conn: Entity,
     text: &str,
     accounts: &Query<(Entity, &mut Account)>,
-    characters: &Query<(Entity, &Character, &GrimName)>,
+    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
     players: &Query<&Player>,
     linkdead: &Query<&Linkdead>,
     histories: &mut Query<&mut OutputHistory>,
@@ -201,7 +202,7 @@ pub(crate) fn character_select(
 /// announce the login, and auto-look the character's room.
 pub(crate) fn motd_prompt(
     client: &mut Client,
-    characters: &Query<(Entity, &Character, &GrimName)>,
+    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
     player_chars: &PlayerChars,
     commands: &mut Commands,
     announce_login: &mut MessageWriter<LoginAnnounce>,
@@ -213,7 +214,7 @@ pub(crate) fn motd_prompt(
     };
     let char_name = characters
         .get(char_entity)
-        .map(|(_, _, n)| n.0.clone())
+        .map(|(_, _, _, n)| n.0.clone())
         .unwrap_or_else(|_| "Someone".into());
     info!("Character '{}' entered the world", char_name);
     client.state = ClientState::InGame;
@@ -225,7 +226,7 @@ pub(crate) fn motd_prompt(
     let Some(char_entity) = client.character else {
         return;
     };
-    if let Ok((_, _, ir, _, _)) = player_chars.get(char_entity) {
+    if let Ok((_, _, ir, _, _, _)) = player_chars.get(char_entity) {
         look_room.write(LookRoom {
             target: char_entity,
             room: ir.room,
@@ -238,7 +239,7 @@ pub(crate) fn motd_prompt(
 pub(crate) fn show_character_menu(
     _client_entity: Entity,
     client: &Client,
-    characters: &Query<(Entity, &Character, &GrimName)>,
+    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
     accounts: &Query<(Entity, &mut Account)>,
     outputs: &mut MessageWriter<ConnectionOutput>,
     linkdead: &Query<&Linkdead>,
@@ -264,7 +265,7 @@ pub(crate) fn show_character_menu(
         for entry in account_character_list(account, characters, persistence) {
             let suffix = match entry.resident {
                 Some(e) if linkdead.get(e).is_ok() => " (linkdead)",
-                Some(e) if players.get(e).ok().and_then(|p| p.connection).is_some() => " (online)",
+                Some(e) if players.get(e).is_ok() => " (online)",
                 _ => "",
             };
             menu.push_str(&format!(

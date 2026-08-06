@@ -19,7 +19,9 @@ their only users (the `quit` handler and the `goto`/`title` escapes) moved into
 | `Area` | `src/world/topology.rs` | A named region grouping rooms (yell scope). |
 | `Room` | `src/world/topology.rs` | A single location; carries its owning `area`. |
 | `Exits` | `src/world/topology.rs` | Directional links from a room to adjacent rooms. |
-| `Npc` | `src/npc.rs` | Marker for non-player characters. |
+
+(The `Npc` marker moved to `grim_actor::Creature` — creatures are beings, so the
+marker belongs in the actor layer, not the being-free world.)
 
 ## Systems
 
@@ -54,14 +56,23 @@ stay here.
 | `ServerBroadcast` | Message (shutdown warnings) | `src/shutdown.rs` |
 | `LookRoom` / `LookEntity` / `MoveEvent` | Message (registered by `WorldPlugin`; emitted by `grim-actor`) | `src/world/plugin.rs` |
 
+## Types
+Non-component types this crate defines.
+
+| Type | Kind | File | Purpose |
+|---|---|---|---|
+| `RoomLocation` | serde struct (`area`, `room` `friendly_id`s) | `src/world/location.rs` | The stable, entity-independent storage location of a room — survives a reseed. Persisted on `grim_actor::Character.last_room` / `StoredCharacter.last_room`. Relocated here from `grim-engine-types` (Placement Phase 2a step 3) so it sits below its consumers with no cycle. |
+| `RoomLookup` | enum (`Found`/`NotFound`/`Ambiguous`) | `src/world/area.rs` | Outcome of resolving a room address. |
+
 ## Notes
 - Two plugins: `WorldPlugin` (world-event vocabulary) and `ShutdownPlugin`
   (signal + countdown machinery). The admin `shutdown` command handler lives in
   `grim-actor` and slots into `ShutdownSet::Command`; chaining the sets means a
   SIGTERM and a same-tick admin `shutdown` still schedule exactly one countdown.
-- Topology types (`Area`/`Room`/`Exits`/`StartingRoom`) and the room-address
-  lookups (`resolve_room_address`, `room_location`, `RoomLookup`) are hoisted to
-  the crate root — consumers use `grim_world::{Area, Room, Exits, resolve_room_address, …}`.
+- Topology types (`Area`/`Room`/`Exits`/`StartingRoom`), `RoomLocation`, and the
+  room-address lookups (`resolve_room_address`, `room_location`, `RoomLookup`) are
+  hoisted to the crate root — consumers use
+  `grim_world::{Area, Room, Exits, RoomLocation, resolve_room_address, …}`.
 - Also owns the race/class registry content (`RaceRegistry`, `ClassRegistry`)
   read by `grim-scene`'s creation flow.
 

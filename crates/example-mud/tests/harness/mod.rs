@@ -18,8 +18,8 @@
 use bevy::prelude::*;
 use grim::components::Name as GrimName;
 use grim::plugins::PersistenceConfig;
-use grim::Character;
 use grim::GrimHeadlessPlugins;
+use grim::{Actor, Character, StoredCharacter};
 use grim::{
     Connection, ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,
 };
@@ -227,23 +227,36 @@ impl Mud {
         names
     }
 
-    /// Fetch a clone of the in-world `Character` with this name, if present.
-    /// Lets a scenario assert on stored build data (gender/race/class/level).
-    pub fn character(&mut self, name: &str) -> Option<Character> {
-        let mut q = self.app.world_mut().query::<(&GrimName, &Character)>();
+    /// Fetch a flat [`StoredCharacter`] view of the in-world character with this
+    /// name, if present. Lets a scenario assert on stored build data
+    /// (gender/race/class/level) which, post-split, lives across
+    /// `Name + Actor + Character`.
+    pub fn character(&mut self, name: &str) -> Option<StoredCharacter> {
+        let mut q = self
+            .app
+            .world_mut()
+            .query::<(&GrimName, &Actor, &Character)>();
         q.iter(self.app.world())
-            .find(|(n, _)| n.0 == name)
-            .map(|(_, c)| c.clone())
+            .find(|(n, _, _)| n.0 == name)
+            .map(|(n, a, c)| StoredCharacter::from_components(n, a, c))
     }
 
-    /// Mutate the in-world `Character` with this name. A test-only escape hatch
-    /// for state the creation flow can't produce (admin role, level, race/class)
-    /// so a scenario can set up a realistic WHO list.
-    pub fn edit_character(&mut self, name: &str, edit: impl FnOnce(&mut Character)) {
-        let mut q = self.app.world_mut().query::<(&GrimName, &mut Character)>();
+    /// Mutate the in-world character with this name via a flat [`StoredCharacter`]
+    /// view. A test-only escape hatch for state the creation flow can't produce
+    /// (admin role, level, race/class) so a scenario can set up a realistic WHO
+    /// list. The edit is split back onto the `Actor`/`Character` components.
+    pub fn edit_character(&mut self, name: &str, edit: impl FnOnce(&mut StoredCharacter)) {
+        let mut q = self
+            .app
+            .world_mut()
+            .query::<(&GrimName, &mut Actor, &mut Character)>();
         let world = self.app.world_mut();
-        if let Some((_, mut ch)) = q.iter_mut(world).find(|(n, _)| n.0 == name) {
-            edit(&mut ch);
+        if let Some((n, mut actor, mut ch)) = q.iter_mut(world).find(|(n, _, _)| n.0 == name) {
+            let mut stored = StoredCharacter::from_components(n, &actor, &ch);
+            edit(&mut stored);
+            let (_, new_actor, new_ch) = stored.into_components();
+            *actor = new_actor;
+            *ch = new_ch;
         }
     }
 
@@ -258,7 +271,7 @@ impl Mud {
             .join("characters")
             .join(format!("{name}.json"));
         let data = std::fs::read_to_string(&path).expect("character json on disk");
-        let mut ch: Character = serde_json::from_str(&data).unwrap();
+        let mut ch: StoredCharacter = serde_json::from_str(&data).unwrap();
         ch.gender = grim::components::Gender::Neutral;
         ch.race = String::new();
         ch.class = String::new();

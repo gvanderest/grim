@@ -7,6 +7,7 @@ edition = "2021"
 grim-engine-types = { path = "../grim-engine-types" }
 bevy = { workspace = true, default-features = false }
 signal-hook = { workspace = true }
+serde = { workspace = true }
 
 [dev-dependencies]
 chrono = { workspace = true }
