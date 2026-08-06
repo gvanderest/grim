@@ -90,6 +90,12 @@ const WHO_RACE_W: usize = 5;
 const WHO_CLASS_W: usize = 3;
 const WHO_GUILD_W: usize = 5;
 
+/// Colour reset appended after any admin-supplied WHO value (a `restrings`
+/// override or a `title`), so its colour can't bleed into the next column, the
+/// name, or the following row. Engine-computed columns (level number, `M`/`F`/`N`,
+/// registry abbrevs) carry no colour and are left untouched.
+const WHO_RESET: &str = "{x";
+
 /// Left-justify `s` into exactly `width` chars: pad with trailing spaces, or
 /// truncate to fit. Keeps every WHO column aligned regardless of content.
 fn pad_left(s: &str, width: usize) -> String {
@@ -140,20 +146,33 @@ impl WhoRow<'_> {
     /// computed default, padded/truncated to the column width.
     fn stat_block(&self) -> String {
         if let Some(whole) = self.restrings.get("who") {
-            return whole.clone();
+            return format!("{whole}{WHO_RESET}");
         }
-        let col = |key: &str, default: &str| -> String {
-            self.restrings
-                .get(key)
-                .map_or_else(|| default.to_string(), String::clone)
+        // Each column is padded/truncated to its width. A restring override may
+        // carry colour, so it gets a trailing reset; the engine default doesn't.
+        let col = |key: &str, default: &str, width: usize, left: bool| -> String {
+            let (text, restrung) = match self.restrings.get(key) {
+                Some(v) => (v.as_str(), true),
+                None => (default, false),
+            };
+            let padded = if left {
+                pad_left(text, width)
+            } else {
+                pad_right(text, width)
+            };
+            if restrung {
+                format!("{padded}{WHO_RESET}")
+            } else {
+                padded
+            }
         };
         format!(
             "{} {} {} {} {}",
-            pad_right(&col("who_level", &self.level), WHO_LEVEL_W),
-            pad_left(&col("who_gender", &self.gender), WHO_GENDER_W),
-            pad_left(&col("who_race", &self.race), WHO_RACE_W),
-            pad_left(&col("who_class", &self.class), WHO_CLASS_W),
-            pad_left(&col("who_guild", &self.guild), WHO_GUILD_W),
+            col("who_level", &self.level, WHO_LEVEL_W, false),
+            col("who_gender", &self.gender, WHO_GENDER_W, true),
+            col("who_race", &self.race, WHO_RACE_W, true),
+            col("who_class", &self.class, WHO_CLASS_W, true),
+            col("who_guild", &self.guild, WHO_GUILD_W, true),
         )
     }
 }
@@ -166,6 +185,7 @@ pub fn format_who_row(row: &WhoRow) -> String {
         if !title.is_empty() {
             line.push(' ');
             line.push_str(title);
+            line.push_str(WHO_RESET);
         }
     }
     if row.linkdead {
@@ -582,7 +602,8 @@ mod tests {
         let rs = HashMap::new();
         let mut row = who_row("3", "N", "Dwarf", "Cle", "Nn", &rs);
         row.title = Some("the Grey".into());
-        assert_eq!(format_who_row(&row), "  3 N Dwarf Cle       Nn the Grey");
+        // Title may carry admin colour → trailing {x reset so it can't bleed.
+        assert_eq!(format_who_row(&row), "  3 N Dwarf Cle       Nn the Grey{x");
     }
 
     #[test]
@@ -618,7 +639,8 @@ mod tests {
         rs.insert("who_class".into(), "Sun".into());
         rs.insert("who_guild".into(), "Elite".into());
         let row = who_row("5", "M", "Human", "War", "Zeus", &rs);
-        assert_eq!(format_who_row(&row), "GOD X Deity Sun Elite Zeus");
+        // Each restrung column gets a trailing {x reset (padded first, then reset).
+        assert_eq!(format_who_row(&row), "GOD{x X{x Deity{x Sun{x Elite{x Zeus");
     }
 
     #[test]
@@ -627,8 +649,9 @@ mod tests {
         rs.insert("who_race".into(), "VeryLongRace".into());
         rs.insert("who_gender".into(), "MF".into());
         let row = who_row("5", "M", "Human", "War", "Q", &rs);
-        // race truncated to 5, gender truncated to 1, grid preserved.
-        assert_eq!(format_who_row(&row), "  5 M VeryL War       Q");
+        // race truncated to 5, gender truncated to 1, grid preserved; the two
+        // restrung columns get {x, the engine defaults don't.
+        assert_eq!(format_who_row(&row), "  5 M{x VeryL{x War       Q");
     }
 
     #[test]
@@ -637,8 +660,8 @@ mod tests {
         rs.insert("who".into(), "[ the Almighty ]".into());
         let mut row = who_row("5", "M", "Human", "War", "God", &rs);
         row.title = Some("of Olympus".into());
-        // Whole stat block replaced verbatim, then ` Name Title`.
-        assert_eq!(format_who_row(&row), "[ the Almighty ] God of Olympus");
+        // Whole stat block replaced verbatim (+reset), then ` Name Title` (+reset).
+        assert_eq!(format_who_row(&row), "[ the Almighty ]{x God of Olympus{x");
     }
 
     #[test]
