@@ -142,8 +142,9 @@ pub struct WhoRow<'a> {
 
 impl WhoRow<'_> {
     /// The `LLL G RRRRR CCC GGGGG` stat block: a `who` restring replaces it
-    /// verbatim; otherwise each column is its restring override (if any) or its
-    /// computed default, padded/truncated to the column width.
+    /// verbatim (followed by a [`WHO_RESET`] colour reset); otherwise each column
+    /// is its restring override (if any, also reset) or its computed default,
+    /// padded/truncated to the column width.
     fn stat_block(&self) -> String {
         if let Some(whole) = self.restrings.get("who") {
             return format!("{whole}{WHO_RESET}");
