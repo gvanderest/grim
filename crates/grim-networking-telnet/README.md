@@ -2,7 +2,7 @@
 > Telnet transport for GRIM: TCP accept loop on a tokio thread, bridged to Bevy, with IAC negotiation, ANSI rendering, and copyover fd handoff.
 
 **Role:** horizontal (infrastructure) — transport
-**Depends on:** `grim-networking`, `grim-color`, `grim-engine-types`, `bevy`, `tokio`, `serde_json`, `signal-hook`, `sendfd`, `sd-notify`, `rustix`
+**Depends on:** `grim-networking`, `grim-color`, `grim-engine-types`, `grim-actor`, `bevy`, `tokio`, `serde_json`, `signal-hook`, `sendfd`, `sd-notify`, `rustix`
 
 ## Components
 None. Reuses `grim_networking::Connection`.

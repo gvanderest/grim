@@ -61,6 +61,9 @@ const ALLOWED_NORMAL: &[Edge] = &[
     ("grim-networking-telnet", "grim-color"),
     ("grim-networking-telnet", "grim-networking"),
     ("grim-networking-telnet", "grim-engine-types"),
+    // NOTE (Placement Phase 2a step 2): copyover re-adopts characters, reading the
+    // Character/Linkdead beings, so telnet depends on grim-actor. No cycle.
+    ("grim-networking-telnet", "grim-actor"),
     // ── Session / scene ───────────────────────────────────────────────────────
     // `grim-scene` is the bridge between networking and commands (§5.3): it reads
     // ConnectionInput and dispatches Commands. Hence → grim-networking, grim-command.
@@ -78,15 +81,37 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // dev-only harness edge). grim-world does not depend on grim-scene, so this
     // adds no cycle.
     ("grim-scene", "grim-world"),
+    // NOTE (Placement Phase 2a step 2): the session reads beings (Character/
+    // Player/InRoom/Linkdead/OutputHistory) throughout login/creation/resume/
+    // output, so scene → grim-actor is a normal edge. grim-actor does not depend
+    // on grim-scene, so no cycle.
+    ("grim-scene", "grim-actor"),
     // ── Gameplay subsystems ────────────────────────────────────────────────────
     // NOTE (divergence #3): §4's diagram routes grim-world / grim-channel through
     // grim-command. Reality: neither depends on grim-command; dispatch is mediated
-    // by grim-scene. They depend on the god-types node + networking/colour instead.
+    // by grim-scene. grim-world is being-free: it owns topology + shutdown signal
+    // machinery only. NOTE (Placement Phase 2a step 2): grim-world → grim-networking
+    // and grim-world → grim-color were REMOVED — their only users (the `quit`
+    // handler's DisconnectRequest, and the `goto`/`title` escape_codes calls) moved
+    // into grim-actor, so those edges are now stale.
     ("grim-world", "grim-engine-types"),
-    ("grim-world", "grim-networking"),
-    ("grim-world", "grim-color"),
+    // NOTE (Placement Phase 2a step 2): grim-actor owns the "beings"
+    // (Character/Player/InRoom/Linkdead/OutputHistory/Role) and the being-reading
+    // verbs (look/move/goto/quit/title + the admin shutdown gate). It depends on
+    // grim-world (topology + shutdown machinery), grim-networking (DisconnectRequest
+    // for `quit`), grim-color (escape_codes for `goto`/`title`), and the god-types
+    // node. grim-world/grim-engine-types do NOT depend on grim-actor — the actor
+    // layer sits strictly above the being-free world.
+    ("grim-actor", "grim-engine-types"),
+    ("grim-actor", "grim-world"),
+    ("grim-actor", "grim-networking"),
+    ("grim-actor", "grim-color"),
     ("grim-channel", "grim-engine-types"),
     ("grim-channel", "grim-text"),
+    // NOTE (Placement Phase 2a step 2): grim-channel reads beings (Character/
+    // Player/InRoom), so it depends on grim-actor. grim-actor does not depend on
+    // grim-channel, so this adds no cycle.
+    ("grim-channel", "grim-actor"),
     // NOTE (Placement Phase 2a): the world-topology types (Area/Room/Exits/
     // StartingRoom) moved into grim-world. grim-channel reads `Room`, so it now
     // depends on grim-world. grim-world does not depend on grim-channel, so this
@@ -96,6 +121,10 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // to connection lifecycle events (→ grim-networking).
     ("grim-persistence", "grim-engine-types"),
     ("grim-persistence", "grim-networking"),
+    // NOTE (Placement Phase 2a step 2): persistence loads/saves beings
+    // (Character/Player/InRoom/Linkdead/OutputHistory), so it depends on
+    // grim-actor. grim-actor does not depend on grim-persistence, so no cycle.
+    ("grim-persistence", "grim-actor"),
     // NOTE (Placement Phase 2a): persistence reads `Area`/`Room` (world topology
     // moved into grim-world), so it now depends on grim-world. grim-world does not
     // depend on grim-persistence, so this adds no cycle.
@@ -111,6 +140,9 @@ const ALLOWED_NORMAL: &[Edge] = &[
     ("grim", "grim-networking-telnet"),
     ("grim", "grim-scene"),
     ("grim", "grim-world"),
+    // NOTE (Placement Phase 2a step 2): the facade re-exports the actor beings +
+    // ActorPlugin and adds ActorPlugin to GrimDefaultPlugins.
+    ("grim", "grim-actor"),
     ("grim", "grim-channel"),
     ("grim", "grim-persistence"),
     ("example-mud", "grim"),

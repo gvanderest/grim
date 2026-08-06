@@ -12,7 +12,8 @@ use std::sync::Arc;
 
 use bevy::log::{error, info, warn};
 use bevy::prelude::*;
-use grim_engine_types::components::{Character, Client, ClientState, Linkdead};
+use grim_actor::{Character, Linkdead};
+use grim_engine_types::components::{Client, ClientState};
 use grim_networking::{Connection, HandoverEntry, HandoverManifest};
 use sendfd::{RecvWithFd, SendWithFd};
 

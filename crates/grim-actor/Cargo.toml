@@ -1,16 +1,17 @@
 [package]
-name = "grim-persistence"
+name = "grim-actor"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 grim-engine-types = { path = "../grim-engine-types" }
 grim-world = { path = "../grim-world" }
-grim-actor = { path = "../grim-actor" }
 grim-networking = { path = "../grim-networking" }
+grim-color = { path = "../grim-color" }
 bevy = { workspace = true, default-features = false }
-serde_json = { workspace = true }
 chrono = { workspace = true }
+serde = { workspace = true }
 
 [dev-dependencies]
 chrono = { workspace = true }
+serde_json = { workspace = true }

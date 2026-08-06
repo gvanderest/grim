@@ -1,9 +1,10 @@
 //! The `title` command: set or clear the actor's WHO title, stored on their
-//! `Character` (persisted via the existing save-on-disconnect).
+//! [`Character`] (persisted via the existing save-on-disconnect).
 
 use bevy::prelude::*;
-use grim_engine_types::components::Character;
 use grim_engine_types::events::{Command, EngineCommand, InfoMessage};
+
+use crate::character::Character;
 
 /// Maximum title length, in characters.
 const MAX_TITLE_LEN: usize = 60;
@@ -43,18 +44,23 @@ pub(crate) fn handle_title(
     }
 }
 
+/// Wire the `title` handler and the messages it reads/emits.
+pub(crate) fn register(app: &mut App) {
+    app.add_message::<EngineCommand>()
+        .add_message::<InfoMessage>()
+        .add_systems(Update, handle_title);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_engine_types::components::{Character, Gender};
+    use grim_engine_types::character::Gender;
     use grim_engine_types::GrimId;
 
     fn test_app() -> App {
         let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .add_message::<EngineCommand>()
-            .add_message::<InfoMessage>()
-            .add_systems(Update, handle_title);
+        app.add_plugins(MinimalPlugins);
+        register(&mut app);
         app
     }
 

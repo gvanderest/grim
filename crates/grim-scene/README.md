@@ -2,7 +2,7 @@
 > The session subsystem: lifecycle (`ClientState`), input parsing/routing, output formatting + per-recipient broadcast, admin-gated dispatch, and copyover resume.
 
 **Role:** horizontal (infrastructure) — session / networking↔command bridge
-**Depends on:** `grim-engine-types`, `grim-networking`, `grim-command`, `grim-text`, `grim-color`, `grim-persistence`, `grim-world`
+**Depends on:** `grim-engine-types`, `grim-networking`, `grim-command`, `grim-text`, `grim-color`, `grim-persistence`, `grim-world`, `grim-actor`
 
 ## Components
 | Component | File | Purpose |

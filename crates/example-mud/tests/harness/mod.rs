@@ -16,8 +16,9 @@
 #![allow(dead_code)]
 
 use bevy::prelude::*;
-use grim::components::{Character, Name as GrimName};
+use grim::components::Name as GrimName;
 use grim::plugins::PersistenceConfig;
+use grim::Character;
 use grim::GrimHeadlessPlugins;
 use grim::{
     Connection, ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,

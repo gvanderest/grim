@@ -3,9 +3,8 @@
 //! captures output for linkdead replay, and fans server broadcasts out.
 
 use bevy::prelude::*;
-use grim_engine_types::components::{
-    Character, Description, InRoom, Name as GrimName, OutputHistory, Player,
-};
+use grim_actor::{Character, InRoom, OutputHistory, Player};
+use grim_engine_types::components::{Description, Name as GrimName};
 use grim_engine_types::events::{
     GlobalEcho, InfoMessage, LookEntity, LookRoom, MoveEvent, OocEvent, SayEvent, ServerBroadcast,
     YellEvent,

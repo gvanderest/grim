@@ -11,6 +11,7 @@ grim-networking = { path = "../grim-networking" }
 grim-networking-telnet = { path = "../grim-networking-telnet" }
 grim-scene = { path = "../grim-scene" }
 grim-world = { path = "../grim-world" }
+grim-actor = { path = "../grim-actor" }
 grim-channel = { path = "../grim-channel" }
 grim-persistence = { path = "../grim-persistence" }
 bevy = { workspace = true, default-features = false }

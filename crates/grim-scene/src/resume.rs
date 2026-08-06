@@ -5,10 +5,8 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
-use grim_engine_types::components::{
-    Account, Character, Client, ClientState, Description, InRoom, Name as GrimName, OutputHistory,
-    Player,
-};
+use grim_actor::{Character, InRoom, OutputHistory, Player};
+use grim_engine_types::components::{Account, Client, ClientState, Description, Name as GrimName};
 use grim_engine_types::events::LookRoom;
 use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
 use grim_persistence::{load_character_by_name, PersistenceConfig};
