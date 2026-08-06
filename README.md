@@ -1,6 +1,6 @@
 # GRIM Engine
 
-A modular MUD engine built on Bevy ECS. Everything in the world is an entity. Every interaction is an event. The engine is a library — a collection of Bevy plugins — and the running server is a binary that composes them.
+A modular MUD engine built on Bevy ECS. Everything in the world is an entity, every interaction is an event. The engine is a library — a collection of Bevy plugins — and the running server is a binary that composes them.
 
 **Connect now, in your terminal:**
 
@@ -8,61 +8,11 @@ A modular MUD engine built on Bevy ECS. Everything in the world is an entity. Ev
 telnet grimtide.org 4000
 ```
 
-For context: I come from a MUD called Waterdeep and am trying to recreate the general vibe, but with a more modern twist in Rust.
+For context: I come from a MUD called Waterdeep and am recreating the general vibe with a modern twist in Rust.
 
-NOTE: This project leverages AI assistance to develop the software. All code is reviewed and curated by a human maintainer.
+> NOTE: This project leverages AI assistance to develop the software. All code is reviewed and curated by a human maintainer.
 
-## Documentation
-
-- **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** — authoritative target architecture and the gap between it and today.
-- **[CONTEXT.md](./CONTEXT.md)** — the glossary. Fixes the vocabulary (Session, Scene, Router, Attempt/Fact, Catalog, …) that crate, component, and event names must agree with.
-- **[AGENTS.md](./AGENTS.md)** — how to work in this repo (for AI agents and humans alike).
-
-## Status
-
-Currently functional: telnet login, account creation, character management, room movement, social channels, and basic world persistence.
-
-## Roadmap
-### ✅ Done
-- [x] Colour markup system: 16-colour terminal codes + 24-bit hex codes → ANSI (`grim-color`)
-- [x] Text catalog: `tr`/`tr!` with author-facing defaults, colour-safe `%{var}` substitution (`grim-text`)
-- [x] Command resolution: exact-then-prefix `CommandRegistry` with explicit, reorderable priority (`grim-command`)
-- [x] Protocol-layer newline conversion (`\n` → `\r\n`)
-- [x] Workspace decomposition (steps 1–9): `grim` facade over `grim-engine-types`, `grim-color`/`grim-text`/`grim-command`, `grim-networking`(+`-telnet`), `grim-scene`, `grim-world`, `grim-channel`, `grim-persistence`; `example-mud` binary
-- [x] Telnet server with IAC negotiation and password masking
-- [x] Account creation and login (email only)
-- [x] Character creation, selection, and persistence
-- [x] Character gender / race / class / level (first pass): closed `Gender` enum + author-overridable `RaceRegistry`/`ClassRegistry` data with a class tier ladder; new characters start at level 1 (no XP yet) — see [ADR-0002](docs/adr/0002-character-class-tiers.md)
-- [x] MOTD gate before entering the world
-- [x] Room movement (north/east/south/west/up/down)
-- [x] Social channels: say (room), yell (area), ooc (global)
-- [x] Look, who, where, commands, quit
-- [x] Linkdead characters: crash keeps character in-world, reconnect skips MOTD
-- [x] Persistence: save on quit to `data/accounts/*.json` + `data/characters/*.json`
-- [x] Server-side logging via `bevy_log`
-- [x] Prompt (`> `) after every command response
-
-### 🚧 In Progress
-- [ ] Scene-stack entity model + typed-event dispatch + channels-as-data (the redesigns deferred within the decomposition — see ARCHITECTURE.md §8)
-- [ ] Finger command
-- [ ] Chat channels with audience filters (global/area/room × clan/party/etc.)
-- [ ] Proper telnet client negotiation handling
-
-### 📋 Planned
-- [ ] Scene stack + Router as first-class subsystems (retire the `Client` state machine)
-- [ ] Externalized text catalog (`strings/<locale>/`, `templates/<locale>/`) — defaults are inlined today
-- [ ] Websocket server support
-- [ ] Combat system
-- [ ] Items, equipment, and inventory
-- [ ] Drinking potions, eating food and pills
-- [ ] Experience, levels, and skills (level exists as a stored number; no XP/levelling yet)
-- [ ] Class evolution / reroll (tier-2+ classes; tier-1 → `evolves_to`) — data ladder seeded, mechanic not built
-- [ ] Areas and rooms from file definitions (not hardcoded seed)
-- [ ] Crash recovery without losing connections
-- [ ] Copyover / builder port
-- [ ] Persistent storage strategy (SQLite? Filesystem?)
-
-## Getting Started
+## Getting started
 
 ```bash
 cargo run
@@ -74,128 +24,59 @@ The workspace has one binary, `example-mud`, so a bare `cargo run` builds and ru
 telnet localhost 4000
 ```
 
-## Project Structure
+## Documentation
 
-```
-├── Cargo.toml                    # Workspace root (no binary here)
-├── assets/
-│   ├── motd.txt                  # Message of the day
-│   └── login-banner.txt          # ASCII art login banner
-├── crates/
-│   ├── grim/                     # Facade: re-exports every subsystem + GrimDefaultPlugins (no code of its own)
-│   ├── grim-engine-types/        # Game events (Message types), components, cardinal, validation
-│   ├── grim-color/               # Colour markup → ANSI (no Bevy, no serde)
-│   ├── grim-text/                # Text catalog: tr/tr!, inlined defaults (depends only on grim-color)
-│   ├── grim-command/             # CommandRegistry<C>: exact-then-prefix resolution (Bevy-only)
-│   ├── grim-networking/          # Connection component + wire events (Bevy-only)
-│   ├── grim-networking-telnet/   # TelnetPlugin: TCP/telnet, IAC, tokio bridge, ANSI render
-│   ├── grim-scene/               # ScenePlugin: session state machine, parser, formatter, CommandRegistry resource
-│   │   └── src/
-│   │       ├── lib.rs
-│   │       ├── parser.rs
-│   │       └── formatter.rs
-│   ├── grim-world/               # WorldPlugin (rooms/movement/look) + ShutdownPlugin
-│   ├── grim-channel/             # ChannelPlugin: say/yell/ooc
-│   ├── grim-persistence/         # PersistencePlugin: load + save-on-disconnect
-│   └── example-mud/              # Binary: GrimDefaultPlugins + world seed
-│       └── src/
-│           ├── main.rs
-│           └── seed.rs
-├── docs/
-│   └── ARCHITECTURE.md
-├── CONTEXT.md
-├── AGENTS.md
-└── data/                         # Persisted accounts/characters (gitignored)
-```
+- **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** — authoritative target architecture, the gap to today (§8), and the forward-looking roadmap.
+- **[CONTEXT.md](./CONTEXT.md)** — the glossary. Fixes the vocabulary (Session, Scene, Router, Actor, Attempt/Fact, Catalog, …) that crate, component, and event names must agree with.
+- **[AGENTS.md](./AGENTS.md)** — how to work in this repo (for AI agents and humans alike), incl. the conventions and editing discipline.
+- **Per-crate `README.md`** — each crate documents its own components, systems, and commands-with-handler-files, following [docs/README.template.md](./docs/README.template.md).
 
-## Architecture
+## Crates
 
-Event-passing layers, no layer calls another's functions or reads its components. Communication is exclusively through Bevy `Message` types.
+Everything is a Bevy plugin unless noted. Dependencies point downward only; the `grim` facade re-exports every subsystem so a MUD author can depend on one crate. See each crate's README for its components, systems, and command→handler map.
 
-| Layer | Crate | Responsibility | Output |
-|---|---|---|---|
-| Transport | `grim-networking-telnet` | Raw TCP, telnet IAC negotiation, tokio bridge, colour → ANSI on the wire | `ConnectionInput`, `ConnectionEstablished` |
-| Session | `grim-scene` | Session state machine, command parser, output formatter | `EngineCommand` |
-| Engine | `grim-world` / `grim-channel` | ECS systems: rooms, movement, look, social channels, shutdown | engine event → session formatting |
-| Persistence | `grim-persistence` | Load accounts/characters from disk, save on disconnect | — |
+### Foundation (pure libraries — no `App` state)
 
-Shared vocabulary lives in `grim-engine-types` (game events, components) and `grim-networking` (`Connection`, wire events); pure subsystems (`grim-color`, `grim-text`, `grim-command`) carry no `App` state and stay plain libraries. The `grim` facade depends on and re-exports every subsystem and offers `GrimDefaultPlugins`, so a MUD author can depend on one crate.
+| Crate | What it holds |
+|---|---|
+| [`grim-color`](./crates/grim-color) | Colour markup (`{R`, `@xRGB`) → ANSI rendering, palette, escaping. No Bevy, no serde. |
+| [`grim-text`](./crates/grim-text) | Text catalog: `tr`/`tr!`, colour-safe `%{var}` substitution, inlined defaults. Depends only on `grim-color`. |
+| [`grim-command`](./crates/grim-command) | `CommandRegistry<C>` — generic exact-then-prefix resolution with explicit, reorderable priority. Bevy-only. |
+| [`grim-engine-types`](./crates/grim-engine-types) | Shared primitives + the game-event vocabulary (`GrimId`, `Cardinal`, `Name`, `Description`, `RoomLocation`, `Gender`, `Command`, engine `Message` types). Slated to become `grim-core`. |
 
-⚠️ "Client" is a retired name in the target architecture — it conflated the session state machine, wire framing, and the user's terminal. See [CONTEXT.md](./CONTEXT.md).
+### Transport
 
-## Colour Markup
+| Crate | What it holds |
+|---|---|
+| [`grim-networking`](./crates/grim-networking) | `Connection` component + wire events (`ConnectionInput`/`Output`, `Established`/`Closed`, `DisconnectRequest`). Transport-agnostic. |
+| [`grim-networking-telnet`](./crates/grim-networking-telnet) | `TelnetPlugin`: TCP server, IAC negotiation, tokio↔Bevy bridge, ANSI on the wire, copyover hot-restart. |
 
-All text containing colour markup is converted to ANSI escape sequences at the protocol layer, right before bytes go to the TCP socket. Rendering lives in `grim-color` (`ansi`, `convert_16color`, `escape_codes`), re-exported at `grim::color::*`. Use `{` and `@` codes anywhere in output text.
+### Session
 
-### 16-colour codes
+| Crate | What it holds |
+|---|---|
+| [`grim-scene`](./crates/grim-scene) | `ScenePlugin`: session lifecycle + login/creation state machine, input parsing, output formatting. Owns the `CommandRegistry` resource. |
 
-| Input       | Colour                    | ANSI |
-|-------------|---------------------------|------|
-| `{x` / `{9` | Reset                     | 0    |
-| `{k`        | Black                     | 30   |
-| `{r` / `{1` | Red                       | 31   |
-| `{g` / `{2` | Green                     | 32   |
-| `{y` / `{3` | Yellow                    | 33   |
-| `{b` / `{4` | Blue                      | 34   |
-| `{m` / `{5` | Magenta                   | 35   |
-| `{c` / `{6` | Cyan                      | 36   |
-| `{w` / `{7` | White                     | 37   |
-| `{K` / `{8` / `{*` | Bright Black (Grey)| 90   |
-| `{R` / `{!` | Bright Red                | 91   |
-| `{G` / `{@` | Bright Green              | 92   |
-| `{Y` / `{#` | Bright Yellow             | 93   |
-| `{B`        | Bright Blue               | 94   |
-| `{M` / `{%` | Bright Magenta            | 95   |
-| `{C` / `{^` | Bright Cyan               | 96   |
-| `{W` / `{&` | Bright White              | 97   |
+### World & beings
 
-(`{k` black has no digit alias — the digit `1` is red.)
+| Crate | What it holds |
+|---|---|
+| [`grim-world`](./crates/grim-world) | `WorldPlugin` (areas/rooms/exits topology + race/class registries) and `ShutdownPlugin` (countdown + SIGTERM). The being-free *stage*. |
+| [`grim-actor`](./crates/grim-actor) | `ActorPlugin`: the beings (`Character`/`Player`/`InRoom`/…) and the verbs that read them (`look`/`move`/`goto`/`quit`/`title`/`shutdown`). Depends on `grim-world`, never the reverse. |
+| [`grim-channel`](./crates/grim-channel) | `ChannelPlugin`: social channels — say (room), yell (area), ooc (global). |
 
-### 24-bit hex codes
+### Persistence & composition
 
-| Code     | Effect                                               |
-|----------|------------------------------------------------------|
-| `@r`     | Reset                                                |
-| `@xRGB`  | Foreground (3 hex digits, scaled nibble×17 to 8-bit) |
-| `@bRGB`  | Background (same scaling)                             |
+| Crate | What it holds |
+|---|---|
+| [`grim-persistence`](./crates/grim-persistence) | `PersistencePlugin`: load accounts/characters from disk, save on disconnect. |
+| [`grim`](./crates/grim) | Facade: depends on and re-exports every subsystem; offers `GrimDefaultPlugins` / `GrimHeadlessPlugins`. No logic of its own. |
+| [`example-mud`](./crates/example-mud) | The runnable binary: `GrimDefaultPlugins` + a hardcoded world seed. |
 
-### Escaping
+## Architecture in one breath
 
-| Input | Output |
-|-------|--------|
-| `{{`  | `{`    |
-| `@@`  | `@`    |
+Event-passing layers: no layer calls another's functions or reads its components — communication is exclusively through Bevy `Message` types. Transport frames bytes, the session turns input into an `EngineCommand`, gameplay plugins act on their command variant and emit world events, and the session formats those back to the connection. Colour markup is rendered to ANSI only at the transport edge, just before bytes hit the socket.
 
-Unknown codes (e.g. `{z`, `{-`, `@q`) pass through as literal text.
+> ⚠️ "Client" is a retired name — it conflated the session state machine, wire framing, and the user's terminal. The session crate is `grim-scene`. See [CONTEXT.md](./CONTEXT.md).
 
-## Events
-
-All inter-layer events are Bevy `Message` types (`#[derive(Message)]`).
-
-| Event | Direction | Trigger |
-|---|---|---|
-| `ConnectionEstablished` | Protocol→Client | Telnet handshake done |
-| `ClientInput` | Protocol→Client | Raw line from socket |
-| `ConnectionClosed` | Protocol→All | Socket dropped |
-| `ClientOutput` | Any→Protocol | Text to send (ANSI converted here) + optional ECHO flag |
-| `DisconnectRequest` | Client→Protocol | Clean socket close |
-| `EngineCommand` | Client→Engine | Parsed `Command` |
-| `LookRoom` | Engine→Client | Format room description |
-| `LookEntity` | Engine→Client | Format entity description |
-| `SayEvent`/`YellEvent`/`OocEvent` | Engine→Client | Social channel broadcasts |
-| `MoveEvent` | Engine→Client | Room transition broadcast |
-| `InfoMessage` | Engine→Client | Direct text to one character |
-| `LoginAnnounce`/`LogoutAnnounce`/`LinkdeadAnnounce` | Engine→Client | Global player announcements |
-
-## Conventions
-
-- **Newlines**: Use `\n` in all code. Protocol layer converts `\n` → `\r\n` before writing to TCP.
-- **Text catalog**: Use `grim::tr!("key", var = value)` (or `grim::tr(key, args)`) for author-facing strings — this is `grim-text`. It converts `{X` colour codes to `@xRGB`, then substitutes `%{var}` placeholders, escaping each value so it cannot inject colour. Defaults are inlined in `grim-text`; `rust-i18n`/`t!`/`locales/en.json` are gone.
-- **Command resolution**: `grim::CommandRegistry<Command>` (from `grim-command`). Registered by name + `fn(&str) -> Option<Command>` factory. Case-insensitive, exact name first then highest-priority prefix. Priority is explicit and reorderable (`prioritize`/`deprioritize`) — single-letter directions (`n`/`e`/…) win by being registered last. It is a live Bevy resource, inserted by `grim-scene` (`parser::command_registry()`).
-- **Password hashing**: SHA-256 (PoC — no salt. Use bcrypt/argon2 before production).
-- **Persistence**: JSON filesystem. Accounts keyed by UUID, characters keyed by name.
-- **Linkdead**: Character stays in-world with `Linkdead` + `Player { connection: None }` on disconnect. On reconnect, skips MOTD and re-enters.
-- **Output formatting**: Lives in `grim-scene::formatter`. Transport layer never formats — it only renders colour → ANSI and writes bytes.
-- **Directions**: Single-letter shortcuts (`n`/`e`/`s`/`w`/`u`/`d`) beat alphabetic command overlap in the parser.
-- **Fail closed**: Ownership/visibility checks must show nothing when their gating lookup fails — never fall through to unfiltered data. See AGENTS.md.
-- **Security**: No TLS, no rate limiting, no crash recovery. SHA-256 only.
+**Status:** functional — telnet login, account creation, character management (gender/race/class/level), room movement, social channels, linkdead survival, and JSON world persistence. Security is proof-of-concept (SHA-256 password hashing, no TLS, no rate limiting) — not production-hardened.
