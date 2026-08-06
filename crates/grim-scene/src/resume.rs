@@ -7,11 +7,12 @@ use bevy::prelude::*;
 use chrono::Utc;
 use grim_engine_types::components::{
     Account, Character, Client, ClientState, Description, InRoom, Name as GrimName, OutputHistory,
-    Player, StartingRoom,
+    Player,
 };
 use grim_engine_types::events::LookRoom;
 use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
 use grim_persistence::{load_character_by_name, PersistenceConfig};
+use grim_world::StartingRoom;
 
 use crate::params::RoomResolver;
 use crate::session::ConnectedAt;

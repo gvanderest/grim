@@ -4,7 +4,6 @@ use bevy::prelude::*;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::cardinal::Cardinal;
 use crate::events::Command;
 use crate::id::GrimId;
 
@@ -171,29 +170,12 @@ pub struct RoomLocation {
 
 // ─── World ──────────────────────────────────────────────────────────
 
-/// An area — a collection of rooms. Friendly ID is filesystem-unique.
-#[derive(Component, Debug)]
-pub struct Area {
-    pub id: GrimId,
-    pub friendly_id: String,
-    pub name: String,
-}
-
-/// A room — belongs to an area, has exits.
-#[derive(Component, Debug)]
-pub struct Room {
-    pub id: GrimId,
-    pub friendly_id: String,
-    pub name: String,
-    pub description: String,
-    pub area: Entity,
-}
-
-/// Exits on a room entity: direction → destination room entity.
-#[derive(Component, Debug, Default)]
-pub struct Exits {
-    pub exits: HashMap<Cardinal, Entity>,
-}
+// NOTE (Placement Phase 2a): the world-topology types (`Area`, `Room`, `Exits`,
+// `StartingRoom`) moved into `grim-world`, where the world's static structure
+// lives. `InRoom` stays here — it is actor placement, bound for a future
+// `grim-actor` crate. `RoomLocation` (above, on `Character`) also stays: it is a
+// persisted character field, and moving it would force `grim-engine-types` to
+// depend on `grim-world` (a cycle).
 
 /// Which room an entity is currently in.
 #[derive(Component, Debug, Clone)]
@@ -248,9 +230,6 @@ impl OutputHistory {
 /// Character is still in-world but the player disconnected (linkdead).
 #[derive(Component, Debug)]
 pub struct Linkdead;
-/// Inserted by the seed world system, read by the client during character creation.
-#[derive(Resource, Debug)]
-pub struct StartingRoom(pub Entity);
 
 #[cfg(test)]
 mod tests {

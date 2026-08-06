@@ -10,3 +10,6 @@ pub use npc::Npc;
 pub use registry::{ClassDef, ClassRegistry, RaceDef, RaceRegistry};
 pub use shutdown::ShutdownPlugin;
 pub use world::WorldPlugin;
+// World topology (Placement Phase 2a): the world's static spatial types now live
+// here. Hoisted to the crate root so consumers use `grim_world::{Area, Room, ...}`.
+pub use world::{Area, Exits, Room, StartingRoom};

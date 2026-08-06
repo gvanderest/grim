@@ -15,7 +15,7 @@ use grim_networking::{
     Connection, ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest,
 };
 use grim_persistence::{PersistenceConfig, PersistencePlugin};
-use grim_world::{ClassRegistry, RaceRegistry, WorldPlugin};
+use grim_world::{ClassRegistry, RaceRegistry, Room, StartingRoom, WorldPlugin};
 use std::net::SocketAddr;
 
 use crate::input::{handle_client_input, handle_connection_established};

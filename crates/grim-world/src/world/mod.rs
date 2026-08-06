@@ -14,10 +14,14 @@ mod area;
 mod look;
 mod movement;
 mod title;
+mod topology;
 
 // Preserve the pre-split public paths (`grim_world::world::*`): these lookups
 // were public here before the concern modules were carved out.
 pub use area::{resolve_room_address, room_location, RoomLookup};
+// World topology types (Placement Phase 2a): re-exported at `grim_world::world::*`
+// and hoisted to the crate root in `lib.rs`.
+pub use topology::{Area, Exits, Room, StartingRoom};
 
 /// Handles `look`, `move`, and `quit` commands; emits room/entity description
 /// events, movement broadcasts, and disconnect requests.
@@ -64,9 +68,10 @@ fn handle_quit(
 
 #[cfg(test)]
 mod tests {
+    use super::topology::{Area, Exits, Room};
     use super::*;
     use grim_engine_types::cardinal::Cardinal;
-    use grim_engine_types::components::{Area, Character, Exits, Gender, InRoom, Name, Role, Room};
+    use grim_engine_types::components::{Character, Gender, InRoom, Name, Role};
     use grim_engine_types::events::{
         Command, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent,
     };

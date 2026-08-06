@@ -7,12 +7,11 @@
 
 use bevy::prelude::*;
 use grim_engine_types::components::{
-    Area, Character, InRoom, Linkdead, Name as GrimName, OutputHistory, Player, Room, RoomLocation,
-    StartingRoom,
+    Character, InRoom, Linkdead, Name as GrimName, OutputHistory, Player, RoomLocation,
 };
 use grim_engine_types::events::{Command, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce};
 use grim_networking::DisconnectRequest;
-use grim_world::{ClassRegistry, RaceRegistry};
+use grim_world::{Area, ClassRegistry, RaceRegistry, Room, StartingRoom};
 
 use crate::session::ConnectedAt;
 use crate::validation::ReservedNamePrefixes;

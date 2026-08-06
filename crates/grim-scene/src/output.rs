@@ -4,13 +4,14 @@
 
 use bevy::prelude::*;
 use grim_engine_types::components::{
-    Character, Description, InRoom, Name as GrimName, OutputHistory, Player, Room,
+    Character, Description, InRoom, Name as GrimName, OutputHistory, Player,
 };
 use grim_engine_types::events::{
     GlobalEcho, InfoMessage, LookEntity, LookRoom, MoveEvent, OocEvent, SayEvent, ServerBroadcast,
     YellEvent,
 };
 use grim_networking::ConnectionOutput;
+use grim_world::{Exits, Room};
 
 use crate::formatter;
 use crate::params::AnnounceReaders;
@@ -40,7 +41,7 @@ pub(crate) fn format_output(
     mut announces: AnnounceReaders,
     rooms: Query<(Entity, &Room, &GrimName)>,
     room_occupants: Occupants,
-    room_exits: Query<&grim_engine_types::components::Exits>,
+    room_exits: Query<&Exits>,
     names: Query<&GrimName>,
     descriptions: Query<&Description>,
     characters: Query<&Character>,
@@ -111,7 +112,7 @@ fn emit_look_room(
     ev: &LookRoom,
     rooms: &Query<(Entity, &Room, &GrimName)>,
     room_occupants: &Occupants,
-    room_exits: &Query<&grim_engine_types::components::Exits>,
+    room_exits: &Query<&Exits>,
     characters: &Query<&Character>,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
