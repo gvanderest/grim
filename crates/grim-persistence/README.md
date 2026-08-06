@@ -2,7 +2,7 @@
 > Loads accounts/characters from disk and mirrors world state back as fire-and-forget JSON writes.
 
 **Role:** horizontal (infrastructure)
-**Depends on:** `grim-engine-types`, `grim-world`, `grim-actor`, `grim-networking`
+**Depends on:** `grim-core`, `grim-world`, `grim-actor`, `grim-networking`
 
 ## Components
 | Component | File | Purpose |
@@ -29,8 +29,8 @@ Player-facing verbs and where to find their handlers.
 |---|---|---|
 | `PersistenceConfig` | Resource | `src/persistence.rs` |
 | `ConnectionClosed` | Message (consumed; from `grim-networking`) | `src/persistence.rs` |
-| `MoveEvent` | Message (consumed; from `grim-engine-types`) | `src/persistence.rs` |
-| `LinkdeadAnnounce` | Message (emitted; from `grim-engine-types`) | `src/persistence.rs` |
+| `MoveEvent` | Message (consumed; from `grim-core`) | `src/persistence.rs` |
+| `LinkdeadAnnounce` | Message (emitted; from `grim-core`) | `src/persistence.rs` |
 
 ## Notes
 - Writes are **fire-and-forget** (`fs::write`, errors ignored) — no WAL, no autosave, no transactionality yet.

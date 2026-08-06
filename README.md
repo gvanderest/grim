@@ -42,7 +42,7 @@ Everything is a Bevy plugin unless noted. Dependencies point downward only; the 
 | [`grim-color`](./crates/grim-color) | Colour markup (`{R`, `@xRGB`) → ANSI rendering, palette, escaping. No Bevy, no serde. |
 | [`grim-text`](./crates/grim-text) | Text catalog: `tr`/`tr!`, colour-safe `%{var}` substitution, inlined defaults. Depends only on `grim-color`. |
 | [`grim-command`](./crates/grim-command) | `CommandRegistry<C>` — generic exact-then-prefix resolution with explicit, reorderable priority. Bevy-only. |
-| [`grim-engine-types`](./crates/grim-engine-types) | Shared primitives + the game-event vocabulary (`GrimId`, `Cardinal`, `Name`, `Description`, `RoomLocation`, `Gender`, `Command`, engine `Message` types). Slated to become `grim-core`. |
+| [`grim-core`](./crates/grim-core) | Shared primitives + the game-event vocabulary (`GrimId`, `Cardinal`, `Name`, `Description`, `RoomLocation`, `Gender`, `Command`, engine `Message` types). The L0 foundation crate. |
 
 ### Transport
 

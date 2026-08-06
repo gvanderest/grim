@@ -2,7 +2,7 @@
 > The "beings" of the world (characters, players, placement) and the being-reading command verbs.
 
 **Role:** vertical — actors (beings + their verbs)
-**Depends on:** `grim-engine-types`, `grim-world`, `grim-networking`, `grim-color`
+**Depends on:** `grim-core`, `grim-world`, `grim-networking`, `grim-color`
 
 An **actor** is any entity that can act in the world and be placed in a room —
 player characters and creatures (mobs). Every being carries the shared `Actor`
@@ -16,7 +16,7 @@ shutdown machinery + `RoomLocation`) and never the reverse.
 Entity composition: online PC = `Name + Actor + Character + Player + InRoom`;
 linkdead PC = `Name + Actor + Character + Linkdead + InRoom` (no `Player`);
 creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the
-`Name` component (`grim_engine_types::components::Name`), never on `Character`.
+`Name` component (`grim_core::components::Name`), never on `Character`.
 
 ## Components
 
@@ -57,8 +57,8 @@ Player-facing verbs and where to find their handlers.
 
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
-| `EngineCommand` | Message (input, from `grim-engine-types`) | each `src/commands/*.rs` |
-| `InfoMessage` | Message (output, from `grim-engine-types`) | `look`/`movement`/`title`/`shutdown` |
+| `EngineCommand` | Message (input, from `grim-core`) | each `src/commands/*.rs` |
+| `InfoMessage` | Message (output, from `grim-core`) | `look`/`movement`/`title`/`shutdown` |
 | `DisconnectRequest` | Message (from `grim-networking`) | `src/commands/quit.rs` |
 | `LookRoom` / `LookEntity` / `MoveEvent` | Message (world-happening events, **registered by `grim_world::WorldPlugin`**) | emitted by `look`/`movement` |
 | `ServerBroadcast` | Message (**registered by `grim_world::ShutdownPlugin`**) | `src/commands/shutdown.rs` |
@@ -85,7 +85,7 @@ Non-component types this crate defines.
   scene inserts `Player` and removes `Linkdead`. So online ⇔ has `Player`,
   linkdead ⇔ has `Character` and no `Player`. Takeover keeps the *live* `Player`
   (whose `connection` differs from the closing one) untouched.
-- `Gender` stays in `grim-engine-types` (the session `ClientState` references it);
+- `Gender` stays in `grim-core` (the session `ClientState` references it);
   `Actor`/`StoredCharacter` point *up* at it. `RoomLocation` now lives in
   `grim-world` (`Character.last_room` and `StoredCharacter.last_room` point up at
   it). See ARCHITECTURE.md §4 and ADR-0001.

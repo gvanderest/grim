@@ -13,8 +13,8 @@
 use bevy::prelude::*;
 use chrono::Utc;
 use grim_actor::{InRoom, Player, StoredCharacter};
-use grim_engine_types::components::{Account, Client, ClientState, Description, Gender};
-use grim_engine_types::GrimId;
+use grim_core::components::{Account, Client, ClientState, Description, Gender};
+use grim_core::GrimId;
 use grim_networking::ConnectionOutput;
 use grim_persistence::{load_character_by_name, PersistenceConfig};
 use grim_text::tr;

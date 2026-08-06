@@ -5,9 +5,9 @@
 use bevy::prelude::*;
 use chrono::Utc;
 use grim_actor::{Actor, Character, InRoom, Linkdead, OutputHistory, Player, StoredCharacter};
-use grim_engine_types::components::{Client, ClientState, Description, Name as GrimName};
-use grim_engine_types::events::LinkdeadAnnounce;
-use grim_engine_types::GrimId;
+use grim_core::components::{Client, ClientState, Description, Name as GrimName};
+use grim_core::events::LinkdeadAnnounce;
+use grim_core::GrimId;
 use grim_networking::{ConnectionOutput, DisconnectRequest};
 use grim_persistence::{load_character_by_name, PersistenceConfig};
 use grim_text::tr;

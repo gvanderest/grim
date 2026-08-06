@@ -1,16 +1,16 @@
 //! World topology: the static spatial structure of the game — areas, rooms,
 //! their exits, and the resource naming the room new characters spawn into.
 //!
-//! These types moved out of the `grim-engine-types` god-node (Placement Phase
+//! These types moved out of the `grim-core` god-node (Placement Phase
 //! 2a) so the world's own data lives in the world crate. They depend only on
 //! primitives ([`GrimId`], [`Cardinal`]) that still live downward in
-//! `grim-engine-types`.
+//! `grim-core`.
 
 use std::collections::HashMap;
 
 use bevy::prelude::*;
-use grim_engine_types::cardinal::Cardinal;
-use grim_engine_types::id::GrimId;
+use grim_core::cardinal::Cardinal;
+use grim_core::id::GrimId;
 
 /// An area — a collection of rooms. Friendly ID is filesystem-unique.
 #[derive(Component, Debug)]

@@ -505,7 +505,7 @@ Scene **output policy** (§5.3). Channels need no rule of their own.
 
 ## 8. Current state
 
-Thirteen crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-color`,
+Thirteen crates exist: `example-mud`, `grim`, `grim-core`, `grim-color`,
 `grim-text`, `grim-command`, `grim-networking`, `grim-networking-telnet`,
 `grim-scene`, `grim-world`, `grim-actor`, `grim-channel`, `grim-persistence`.
 
@@ -522,11 +522,11 @@ redesigns were deliberately deferred rather than done blind — see
   those files were **never compiled** — the binary this document described was not a
   build target. It is one now.
 - **Dead duplicates deleted.** Seven files in `crates/grim/src/` were byte-identical
-  to their `grim-engine-types` twins and one (`prelude.rs`) had drifted. None was
+  to their `grim-core` twins and one (`prelude.rs`) had drifted. None was
   declared in `lib.rs`, so none was ever compiled.
 - **`grim-color` extracted** (decomposition step 1). Colour markup, ANSI rendering,
   the palette, and `escape_codes` now live in a Bevy-free, serde-free crate.
-  `grim-engine-types::color` re-exports it, so `grim::color::*` resolves unchanged.
+  `grim-core::color` re-exports it, so `grim::color::*` resolves unchanged.
 - **`grim-text` extracted, `rust-i18n` deleted** (decomposition step 2). The catalog
   (`tr`/`tr!`) moved to a Bevy-free crate depending only on `grim-color`. This
   collapsed **two** parallel string systems into one: `rust-i18n`'s `t!` served two
@@ -540,7 +540,7 @@ redesigns were deliberately deferred rather than done blind — see
 - **`grim-command` extracted** (decomposition step 3). The registry moved to a
   Bevy-only crate and is now **generic over the produced command type**
   (`CommandRegistry<C>`), so it carries no game vocabulary — the closed `Command`
-  enum stays in `grim-engine-types` and `grim-client` instantiates
+  enum stays in `grim-core` and `grim-client` instantiates
   `CommandRegistry<Command>`. Two documented defects are addressed:
   - **Priority is explicit and reorderable.** Resolution is exact-match-first, then
     highest-priority prefix. `register` puts a command at the front (preserving
@@ -563,7 +563,7 @@ redesigns were deliberately deferred rather than done blind — see
 
 | Issue | Detail |
 |-------|--------|
-| `grim-engine-types` is a god-types crate | colour (step 1), `tr` (step 2), command registry (step 3), and wire events + `Connection` (step 4) are out. Remaining: game events, components, validation |
+| `grim-core` is a god-types crate | colour (step 1), `tr` (step 2), command registry (step 3), and wire events + `Connection` (step 4) are out. Remaining: game events, components, validation |
 | ~~`grim` owns three plugins~~ | Fixed in step 7 (+8). World/shutdown → `grim-world`, Persistence → `grim-persistence`, Social → `grim-channel`; `grim` is a facade |
 | `ChannelPlugin` holds `say`/`yell`/`ooc` as code | still three coded handlers; `add_channel` data model (§7) is deferred with typed-event dispatch |
 | No attempt/fact split | `SayEvent`/`MoveEvent` are facts with no cancellable phase, so nothing can veto (§6) |
@@ -587,7 +587,7 @@ redesigns were deliberately deferred rather than done blind — see
   single implementation is the premature-abstraction trap above, so the tokio bridge
   stays in the telnet transport until a second transport is real.
 - **Step 5 — `grim-networking-telnet`.** Renamed from `grim-protocol-telnet` and
-  repointed off the facade onto `grim-color`, `grim-networking`, `grim-engine-types`.
+  repointed off the facade onto `grim-color`, `grim-networking`, `grim-core`.
 - **Step 6 — `grim-scene`.** Renamed from `grim-client`; `CommandRegistry` is now a
   real Bevy resource (the `OnceLock` is gone), threaded into the input dispatcher via a
   `SessionRes` `SystemParam` so the 16-parameter limit — the forcing function — is
@@ -613,7 +613,7 @@ their own layer and split the monolithic PC struct:
   `Character` became a shared `Actor` base (race/level/gender, on every being) +
   a PC-only `Character` (account/roles/class/title/restrings/last_room); the
   `Npc` marker became `grim_actor::Creature`; `RoomLocation` moved from
-  `grim-engine-types` down into `grim-world`; and `Player` became a
+  `grim-core` down into `grim-world`; and `Player` became a
   present-only-while-connected attachment (`{ connection: Entity }`, no longer
   optional) — **linkdead is now the absence of `Player`**, not a `Player` with a
   null connection. The display name lives on the `Name` component throughout, and

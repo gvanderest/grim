@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 grim-color = { path = "../grim-color" }
 grim-networking = { path = "../grim-networking" }
-grim-engine-types = { path = "../grim-engine-types" }
+grim-core = { path = "../grim-core" }
 grim-actor = { path = "../grim-actor" }
 bevy = { workspace = true, default-features = false }
 tokio = { workspace = true }

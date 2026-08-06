@@ -11,9 +11,9 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use grim_engine_types::character::Gender;
-use grim_engine_types::components::Name;
-use grim_engine_types::id::GrimId;
+use grim_core::character::Gender;
+use grim_core::components::Name;
+use grim_core::id::GrimId;
 use grim_world::RoomLocation;
 use serde::{Deserialize, Serialize};
 

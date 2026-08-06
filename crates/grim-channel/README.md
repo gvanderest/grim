@@ -2,7 +2,7 @@
 > Player-speech channels: `say`, `yell`, `ooc`, `tell`/`whisper`, `reply`, and admin `gecho`.
 
 **Role:** vertical — player speech / communication channels
-**Depends on:** `grim-engine-types`, `grim-world`, `grim-actor`, `grim-text`
+**Depends on:** `grim-core`, `grim-world`, `grim-actor`, `grim-text`
 
 ## Components
 | Component | File | Purpose |
@@ -34,7 +34,7 @@ Player-facing verbs and where to find their handlers.
 ## Resources & Events
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
-| `SayEvent` | Message (consumed; defined in `grim-engine-types`) | `src/channel.rs` |
+| `SayEvent` | Message (consumed; defined in `grim-core`) | `src/channel.rs` |
 | `YellEvent` | Message (consumed) | `src/channel.rs` |
 | `OocEvent` | Message (consumed) | `src/channel.rs` |
 | `GlobalEcho` | Message (consumed) | `src/channel.rs` |

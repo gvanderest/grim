@@ -18,7 +18,7 @@ pub use world::WorldPlugin;
 // here. Hoisted to the crate root so consumers use `grim_world::{Area, Room, ...}`.
 pub use world::{Area, Exits, Room, StartingRoom};
 // Stable room storage location (Placement Phase 2a step 3): relocated from
-// `grim-engine-types` so it sits in the being-free world layer that its
+// `grim-core` so it sits in the being-free world layer that its
 // consumers already depend on. Hoisted so consumers use `grim_world::RoomLocation`.
 pub use world::RoomLocation;
 // Shared room-address lookups (being-free): the actor movement verbs resolve

@@ -8,7 +8,7 @@
 //! `InfoMessage`, `DisconnectRequest`) it owns.
 
 use bevy::prelude::*;
-use grim_engine_types::events::{LookEntity, LookRoom, MoveEvent};
+use grim_core::events::{LookEntity, LookRoom, MoveEvent};
 
 /// Registers the world-happening event vocabulary (`LookRoom`, `LookEntity`,
 /// `MoveEvent`).

@@ -4,7 +4,7 @@
 //! against `grim_world`'s room topology + address lookups.
 
 use bevy::prelude::*;
-use grim_engine_types::events::{Command, EngineCommand, InfoMessage, LookRoom, MoveEvent};
+use grim_core::events::{Command, EngineCommand, InfoMessage, LookRoom, MoveEvent};
 use grim_world::{
     resolve_room_address, room_location, Area, Exits, Room, RoomLocation, RoomLookup,
 };
@@ -203,12 +203,12 @@ pub(crate) fn register(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_engine_types::cardinal::Cardinal;
-    use grim_engine_types::character::Gender;
+    use grim_core::cardinal::Cardinal;
+    use grim_core::character::Gender;
     // The project display-name component, aliased to dodge Bevy's prelude `Name`
     // (the glob above brings Bevy's in scope). See AGENTS.md.
-    use grim_engine_types::components::Name as GrimName;
-    use grim_engine_types::GrimId;
+    use grim_core::components::Name as GrimName;
+    use grim_core::GrimId;
 
     use crate::actor::Actor;
     use crate::character::Role;

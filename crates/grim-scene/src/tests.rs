@@ -8,12 +8,12 @@ use grim_actor::{
     Actor, Character, InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter,
 };
 use grim_channel::ChannelPlugin;
-use grim_engine_types::components::Name as GrimName;
-use grim_engine_types::components::*;
-use grim_engine_types::events::*;
+use grim_core::components::Name as GrimName;
+use grim_core::components::*;
+use grim_core::events::*;
 // Explicit named import shadows the glob'd `bevy::prelude::Command` trait.
-use grim_engine_types::events::Command;
-use grim_engine_types::GrimId;
+use grim_core::events::Command;
+use grim_core::GrimId;
 use grim_networking::{
     Connection, ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest,
 };
@@ -1369,7 +1369,7 @@ mod output_format {
             actor,
             from: from_room,
             to: to_room,
-            direction: grim_engine_types::cardinal::Cardinal::North,
+            direction: grim_core::cardinal::Cardinal::North,
         });
         app.update();
 

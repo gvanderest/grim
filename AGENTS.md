@@ -26,7 +26,7 @@ deferred (ARCHITECTURE.md §8). See CONTEXT.md.
 | `grim-command` | `CommandRegistry<C>` — generic, resource-ready. Exact-then-prefix resolution, `prioritize`/`deprioritize`, `contested_prefixes`. Bevy-only |
 | `grim-networking` | `Connection` component + wire events (`ConnectionInput`/`Output`, `ConnectionEstablished`/`Closed`, `DisconnectRequest`). Bevy-only |
 | `grim-networking-telnet` | `TelnetPlugin`: TCP server, IAC negotiation, tokio↔Bevy bridge, ANSI render |
-| `grim-engine-types` | Game events, components, validation; re-exports `grim-color` |
+| `grim-core` | Game events, components, validation; re-exports `grim-color` |
 | `grim-scene` | `ScenePlugin`: session lifecycle (`ClientState`), input parsing, output formatting. Owns the `CommandRegistry` resource |
 | `grim-world` | Being-free world topology (rooms/areas/exits + room-address lookups + `RoomLocation`); `WorldPlugin` (world-event vocabulary) + `ShutdownPlugin` (SIGTERM signal + countdown machinery). Also owns race/class registries |
 | `grim-actor` | The "beings": `Actor` base (race/level/gender, on every being) + PC-only `Character` (account/roles/class/title/restrings/last_room) + `Creature` mob marker + `Player`/`InRoom`/`Linkdead`/`OutputHistory`/`Role`, plus the `StoredCharacter` flat disk DTO. Names live in the `Name` component. Being-reading verbs (`look`/`move`/`goto`/`quit`/`title` + admin `shutdown` gate). `ActorPlugin`. Depends on `grim-world`, never the reverse |

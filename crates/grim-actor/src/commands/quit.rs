@@ -4,7 +4,7 @@
 //! skipped.
 
 use bevy::prelude::*;
-use grim_engine_types::events::{Command, EngineCommand};
+use grim_core::events::{Command, EngineCommand};
 use grim_networking::DisconnectRequest;
 
 use crate::player::Player;

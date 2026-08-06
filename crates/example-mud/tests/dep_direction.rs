@@ -22,14 +22,14 @@
 //! diverges from §4's table/diagram, the edge is still encoded (reality wins) with a
 //! `// NOTE:` flagging the divergence for review. The headline divergences:
 //!
-//!  1. `grim-engine-types` — the transitional "god-types" node (ARCHITECTURE.md §8).
+//!  1. `grim-core` — the transitional "god-types" node (ARCHITECTURE.md §8).
 //!     §4's table does not list it, yet most subsystems depend on it. Encoded here.
 //!  2. `grim-scene`'s DEV-only harness edges to `grim-world` / `grim-channel`
 //!     (`[dev-dependencies]`, ARCHITECTURE.md §10). Carved out as `dev` edges so a
 //!     dev-only coupling can never masquerade as a normal one.
 //!  3. §4's diagram routes `grim-world` / `grim-channel` through `grim-command`.
 //!     Reality: they do not depend on `grim-command` at all (command dispatch is
-//!     mediated by `grim-scene`); they depend on `grim-engine-types` etc. instead.
+//!     mediated by `grim-scene`); they depend on `grim-core` etc. instead.
 //!  4. The facade `grim` and the `example-mud` binary are absent from §4's
 //!     subsystem-direction diagram; both are encoded here.
 
@@ -51,16 +51,16 @@ const ALLOWED_NORMAL: &[Edge] = &[
     //
     // `grim-text` → `grim-color`: the catalog converts/escapes colour markup. §4.
     ("grim-text", "grim-color"),
-    // NOTE (divergence #1): `grim-engine-types` is the transitional god-types node
+    // NOTE (divergence #1): `grim-core` is the transitional god-types node
     // (§8). It is not in §4's crate-map table, but it exists and re-exports colour.
-    ("grim-engine-types", "grim-color"),
+    ("grim-core", "grim-color"),
     // ── Transports ──────────────────────────────────────────────────────────
     // `grim-networking` depends on nothing internal (Bevy + serde only).
     // `grim-networking-telnet` renders (→ grim-color) and rides the bridge
-    // (→ grim-networking); →grim-engine-types is the god-types coupling (#1). §4/§8.
+    // (→ grim-networking); →grim-core is the god-types coupling (#1). §4/§8.
     ("grim-networking-telnet", "grim-color"),
     ("grim-networking-telnet", "grim-networking"),
-    ("grim-networking-telnet", "grim-engine-types"),
+    ("grim-networking-telnet", "grim-core"),
     // NOTE (Placement Phase 2a step 2): copyover re-adopts characters, reading the
     // Character/Linkdead beings, so telnet depends on grim-actor. No cycle.
     ("grim-networking-telnet", "grim-actor"),
@@ -71,7 +71,7 @@ const ALLOWED_NORMAL: &[Edge] = &[
     ("grim-scene", "grim-networking"),
     ("grim-scene", "grim-color"),
     ("grim-scene", "grim-text"),
-    ("grim-scene", "grim-engine-types"), // god-types coupling (#1)
+    ("grim-scene", "grim-core"), // god-types coupling (#1)
     // NOTE (divergence): §4 does not show scene→persistence; today the scene owns
     // resume placement / player-alias expansion, so it depends on grim-persistence.
     ("grim-scene", "grim-persistence"),
@@ -94,19 +94,19 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // and grim-world → grim-color were REMOVED — their only users (the `quit`
     // handler's DisconnectRequest, and the `goto`/`title` escape_codes calls) moved
     // into grim-actor, so those edges are now stale.
-    ("grim-world", "grim-engine-types"),
+    ("grim-world", "grim-core"),
     // NOTE (Placement Phase 2a step 2): grim-actor owns the "beings"
     // (Character/Player/InRoom/Linkdead/OutputHistory/Role) and the being-reading
     // verbs (look/move/goto/quit/title + the admin shutdown gate). It depends on
     // grim-world (topology + shutdown machinery), grim-networking (DisconnectRequest
     // for `quit`), grim-color (escape_codes for `goto`/`title`), and the god-types
-    // node. grim-world/grim-engine-types do NOT depend on grim-actor — the actor
+    // node. grim-world/grim-core do NOT depend on grim-actor — the actor
     // layer sits strictly above the being-free world.
-    ("grim-actor", "grim-engine-types"),
+    ("grim-actor", "grim-core"),
     ("grim-actor", "grim-world"),
     ("grim-actor", "grim-networking"),
     ("grim-actor", "grim-color"),
-    ("grim-channel", "grim-engine-types"),
+    ("grim-channel", "grim-core"),
     ("grim-channel", "grim-text"),
     // NOTE (Placement Phase 2a step 2): grim-channel reads beings (Character/
     // Player/InRoom), so it depends on grim-actor. grim-actor does not depend on
@@ -119,7 +119,7 @@ const ALLOWED_NORMAL: &[Edge] = &[
     ("grim-channel", "grim-world"),
     // `grim-persistence` loads/saves accounts + characters (→ god-types) and reacts
     // to connection lifecycle events (→ grim-networking).
-    ("grim-persistence", "grim-engine-types"),
+    ("grim-persistence", "grim-core"),
     ("grim-persistence", "grim-networking"),
     // NOTE (Placement Phase 2a step 2): persistence loads/saves beings
     // (Character/Player/InRoom/Linkdead/OutputHistory), so it depends on
@@ -133,7 +133,7 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // NOTE (divergence #4): absent from §4's subsystem diagram. The facade `grim`
     // depends on and re-exports every subsystem (GrimDefaultPlugins, §1/§8 step 9);
     // nothing depends back on it. `example-mud` depends on the facade alone.
-    ("grim", "grim-engine-types"),
+    ("grim", "grim-core"),
     ("grim", "grim-text"),
     ("grim", "grim-command"),
     ("grim", "grim-networking"),

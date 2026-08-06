@@ -19,7 +19,7 @@
 //! changes across a restart.
 
 use bevy::prelude::*;
-use grim_engine_types::events::ServerBroadcast;
+use grim_core::events::ServerBroadcast;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 

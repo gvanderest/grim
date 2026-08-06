@@ -7,8 +7,8 @@
 
 use bevy::prelude::*;
 use grim_actor::{Actor, Character, InRoom, Linkdead, OutputHistory, Player};
-use grim_engine_types::components::Name as GrimName;
-use grim_engine_types::events::{Command, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce};
+use grim_core::components::Name as GrimName;
+use grim_core::events::{Command, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce};
 use grim_networking::DisconnectRequest;
 use grim_world::{Area, ClassRegistry, RaceRegistry, Room, RoomLocation, StartingRoom};
 

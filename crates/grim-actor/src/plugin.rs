@@ -28,9 +28,7 @@ impl Plugin for ActorPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_engine_types::events::{
-        Command, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent,
-    };
+    use grim_core::events::{Command, EngineCommand, InfoMessage, LookEntity, LookRoom, MoveEvent};
     use grim_networking::DisconnectRequest;
 
     /// The plugin composes with the world plugins it leans on, and registers the

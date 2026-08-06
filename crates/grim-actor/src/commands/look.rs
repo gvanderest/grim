@@ -3,8 +3,8 @@
 //! actor's [`InRoom`] placement and the [`Name`] of entities sharing the room.
 
 use bevy::prelude::*;
-use grim_engine_types::components::Name;
-use grim_engine_types::events::{Command, EngineCommand, InfoMessage, LookEntity, LookRoom};
+use grim_core::components::Name;
+use grim_core::events::{Command, EngineCommand, InfoMessage, LookEntity, LookRoom};
 
 use crate::placement::InRoom;
 

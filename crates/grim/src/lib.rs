@@ -8,10 +8,10 @@
 #![allow(ambiguous_glob_reexports)]
 
 pub use bevy::prelude::*;
-pub use grim_engine_types::*;
+pub use grim_core::*;
 
 // Placement Phase 1/2a relocated these domain types out of the
-// `grim-engine-types` god-node into their owning subsystem crates. Re-export
+// `grim-core` god-node into their owning subsystem crates. Re-export
 // them at the crate root (and via `prelude`) so `grim::X` / `grim::prelude::X`
 // stay stable downstream.
 pub mod prelude;

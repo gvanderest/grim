@@ -13,7 +13,7 @@ use std::sync::Arc;
 use bevy::log::{error, info, warn};
 use bevy::prelude::*;
 use grim_actor::{Character, Linkdead, Player};
-use grim_engine_types::components::{Client, ClientState, Name as GrimName};
+use grim_core::components::{Client, ClientState, Name as GrimName};
 use grim_networking::{Connection, HandoverEntry, HandoverManifest};
 use sendfd::{RecvWithFd, SendWithFd};
 
@@ -299,8 +299,8 @@ mod tests {
     fn copyover_manifest_skips_taken_over_old_connection() {
         use crate::bridge::NetworkEvent;
         use grim_actor::{Character, Player};
-        use grim_engine_types::components::{Client, ClientState, Name as GrimName};
-        use grim_engine_types::GrimId;
+        use grim_core::components::{Client, ClientState, Name as GrimName};
+        use grim_core::GrimId;
         use grim_networking::Connection;
         use std::sync::Mutex;
 
