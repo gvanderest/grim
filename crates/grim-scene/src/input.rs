@@ -3,8 +3,8 @@
 //! session's current [`ClientState`].
 
 use bevy::prelude::*;
-use grim_engine_types::components::{Account, Client, ClientState};
-use grim_engine_types::events::{LoginAnnounce, LookRoom};
+use grim_core::components::{Account, Client, ClientState};
+use grim_core::events::{LoginAnnounce, LookRoom};
 use grim_networking::{ConnectionEstablished, ConnectionInput, ConnectionOutput};
 use grim_text::tr;
 

@@ -2,7 +2,7 @@
 > World topology (areas, rooms, exits) + room-address lookups, and the graceful server-shutdown signal/countdown machinery.
 
 **Role:** vertical — world topology (being-free)
-**Depends on:** `grim-engine-types`
+**Depends on:** `grim-core`
 
 This crate is **being-free**: it knows the rooms, not who stands in them. The
 beings (`Character`, `Player`, `InRoom`, …) and the verbs that read them
@@ -61,7 +61,7 @@ Non-component types this crate defines.
 
 | Type | Kind | File | Purpose |
 |---|---|---|---|
-| `RoomLocation` | serde struct (`area`, `room` `friendly_id`s) | `src/world/location.rs` | The stable, entity-independent storage location of a room — survives a reseed. Persisted on `grim_actor::Character.last_room` / `StoredCharacter.last_room`. Relocated here from `grim-engine-types` (Placement Phase 2a step 3) so it sits below its consumers with no cycle. |
+| `RoomLocation` | serde struct (`area`, `room` `friendly_id`s) | `src/world/location.rs` | The stable, entity-independent storage location of a room — survives a reseed. Persisted on `grim_actor::Character.last_room` / `StoredCharacter.last_room`. Relocated here from `grim-core` (Placement Phase 2a step 3) so it sits below its consumers with no cycle. |
 | `RoomLookup` | enum (`Found`/`NotFound`/`Ambiguous`) | `src/world/area.rs` | Outcome of resolving a room address. |
 
 ## Notes

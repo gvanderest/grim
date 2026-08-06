@@ -2,8 +2,8 @@ use grim_text::tr;
 
 use bevy::prelude::*;
 use grim_actor::{Character, InRoom, Linkdead, Player};
-use grim_engine_types::components::Name;
-use grim_engine_types::events::{
+use grim_core::components::Name;
+use grim_core::events::{
     Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
 };
 use grim_world::Room;
@@ -273,11 +273,11 @@ fn handle_gecho(
 mod tests {
     use super::*;
     use grim_actor::{Character, InRoom, Linkdead, Player, Role};
-    use grim_engine_types::components::Name;
-    use grim_engine_types::events::{
+    use grim_core::components::Name;
+    use grim_core::events::{
         Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
     };
-    use grim_engine_types::GrimId;
+    use grim_core::GrimId;
     use grim_world::Room;
 
     use chrono::Utc;

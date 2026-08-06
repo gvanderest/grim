@@ -86,7 +86,7 @@ hierarchy, all in the `grim-actor` crate above the being-free `grim-world`:
   is *not* a persistent trait of the being; it is attached on login/reconnect and
   removed on disconnect. Online ⇔ has `Player`; **linkdead ⇔ has `Character` and
   no `Player`** (marked with `Linkdead`).
-- **`Name`** (`grim-engine-types`), **`InRoom`**, **`OutputHistory`**, **`Linkdead`**,
+- **`Name`** (`grim-core`), **`InRoom`**, **`OutputHistory`**, **`Linkdead`**,
   and **`Role`** round out the being components.
 
 The display name always lives in the `Name` component, never on a being struct.

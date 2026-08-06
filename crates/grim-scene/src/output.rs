@@ -4,8 +4,8 @@
 
 use bevy::prelude::*;
 use grim_actor::{Character, InRoom, OutputHistory, Player};
-use grim_engine_types::components::{Description, Name as GrimName};
-use grim_engine_types::events::{
+use grim_core::components::{Description, Name as GrimName};
+use grim_core::events::{
     GlobalEcho, InfoMessage, LookEntity, LookRoom, MoveEvent, OocEvent, SayEvent, ServerBroadcast,
     YellEvent,
 };

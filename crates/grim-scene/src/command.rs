@@ -7,8 +7,8 @@ use std::cmp::Ordering;
 use bevy::prelude::*;
 use chrono::{DateTime, Utc};
 use grim_actor::{Actor, Character, Linkdead, StoredCharacter};
-use grim_engine_types::components::{Client, ClientState, Gender, Name as GrimName};
-use grim_engine_types::events::{Command, EngineCommand, LogoutAnnounce};
+use grim_core::components::{Client, ClientState, Gender, Name as GrimName};
+use grim_core::events::{Command, EngineCommand, LogoutAnnounce};
 use grim_networking::{ConnectionOutput, DisconnectRequest};
 use grim_text::tr;
 
@@ -333,7 +333,7 @@ pub(crate) fn process_command_queue(
 mod tests {
     use super::{gender_char, who_order, WhoKey};
     use chrono::{DateTime, TimeZone, Utc};
-    use grim_engine_types::components::Gender;
+    use grim_core::components::Gender;
     use std::cmp::Ordering;
 
     fn at(secs: i64) -> DateTime<Utc> {

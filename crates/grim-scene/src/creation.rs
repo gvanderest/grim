@@ -4,7 +4,7 @@
 //! / `SelectRace` / `SelectClass` state handlers.
 
 use bevy::prelude::*;
-use grim_engine_types::components::{Account, Client, ClientState, Gender};
+use grim_core::components::{Account, Client, ClientState, Gender};
 use grim_networking::ConnectionOutput;
 use grim_persistence::load_character_by_name;
 

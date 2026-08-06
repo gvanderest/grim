@@ -5,7 +5,7 @@
 //! carries the persistent player state that a creature has no use for (account,
 //! roles, class, title, restrings, last room). The shared "alive thing" fields
 //! (race, level, gender) live on [`Actor`](crate::Actor), and the display name
-//! lives on the `Name` component (`grim_engine_types::components::Name`) — a
+//! lives on the `Name` component (`grim_core::components::Name`) — a
 //! `Character` no longer stores a `name`.
 //!
 //! `Character` is not itself serialized: its on-disk form is the flat
@@ -18,7 +18,7 @@ use bevy::prelude::*;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use grim_engine_types::id::GrimId;
+use grim_core::id::GrimId;
 use grim_world::RoomLocation;
 
 /// A privilege a character holds. Serialized lowercase (`"admin"`) so the

@@ -1,4 +1,4 @@
-# `grim-engine-types`
+# `grim-core`
 > Shared primitive types — components, game events, and value types the engine's plugins agree on.
 
 **Role:** horizontal (primitives)

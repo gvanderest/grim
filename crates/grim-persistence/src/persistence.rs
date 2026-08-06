@@ -1,9 +1,9 @@
 use bevy::log::info;
 use bevy::prelude::*;
 use grim_actor::{Actor, Character, InRoom, Linkdead, OutputHistory, Player, StoredCharacter};
-use grim_engine_types::components::{Account, Client, Name as GrimName};
-use grim_engine_types::events::{LinkdeadAnnounce, MoveEvent};
-use grim_engine_types::GrimId;
+use grim_core::components::{Account, Client, Name as GrimName};
+use grim_core::events::{LinkdeadAnnounce, MoveEvent};
+use grim_core::GrimId;
 use grim_networking::{Connection, ConnectionClosed};
 use grim_world::{Area, Room, RoomLocation};
 use std::fs;
@@ -246,8 +246,8 @@ fn save_on_move(
 mod tests {
     use super::*;
     use chrono::Utc;
-    use grim_engine_types::components::Gender;
-    use grim_engine_types::GrimId;
+    use grim_core::components::Gender;
+    use grim_core::GrimId;
     use std::sync::{LazyLock, Mutex};
 
     /// Serialises filesystem-touching tests: all load/save tests use
@@ -995,7 +995,7 @@ mod tests {
                 actor,
                 from: room,
                 to: room,
-                direction: grim_engine_types::cardinal::Cardinal::North,
+                direction: grim_core::cardinal::Cardinal::North,
             });
             app.update();
 
@@ -1015,7 +1015,7 @@ mod tests {
                 actor: creature,
                 from: room,
                 to: room,
-                direction: grim_engine_types::cardinal::Cardinal::South,
+                direction: grim_core::cardinal::Cardinal::South,
             });
             app.update();
 

@@ -8,7 +8,7 @@
 //! `shutdown` arriving in the same tick still schedule exactly one countdown.
 
 use bevy::prelude::*;
-use grim_engine_types::events::{Command, EngineCommand, InfoMessage, ServerBroadcast};
+use grim_core::events::{Command, EngineCommand, InfoMessage, ServerBroadcast};
 use grim_world::shutdown::{warn_text, ActiveShutdown, ShutdownCountdown};
 use grim_world::ShutdownSet;
 
@@ -75,7 +75,7 @@ pub(crate) fn register(app: &mut App) {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use grim_engine_types::GrimId;
+    use grim_core::GrimId;
     use grim_world::ShutdownPlugin;
 
     use crate::character::Role;

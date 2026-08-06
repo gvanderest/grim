@@ -6,8 +6,8 @@
 use bevy::prelude::*;
 use chrono::Utc;
 use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player};
-use grim_engine_types::components::{Account, Client, ClientState, Description, Name as GrimName};
-use grim_engine_types::events::LookRoom;
+use grim_core::components::{Account, Client, ClientState, Description, Name as GrimName};
+use grim_core::events::LookRoom;
 use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
 use grim_persistence::{load_character_by_name, PersistenceConfig};
 use grim_text::tr;

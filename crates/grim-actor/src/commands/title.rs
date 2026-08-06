@@ -2,7 +2,7 @@
 //! [`Character`] (persisted via the existing save-on-disconnect).
 
 use bevy::prelude::*;
-use grim_engine_types::events::{Command, EngineCommand, InfoMessage};
+use grim_core::events::{Command, EngineCommand, InfoMessage};
 
 use crate::character::Character;
 
@@ -54,7 +54,7 @@ pub(crate) fn register(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_engine_types::GrimId;
+    use grim_core::GrimId;
 
     fn test_app() -> App {
         let mut app = App::new();

@@ -1,6 +1,6 @@
 use bevy::log::warn;
 use grim_command::CommandRegistry;
-use grim_engine_types::events::Command;
+use grim_core::events::Command;
 
 /// Parse a raw input line into a Command using `registry`.
 ///
@@ -160,32 +160,32 @@ fn build_registry() -> CommandRegistry<Command> {
     // ── Cardinal directions (last = highest priority for single-char) ─
     r.register("north", |_| {
         Some(Command::Move {
-            direction: grim_engine_types::cardinal::Cardinal::North,
+            direction: grim_core::cardinal::Cardinal::North,
         })
     });
     r.register("east", |_| {
         Some(Command::Move {
-            direction: grim_engine_types::cardinal::Cardinal::East,
+            direction: grim_core::cardinal::Cardinal::East,
         })
     });
     r.register("south", |_| {
         Some(Command::Move {
-            direction: grim_engine_types::cardinal::Cardinal::South,
+            direction: grim_core::cardinal::Cardinal::South,
         })
     });
     r.register("west", |_| {
         Some(Command::Move {
-            direction: grim_engine_types::cardinal::Cardinal::West,
+            direction: grim_core::cardinal::Cardinal::West,
         })
     });
     r.register("up", |_| {
         Some(Command::Move {
-            direction: grim_engine_types::cardinal::Cardinal::Up,
+            direction: grim_core::cardinal::Cardinal::Up,
         })
     });
     r.register("down", |_| {
         Some(Command::Move {
-            direction: grim_engine_types::cardinal::Cardinal::Down,
+            direction: grim_core::cardinal::Cardinal::Down,
         })
     });
 
@@ -202,8 +202,8 @@ fn build_registry() -> CommandRegistry<Command> {
 #[cfg(test)]
 mod tests {
     use grim_command::CommandRegistry;
-    use grim_engine_types::cardinal::Cardinal;
-    use grim_engine_types::events::Command;
+    use grim_core::cardinal::Cardinal;
+    use grim_core::events::Command;
 
     use super::{command_registry, parse_command};
 

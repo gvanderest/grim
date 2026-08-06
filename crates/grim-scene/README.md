@@ -2,14 +2,14 @@
 > The session subsystem: lifecycle (`ClientState`), input parsing/routing, output formatting + per-recipient broadcast, admin-gated dispatch, and copyover resume.
 
 **Role:** horizontal (infrastructure) — session / networking↔command bridge
-**Depends on:** `grim-engine-types`, `grim-networking`, `grim-command`, `grim-text`, `grim-color`, `grim-persistence`, `grim-world`, `grim-actor`
+**Depends on:** `grim-core`, `grim-networking`, `grim-command`, `grim-text`, `grim-color`, `grim-persistence`, `grim-world`, `grim-actor`
 
 ## Components
 | Component | File | Purpose |
 |---|---|---|
 | `ConnectedAt(DateTime<Utc>)` | `src/session.rs` | When this session connected (used by the WHO list ordering). |
-| `Client` | (`grim-engine-types::components`) | Per-connection session state; consumed here, defined upstream. |
-| `ClientState` | (`grim-engine-types::components`) | Login/creation/in-game state machine; drives input routing. |
+| `Client` | (`grim-core::components`) | Per-connection session state; consumed here, defined upstream. |
+| `ClientState` | (`grim-core::components`) | Login/creation/in-game state machine; drives input routing. |
 
 ## Systems
 | System | Schedule | File | Purpose |

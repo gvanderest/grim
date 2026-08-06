@@ -9,7 +9,7 @@
 //! marker instead.
 
 use bevy::prelude::*;
-use grim_engine_types::character::Gender;
+use grim_core::character::Gender;
 
 /// The shared base every being carries — PC or creature. Movement, perception,
 /// and the WHO list read race / level / gender here rather than off the
@@ -22,7 +22,7 @@ pub struct Actor {
     /// Level. New characters and seeded creatures start at 1; there is no XP
     /// system yet, so this is just a stored number.
     pub level: u32,
-    /// Gender — a closed set (see `grim_engine_types::character::Gender`).
+    /// Gender — a closed set (see `grim_core::character::Gender`).
     pub gender: Gender,
 }
 

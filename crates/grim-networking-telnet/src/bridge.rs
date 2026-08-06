@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use bevy::log::info;
 use bevy::prelude::*;
-use grim_engine_types::components::{Client, ClientState};
+use grim_core::components::{Client, ClientState};
 use grim_networking::{
     Connection, ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,
     ConnectionResumed, DisconnectRequest,
@@ -577,7 +577,7 @@ mod tests {
     /// `prepend_newline` leading newline, and the empty-text no-op.
     mod render {
         use super::*;
-        use grim_engine_types::components::{Client, ClientState};
+        use grim_core::components::{Client, ClientState};
 
         #[test]
         fn send_network_commands_sends_text() {

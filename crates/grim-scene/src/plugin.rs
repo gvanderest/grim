@@ -3,11 +3,11 @@
 
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::prelude::*;
-use grim_engine_types::events::{
+use grim_core::events::{
     EngineCommand, GlobalEcho, InfoMessage, LinkdeadAnnounce, LookEntity, LookRoom, MoveEvent,
     OocEvent, SayEvent, ServerBroadcast, YellEvent,
 };
-use grim_engine_types::events::{LoginAnnounce, LogoutAnnounce};
+use grim_core::events::{LoginAnnounce, LogoutAnnounce};
 use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
 use grim_world::{ClassRegistry, RaceRegistry};
 

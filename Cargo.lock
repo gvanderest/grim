@@ -940,7 +940,7 @@ dependencies = [
  "grim-actor",
  "grim-channel",
  "grim-command",
- "grim-engine-types",
+ "grim-core",
  "grim-networking",
  "grim-networking-telnet",
  "grim-persistence",
@@ -956,7 +956,7 @@ dependencies = [
  "bevy",
  "chrono",
  "grim-color",
- "grim-engine-types",
+ "grim-core",
  "grim-networking",
  "grim-world",
  "serde",
@@ -970,7 +970,7 @@ dependencies = [
  "bevy",
  "chrono",
  "grim-actor",
- "grim-engine-types",
+ "grim-core",
  "grim-text",
  "grim-world",
 ]
@@ -987,7 +987,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "grim-engine-types"
+name = "grim-core"
 version = "0.1.0"
 dependencies = [
  "bevy",
@@ -1014,7 +1014,7 @@ dependencies = [
  "chrono",
  "grim-actor",
  "grim-color",
- "grim-engine-types",
+ "grim-core",
  "grim-networking",
  "rustix",
  "sd-notify",
@@ -1031,7 +1031,7 @@ dependencies = [
  "bevy",
  "chrono",
  "grim-actor",
- "grim-engine-types",
+ "grim-core",
  "grim-networking",
  "grim-world",
  "serde_json",
@@ -1047,7 +1047,7 @@ dependencies = [
  "grim-channel",
  "grim-color",
  "grim-command",
- "grim-engine-types",
+ "grim-core",
  "grim-networking",
  "grim-persistence",
  "grim-text",
@@ -1069,7 +1069,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "chrono",
- "grim-engine-types",
+ "grim-core",
  "serde",
  "signal-hook",
 ]

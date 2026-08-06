@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-grim-engine-types = { path = "../grim-engine-types" }
+grim-core = { path = "../grim-core" }
 grim-world = { path = "../grim-world" }
 grim-networking = { path = "../grim-networking" }
 grim-color = { path = "../grim-color" }
