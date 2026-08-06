@@ -96,21 +96,22 @@ const WHO_GUILD_W: usize = 5;
 /// registry abbrevs) carry no colour and are left untouched.
 const WHO_RESET: &str = "{x";
 
-/// Left-justify `s` into exactly `width` chars: pad with trailing spaces, or
-/// truncate to fit. Keeps every WHO column aligned regardless of content.
+/// Left-justify `s` into exactly `width` *visible* columns: pad with trailing
+/// spaces, or truncate to fit. Colour-aware — markup (`{X`/`@xRGB`) occupies no
+/// columns and is never split mid-token — so a coloured restring override stays
+/// aligned with the rest of the grid.
 fn pad_left(s: &str, width: usize) -> String {
-    let mut out: String = s.chars().take(width).collect();
-    while out.chars().count() < width {
-        out.push(' ');
-    }
-    out
+    let truncated = grim_color::truncate_visible(s, width);
+    let pad = width.saturating_sub(grim_color::visible_width(&truncated));
+    format!("{truncated}{}", " ".repeat(pad))
 }
 
-/// Right-justify `s` into exactly `width` chars: pad with leading spaces, or
-/// truncate to fit. Used for the right-aligned level column.
+/// Right-justify `s` into exactly `width` *visible* columns: pad with leading
+/// spaces, or truncate to fit. Colour-aware (see [`pad_left`]). Used for the
+/// right-aligned level column.
 fn pad_right(s: &str, width: usize) -> String {
-    let truncated: String = s.chars().take(width).collect();
-    let pad = width - truncated.chars().count();
+    let truncated = grim_color::truncate_visible(s, width);
+    let pad = width.saturating_sub(grim_color::visible_width(&truncated));
     format!("{}{truncated}", " ".repeat(pad))
 }
 
@@ -653,6 +654,41 @@ mod tests {
         // race truncated to 5, gender truncated to 1, grid preserved; the two
         // restrung columns get {x, the engine defaults don't.
         assert_eq!(format_who_row(&row), "  5 M{x VeryL{x War       Q");
+    }
+
+    #[test]
+    fn who_coloured_restring_keeps_column_alignment() {
+        // A coloured override occupies the same *visible* width as the plain
+        // default (markup is zero-width), so the grid does not shift.
+        let plain_rs = HashMap::new();
+        let plain = format_who_row(&who_row("5", "M", "Human", "War", "Q", &plain_rs));
+        let mut rs = HashMap::new();
+        rs.insert("who_class".into(), "{RWiz".into()); // visible "Wiz" (3) == WHO_CLASS_W
+        let coloured = format_who_row(&who_row("5", "M", "Human", "War", "Q", &rs));
+        assert_eq!(
+            grim_color::visible_width(&coloured),
+            grim_color::visible_width(&plain),
+            "a coloured override must not shift the visible grid"
+        );
+        assert!(
+            coloured.contains("{RWiz{x"),
+            "colour preserved with a trailing reset: {coloured:?}"
+        );
+    }
+
+    #[test]
+    fn who_coloured_restring_truncates_without_splitting_a_token() {
+        // An over-long coloured override trims to the column's visible width and
+        // never cuts the `{R` token in half.
+        let mut rs = HashMap::new();
+        rs.insert("who_race".into(), "{RVeryLongRace".into()); // visible width 5 cap
+        let row = who_row("5", "M", "Human", "War", "Q", &rs);
+        let line = format_who_row(&row);
+        assert!(
+            line.contains("{RVeryL{x"),
+            "kept {{R + 5 visible chars: {line:?}"
+        );
+        assert!(!line.contains("{RVeryLo"), "must stop at 5 visible chars");
     }
 
     #[test]
