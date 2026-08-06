@@ -13,6 +13,7 @@ their only users (the `quit` handler and the `goto`/`title` escapes) moved into
 `grim-actor`.
 
 ## Components
+
 | Component | File | Purpose |
 |---|---|---|
 | `Area` | `src/world/topology.rs` | A named region grouping rooms (yell scope). |
@@ -21,6 +22,7 @@ their only users (the `quit` handler and the `goto`/`title` escapes) moved into
 | `Npc` | `src/npc.rs` | Marker for non-player characters. |
 
 ## Systems
+
 | System | Schedule | File | Purpose |
 |---|---|---|---|
 | `install_signal_handler` | `Startup` | `src/shutdown.rs` | Installs the SIGTERM handler feeding graceful shutdown. |
@@ -41,6 +43,7 @@ This crate registers **no command handlers** — they moved to `grim-actor`
 stay here.
 
 ## Resources & Events
+
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
 | `StartingRoom(Entity)` | Resource | `src/world/topology.rs` |
