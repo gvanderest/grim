@@ -28,8 +28,8 @@ Player-facing verbs and where to find their handlers.
 ## Plugin groups
 | Group | File | Purpose |
 |---|---|---|
-| `GrimHeadlessPlugins` | `src/lib.rs` | Whole engine **except a transport** (networking wiring + world + channel + persistence + scene). What a headless test harness composes. |
-| `GrimDefaultPlugins` | `src/lib.rs` | `GrimHeadlessPlugins` plus the telnet transport (`telnet_port`, default 4000). The full stack a MUD author gets for free. |
+| `GrimHeadlessPlugins` | `src/plugin_groups.rs` | Whole engine **except a transport** (networking wiring + world + actor + channel + persistence + scene). What a headless test harness composes. |
+| `GrimDefaultPlugins` | `src/plugin_groups.rs` | `GrimHeadlessPlugins` plus the telnet transport (`telnet_port`, default 4000). The full stack a MUD author gets for free. |
 
 ## Notes
 - Facade / composition-only. It depends on the subsystem crates, re-exports their public surface, and bundles them into plugin groups — nothing here is privileged.

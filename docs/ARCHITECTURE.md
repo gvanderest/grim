@@ -593,7 +593,9 @@ redesigns were deliberately deferred rather than done blind — see
   `SessionRes` `SystemParam` so the 16-parameter limit — the forcing function — is
   resolved.
 - **Step 7 — `grim-world`, `grim-persistence`.** Split out of the facade; `grim-world`
-  also carries the `shutdown` command and SIGTERM bridge.
+  carries the shutdown countdown state, ticking, and SIGTERM bridge. (Placement
+  Phase 2a step 2 later moved the admin-gated `shutdown` *command handler* — which
+  reads a `Character` — into `grim-actor`; the being-free machinery stays here.)
 - **Step 8 — `grim-channel`.** The say/yell/ooc handlers moved out of the facade
   (`SocialPlugin` → `ChannelPlugin`).
 - **Step 9 — facade inversion.** `grim` depends on the subsystems, re-exports them, and
