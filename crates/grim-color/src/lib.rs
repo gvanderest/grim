@@ -12,15 +12,18 @@
 //! the two markup introducers so an untrusted value renders literally.
 //!
 //! Concerns split into modules: [`render`] (markup → ANSI), [`convert`]
-//! (`{`-family → `@x`-family), [`escape`] (neutralising untrusted values), and
-//! [`palette`] (the 16-colour palette values).
+//! (`{`-family → `@x`-family), [`escape`] (neutralising untrusted values),
+//! [`width`] (visible-column measuring / token-safe truncation), and [`palette`]
+//! (the 16-colour palette values).
 
 mod convert;
 mod escape;
 mod render;
+mod width;
 
 pub mod palette;
 
 pub use convert::convert_16color;
 pub use escape::escape_codes;
 pub use render::ansi;
+pub use width::{truncate_visible, visible_width};
