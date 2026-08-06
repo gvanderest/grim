@@ -73,8 +73,9 @@ The entity a **Command** is attributed to. Usually a character, but not
 necessarily. The "beings" that can act and be placed in a room — `Character`,
 `Player`, `InRoom`, `Linkdead`, `OutputHistory`, `Role` — live in the
 `grim-actor` crate as of Placement Phase 2a step 2, above the being-free
-`grim-world`. (This step only *relocated* `Character`; splitting it into an
-`Actor`/`Creature`/`Character` hierarchy is step 3.)
+`grim-world`. (This step *relocated* those beings as-is; `Character` is still the
+single PC struct — splitting it into an `Actor`/`Creature`/`Character` hierarchy
+is step 3.)
 
 **Alias**:
 A player-defined shorthand that expands to one **Command** before the **Router**

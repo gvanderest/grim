@@ -11,6 +11,7 @@ being-free `grim-world`: it depends on `grim-world` (room topology + address
 lookups + shutdown machinery) and never the reverse.
 
 ## Components
+
 | Component | File | Purpose |
 |---|---|---|
 | `Character` | `src/character.rs` | A persisted being belonging to an account; carries name, roles, build, title, restrings, `last_room`. |
@@ -21,6 +22,7 @@ lookups + shutdown machinery) and never the reverse.
 | `InRoom` | `src/placement.rs` | Which room an actor currently stands in. |
 
 ## Systems
+
 | System | Schedule | File | Purpose |
 |---|---|---|---|
 | `look::handle_look` | `Update` | `src/commands/look.rs` | Reads `Command::Look`; emits `LookRoom` (no target) or `LookEntity`, else a "not here" `InfoMessage`. |
@@ -32,6 +34,7 @@ lookups + shutdown machinery) and never the reverse.
 
 ## Commands
 Player-facing verbs and where to find their handlers.
+
 | Command | Handler | Summary |
 |---|---|---|
 | `look [target]` | `src/commands/look.rs` | Describe the current room, or a named entity within it. |
@@ -42,6 +45,7 @@ Player-facing verbs and where to find their handlers.
 | `shutdown <seconds>` | `src/commands/shutdown.rs` | Admin-only graceful server-shutdown countdown. |
 
 ## Resources & Events
+
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
 | `EngineCommand` | Message (input, from `grim-engine-types`) | each `src/commands/*.rs` |
