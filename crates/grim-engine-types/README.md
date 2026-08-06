@@ -21,12 +21,21 @@ in **`grim-actor`**, and the world-topology components (`Area`/`Room`/`Exits`) p
 None. This crate is type definitions only — no `Plugin`, no `add_systems`, no observers.
 
 ## Commands
-None. The `Command` enum (the closed set of player verbs) is *defined* here in `src/events.rs`, but its handlers live in the consuming plugins (`grim-scene`, `grim-world`, `grim-channel`). The enum is documented as a defect slated for retirement in favour of per-plugin event types (ARCHITECTURE.md §5.2, §8).
+This crate *defines* the `Command` enum (the closed set of player verbs, `src/events.rs`) — the vocabulary only; it registers no handlers. The live `grim::CommandRegistry<Command>` **resource is owned by `grim-scene`** (`parser::command_registry()`, inserted in its `ScenePlugin`), which parses input into `EngineCommand`. Handlers live in the owning gameplay crates — see their READMEs for the per-command file:
+
+| Command(s) | Handler crate → file |
+|---|---|
+| `look` / `move` / `goto` / `quit` / `title` / `shutdown` | `grim-actor` → `src/commands/<name>.rs` |
+| `say` / `yell` / `ooc` / `tell` / `reply` / `gecho` | `grim-channel` → `src/channel.rs` |
+| login / account-creation / character-select verbs | `grim-scene` (session state machine) |
+
+The closed `Command` enum + last-registered-wins registry are documented as defects slated for per-plugin typed dispatch (ARCHITECTURE.md §5.2, §8).
 
 ## Resources & Events
-| Name | Kind (Resource/Message) | File |
+This crate owns no `Resource`s — `StartingRoom` moved to `grim-world` in Placement Phase 2a. The events are all `Message` types in `src/events.rs`:
+
+| Name | Kind | File |
 |---|---|---|
-| `StartingRoom` | Resource | `src/components.rs` |
 | `EngineCommand` | Message | `src/events.rs` |
 | `LookRoom` | Message | `src/events.rs` |
 | `LookEntity` | Message | `src/events.rs` |
