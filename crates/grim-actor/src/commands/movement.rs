@@ -11,6 +11,18 @@ use grim_world::{resolve_room_address, room_location, Area, Exits, Room, RoomLoo
 use crate::character::Character;
 use crate::placement::InRoom;
 
+/// Build a room's persisted [`RoomLocation`] from its `Room` + `Area` records.
+/// `handle_move` reaches this shape via `grim_world::room_location` (which holds
+/// `Query<&Room>`/`Query<&Area>`); `handle_goto` holds `Query<(Entity, &Room)>`
+/// for address resolution, so it decomposes to the same records and shares this
+/// one builder — keeping both paths in agreement if `RoomLocation` grows a field.
+fn persisted_location(room: &Room, area: &Area) -> RoomLocation {
+    RoomLocation {
+        area: area.friendly_id.clone(),
+        room: room.friendly_id.clone(),
+    }
+}
+
 /// The single seam every "put actor in room X" path routes through: set the
 /// actor's `InRoom` and refresh their persisted location. Per ADR-0001 the
 /// location update is a property of the *destination*, not of how the actor
@@ -127,10 +139,7 @@ pub(crate) fn handle_goto(
         match resolve_room_address(target, &rooms, &areas) {
             RoomLookup::Found(to) => {
                 let loc = rooms.get(to).ok().and_then(|(_, r)| {
-                    areas.get(r.area).ok().map(|(_, a)| RoomLocation {
-                        area: a.friendly_id.clone(),
-                        room: r.friendly_id.clone(),
-                    })
+                    areas.get(r.area).ok().map(|(_, a)| persisted_location(r, a))
                 });
                 place_actor(actor, to, loc, &mut inroom, &mut characters);
                 look_room.write(LookRoom {
