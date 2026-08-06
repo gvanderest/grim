@@ -80,11 +80,13 @@ for f in "${files[@]}"; do
     if [[ "$kind" == "shell" && "$prod" -gt 0 ]]; then
         # `pub`, `pub(crate)`, `pub(super)`, `pub(in ...)` all count as a
         # definition's visibility — match the bare keyword or a `pub(...)` form.
-        vis='(pub([[:space:]]+|\([^)]*\)[[:space:]]*))?'
+        # Rust tolerates whitespace before the `(` (`pub (crate)`) and around the
+        # `!` in `macro_rules ! name`, so allow optional spaces there too.
+        vis='(pub([[:space:]]*\([^)]*\)[[:space:]]*|[[:space:]]+))?'
         defs=$(head -n "$prod" "$f" | grep -nE \
             -e "^[[:space:]]*${vis}(async[[:space:]]+)?(const[[:space:]]+)?(unsafe[[:space:]]+)?(fn|struct|enum|trait|union|type|const|static)\b" \
             -e "^[[:space:]]*${vis}(unsafe[[:space:]]+)?impl\b" \
-            -e '^[[:space:]]*macro_rules![[:space:]]*' || true)
+            -e '^[[:space:]]*macro_rules[[:space:]]*![[:space:]]*' || true)
         if [[ -n "$defs" ]]; then
             echo "FAIL (no defs in ${base}): ${f} contains definitions — move them to a sibling module:"
             echo "$defs" | sed 's/^/    /'
