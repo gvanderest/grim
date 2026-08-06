@@ -1,8 +1,7 @@
 use bevy::log::info;
 use bevy::prelude::*;
-use grim_engine_types::components::{
-    Account, Character, Client, InRoom, Linkdead, OutputHistory, Player, RoomLocation,
-};
+use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player};
+use grim_engine_types::components::{Account, Client, RoomLocation};
 use grim_engine_types::events::{LinkdeadAnnounce, MoveEvent};
 use grim_engine_types::GrimId;
 use grim_networking::{Connection, ConnectionClosed};

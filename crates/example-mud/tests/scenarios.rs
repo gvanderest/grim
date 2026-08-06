@@ -6,7 +6,8 @@
 //! purpose: the flow IS the thing under test.
 
 mod harness;
-use grim::components::{Gender, Role};
+use grim::components::Gender;
+use grim::Role;
 use harness::{Mud, Session};
 
 /// A password that satisfies validation (short ones are rejected — see

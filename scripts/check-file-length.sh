@@ -7,6 +7,12 @@
 #   - production (non-test) code:      <= 400 lines per file
 #   - shell files (lib.rs / mod.rs):   <=  80 lines  (doc + mod decls + re-exports)
 #
+# It ALSO enforces that shell files (lib.rs / mod.rs) contain **no definitions**
+# — only module declarations and re-exports. A `fn` / `struct` / `enum` /
+# `trait` / `impl` in a lib.rs or mod.rs is a violation: move it to a sibling
+# concern module. Only the production region (before the first `#[cfg(test)]`)
+# is scanned, so inline test modules are exempt.
+#
 # Test code is EXEMPT (tests are kept inline but split by concern; they do not
 # count toward a file's size). A file's test code is:
 #   - any file under a `tests/` directory (integration tests + harness), or
@@ -64,6 +70,21 @@ for f in "${files[@]}"; do
     if (( prod > cap )); then
         echo "FAIL (${kind} cap ${cap}): ${f} has ${prod} production lines"
         fail=1
+    fi
+
+    # Shell files (lib.rs / mod.rs) must be declarations + re-exports only — no
+    # definitions. Scan only the production region so inline test modules are
+    # exempt. Match `fn`/`struct`/`enum`/`trait` (with optional pub/async) and
+    # `impl` (with optional pub/unsafe) anchored at line start.
+    if [[ "$kind" == "shell" && "$prod" -gt 0 ]]; then
+        defs=$(head -n "$prod" "$f" | grep -nE \
+            -e '^[[:space:]]*(pub[[:space:]]+)?(async[[:space:]]+)?(fn|struct|enum|trait)\b' \
+            -e '^[[:space:]]*(pub[[:space:]]+)?(unsafe[[:space:]]+)?impl\b' || true)
+        if [[ -n "$defs" ]]; then
+            echo "FAIL (no defs in ${base}): ${f} contains definitions — move them to a sibling module:"
+            echo "$defs" | sed 's/^/    /'
+            fail=1
+        fi
     fi
 done
 

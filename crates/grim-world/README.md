@@ -1,8 +1,16 @@
 # `grim-world`
-> World topology (areas, rooms, exits), movement, `look`, and server-control commands (`shutdown` + SIGUSR1 graceful bridge).
+> World topology (areas, rooms, exits) + room-address lookups, and the graceful server-shutdown signal/countdown machinery.
 
-**Role:** vertical — world topology & movement
-**Depends on:** `grim-engine-types`, `grim-networking`, `grim-color`
+**Role:** vertical — world topology (being-free)
+**Depends on:** `grim-engine-types`
+
+This crate is **being-free**: it knows the rooms, not who stands in them. The
+beings (`Character`, `Player`, `InRoom`, …) and the verbs that read them
+(`look`, `move`, `goto`, `quit`, `title`, and the admin `shutdown` gate) live in
+`grim-actor`, which depends on this crate — never the reverse. As of Placement
+Phase 2a step 2 the `grim-networking` and `grim-color` dependencies were dropped:
+their only users (the `quit` handler and the `goto`/`title` escapes) moved into
+`grim-actor`.
 
 ## Components
 | Component | File | Purpose |
@@ -15,45 +23,44 @@
 ## Systems
 | System | Schedule | File | Purpose |
 |---|---|---|---|
-| `look::handle_look` | `Update` | `src/world/look.rs` | Reads `Command::Look`; emits `LookRoom` (no target) or `LookEntity`. |
-| `movement::handle_move` | `Update` | `src/world/movement.rs` | Reads `Command::Move`; relocates the actor and emits `MoveEvent`. |
-| `movement::handle_goto` | `Update` | `src/world/movement.rs` | Admin teleport to a room/entity by address. |
-| `handle_quit` | `Update` | `src/world/mod.rs` | Reads `Command::Quit`; emits `DisconnectRequest`. |
-| `title::handle_title` | `Update` | `src/world/title.rs` | Reads `Command::Title`; sets/clears a character's title (≤60 chars). |
-| `handle_shutdown_command` | `Update` | `src/shutdown.rs` | Reads `Command::Shutdown`; starts/updates the countdown (admin-gated). |
-| `install_signal_handler` | `Startup` | `src/shutdown.rs` | Installs the SIGUSR1 handler feeding graceful shutdown. |
-| `tick_shutdown` / signal poll | `Update` | `src/shutdown.rs` | Advances `ActiveShutdown`, broadcasts warnings, emits `AppExit` at zero. |
+| `install_signal_handler` | `Startup` | `src/shutdown.rs` | Installs the SIGTERM handler feeding graceful shutdown. |
+| `poll_shutdown_signal` | `Update` (`ShutdownSet::Poll`) | `src/shutdown.rs` | If SIGTERM fired, starts the countdown (unless one is running). |
+| `tick_shutdown` | `Update` (`ShutdownSet::Tick`) | `src/shutdown.rs` | Advances `ActiveShutdown`, broadcasts warnings, emits `AppExit` at zero. |
+
+`WorldPlugin` (`src/world/plugin.rs`) has no systems; it registers the
+world-happening event vocabulary (`LookRoom`/`LookEntity`/`MoveEvent`) the actor
+verbs emit.
 
 ## Commands
 Player-facing verbs and where to find their handlers.
-| Command | Handler | Summary |
-|---|---|---|
-| `look [target]` | `look::handle_look` (`src/world/look.rs`) | Describe the current room, or a named entity/exit within it. |
-| `move` — `n`/`e`/`s`/`w`/`u`/`d` (+ `north`…) | `movement::handle_move` (`src/world/movement.rs`) | Move through an exit; emits `MoveEvent`. Direction aliases parsed in `grim-scene`. |
-| `goto <target>` | `movement::handle_goto` (`src/world/movement.rs`) | Admin teleport to a room or entity. |
-| `quit` | `handle_quit` (`src/world/mod.rs`) | Request a clean disconnect (save + despawn happens in `grim-scene`). |
-| `title [text]` | `title::handle_title` (`src/world/title.rs`) | Set (or, bare, clear) the character's title; rejected over 60 chars. |
-| `shutdown [seconds]` | `handle_shutdown_command` (`src/shutdown.rs`) | Admin-only server shutdown countdown (default 30s). |
+
+This crate registers **no command handlers** — they moved to `grim-actor`
+(Placement Phase 2a step 2). The `shutdown` verb's handler is
+`grim_actor::commands::shutdown`; it slots into this crate's
+`ShutdownSet::Command`, while the countdown state, ticking, and SIGTERM signal
+stay here.
 
 ## Resources & Events
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
 | `StartingRoom(Entity)` | Resource | `src/world/topology.rs` |
+| `RaceRegistry` / `ClassRegistry` | Resource (creation content) | `src/registry.rs` |
 | `ActiveShutdown(ShutdownCountdown)` | Resource | `src/shutdown.rs` |
-| `ShutdownSignal` | Resource (private; SIGUSR1 flag) | `src/shutdown.rs` |
-| `LookRoom` | Message (defined in `grim-engine-types`) | `src/world/look.rs` |
-| `LookEntity` | Message | `src/world/look.rs` |
-| `MoveEvent` | Message | `src/world/movement.rs` |
-| `InfoMessage` | Message (output) | `src/world/mod.rs` |
+| `ShutdownSet` | `SystemSet` (Poll → Command → Tick ordering seam) | `src/shutdown.rs` |
+| `ShutdownSignal` | Resource (private; SIGTERM flag) | `src/shutdown.rs` |
 | `ServerBroadcast` | Message (shutdown warnings) | `src/shutdown.rs` |
-| `DisconnectRequest` | Message (from `grim-networking`) | `src/world/mod.rs` |
+| `LookRoom` / `LookEntity` / `MoveEvent` | Message (registered by `WorldPlugin`; emitted by `grim-actor`) | `src/world/plugin.rs` |
 
 ## Notes
-- Two plugins: `WorldPlugin` (topology, movement, look, quit, title) and `ShutdownPlugin` (shutdown command + signal bridge).
-- Topology types (`Area`/`Room`/`Exits`/`StartingRoom`) are hoisted to the crate root — consumers use `grim_world::{Area, Room, Exits, StartingRoom}` (Placement Phase 2a).
-- Also owns the race/class registry content (`RaceRegistry`, `ClassRegistry`) read by `grim-scene`'s creation flow.
-- Formatting lives in the plugin that owns the event (ARCHITECTURE.md §5.4): `look`/`move` emit intent events; rendering happens behind `grim-scene`'s renderer.
-- Graceful shutdown: SIGUSR1 or the `shutdown` command both drive `ActiveShutdown`; the copyover flow (see MEMORY) relies on this.
+- Two plugins: `WorldPlugin` (world-event vocabulary) and `ShutdownPlugin`
+  (signal + countdown machinery). The admin `shutdown` command handler lives in
+  `grim-actor` and slots into `ShutdownSet::Command`; chaining the sets means a
+  SIGTERM and a same-tick admin `shutdown` still schedule exactly one countdown.
+- Topology types (`Area`/`Room`/`Exits`/`StartingRoom`) and the room-address
+  lookups (`resolve_room_address`, `room_location`, `RoomLookup`) are hoisted to
+  the crate root — consumers use `grim_world::{Area, Room, Exits, resolve_room_address, …}`.
+- Also owns the race/class registry content (`RaceRegistry`, `ClassRegistry`)
+  read by `grim-scene`'s creation flow.
 
 ---
 *Format: [`docs/README.template.md`](../../docs/README.template.md). Improve over time.*

@@ -12,8 +12,9 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
+use grim_actor::{Character, InRoom, Player};
 use grim_engine_types::components::{
-    Account, Character, Client, ClientState, Description, Gender, InRoom, Name as GrimName, Player,
+    Account, Client, ClientState, Description, Gender, Name as GrimName,
 };
 use grim_engine_types::GrimId;
 use grim_networking::ConnectionOutput;

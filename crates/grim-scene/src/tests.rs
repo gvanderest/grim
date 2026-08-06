@@ -4,6 +4,7 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
+use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player, Role};
 use grim_channel::ChannelPlugin;
 use grim_engine_types::components::Name as GrimName;
 use grim_engine_types::components::*;

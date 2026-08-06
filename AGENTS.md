@@ -28,7 +28,8 @@ deferred (ARCHITECTURE.md §8). See CONTEXT.md.
 | `grim-networking-telnet` | `TelnetPlugin`: TCP server, IAC negotiation, tokio↔Bevy bridge, ANSI render |
 | `grim-engine-types` | Game events, components, validation; re-exports `grim-color` |
 | `grim-scene` | `ScenePlugin`: session lifecycle (`ClientState`), input parsing, output formatting. Owns the `CommandRegistry` resource |
-| `grim-world` | `WorldPlugin` (rooms/areas/exits/movement/look) + `ShutdownPlugin` (`shutdown` + SIGUSR1) |
+| `grim-world` | Being-free world topology (rooms/areas/exits + room-address lookups); `WorldPlugin` (world-event vocabulary) + `ShutdownPlugin` (SIGTERM signal + countdown machinery). Also owns race/class registries |
+| `grim-actor` | The "beings" (`Character`/`Player`/`InRoom`/`Linkdead`/`OutputHistory`/`Role`) + the being-reading verbs (`look`/`move`/`goto`/`quit`/`title` + admin `shutdown` gate). `ActorPlugin`. Depends on `grim-world`, never the reverse |
 | `grim-channel` | `ChannelPlugin`: say/yell/ooc handlers |
 | `grim-persistence` | `PersistencePlugin`: account/character load + save-on-disconnect |
 | `grim` | Facade: depends on and re-exports every subsystem; `GrimDefaultPlugins` group. No code of its own |

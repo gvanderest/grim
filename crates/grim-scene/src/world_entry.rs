@@ -4,10 +4,8 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
-use grim_engine_types::components::{
-    Character, Client, ClientState, Description, InRoom, Linkdead, Name as GrimName, OutputHistory,
-    Player,
-};
+use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player};
+use grim_engine_types::components::{Client, ClientState, Description, Name as GrimName};
 use grim_engine_types::events::LinkdeadAnnounce;
 use grim_engine_types::GrimId;
 use grim_networking::{ConnectionOutput, DisconnectRequest};

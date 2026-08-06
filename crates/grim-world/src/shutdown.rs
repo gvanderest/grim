@@ -1,6 +1,8 @@
 //! Graceful server shutdown, triggered two ways:
 //!
-//! - **In-game:** `shutdown <seconds>` from an admin character.
+//! - **In-game:** `shutdown <seconds>` from an admin character. That handler
+//!   reads a being (the actor's `Character`), so it lives in `grim-actor` and
+//!   slots into [`ShutdownSet::Command`]; everything else here is being-free.
 //! - **Out-of-band:** `SIGTERM` to the process — this is what `systemctl stop`
 //!   sends, so a stop/restart warns players instead of terminating abruptly. No
 //!   login or admin credentials are involved. (Copyover, a *hot* restart that
@@ -17,8 +19,7 @@
 //! changes across a restart.
 
 use bevy::prelude::*;
-use grim_engine_types::components::Character;
-use grim_engine_types::events::{Command, EngineCommand, InfoMessage, ServerBroadcast};
+use grim_engine_types::events::ServerBroadcast;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -89,6 +90,24 @@ impl ShutdownCountdown {
 #[derive(Resource, Debug)]
 pub struct ActiveShutdown(pub ShutdownCountdown);
 
+/// Ordering seam for the shutdown pipeline within `Update`. The admin `shutdown`
+/// command handler lives in `grim-actor` (it reads a being — the actor's
+/// `Character`); it slots into [`ShutdownSet::Command`], between this crate's
+/// SIGTERM poll and countdown tick. Chaining the three sets means a SIGTERM and
+/// an admin `shutdown` arriving in the same tick still schedule exactly one
+/// countdown: the sync point between `Poll` and `Command` makes the command see
+/// the poll's `ActiveShutdown` insert (and vice-versa) rather than both
+/// observing "none pending" and scheduling conflicting countdowns.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ShutdownSet {
+    /// SIGTERM poll — may start a countdown.
+    Poll,
+    /// Admin `shutdown` command (in `grim-actor`) — may start a countdown.
+    Command,
+    /// Advance the active countdown.
+    Tick,
+}
+
 /// Shared flag set by the `SIGTERM` handler and drained by `poll_shutdown_signal`.
 /// A signal handler can do almost nothing safely, so it only flips this bool; the
 /// real work happens on the next Bevy tick.
@@ -109,14 +128,17 @@ impl Plugin for ShutdownPlugin {
         app.add_message::<ServerBroadcast>()
             .init_resource::<ShutdownSignal>()
             .add_systems(Startup, install_signal_handler)
-            // Chained so the sync point between them applies each system's
-            // `insert_resource(ActiveShutdown)` before the next reads it —
-            // otherwise a SIGTERM and an admin `shutdown` in the same tick both
-            // observe no active shutdown and schedule conflicting countdowns.
-            .add_systems(
+            // Chain the three phases so the sync point between them applies each
+            // phase's `insert_resource(ActiveShutdown)` before the next reads it.
+            // `Command` (the admin `shutdown` handler) lives in `grim-actor` and
+            // slots into the middle; here it is an empty set unless that plugin
+            // is composed. See [`ShutdownSet`].
+            .configure_sets(
                 Update,
-                (poll_shutdown_signal, handle_shutdown_command, tick_shutdown).chain(),
-            );
+                (ShutdownSet::Poll, ShutdownSet::Command, ShutdownSet::Tick).chain(),
+            )
+            .add_systems(Update, poll_shutdown_signal.in_set(ShutdownSet::Poll))
+            .add_systems(Update, tick_shutdown.in_set(ShutdownSet::Tick));
     }
 }
 
@@ -153,50 +175,10 @@ fn poll_shutdown_signal(
     )));
 }
 
-fn warn_text(seconds: u64) -> String {
+/// The countdown warning line for `seconds` remaining. `pub` so `grim-actor`'s
+/// admin `shutdown` command emits the identical text as the SIGTERM path.
+pub fn warn_text(seconds: u64) -> String {
     format!("{{R[SERVER]{{x The server is restarting in {{Y{seconds}{{x seconds.\n")
-}
-
-/// `shutdown <seconds>`: admin-gated (defense in depth — the client gates first).
-/// Non-admins are ignored silently; a second request while one is pending is
-/// rejected.
-fn handle_shutdown_command(
-    mut engine: MessageReader<EngineCommand>,
-    characters: Query<&Character>,
-    active: Option<Res<ActiveShutdown>>,
-    mut info: MessageWriter<InfoMessage>,
-    mut broadcast: MessageWriter<ServerBroadcast>,
-    mut commands: Commands,
-) {
-    for cmd in engine.read() {
-        let Command::Shutdown { seconds } = cmd.command else {
-            continue;
-        };
-        let actor = cmd.client;
-        // Defense in depth. The client already gates `shutdown` and masks it as
-        // an unknown command for non-admins, so a well-behaved session never
-        // sends this for a non-admin. If one arrives anyway (a non-client
-        // command source), fail closed and stay silent — emitting anything here
-        // would leak the command's existence with the wrong output framing.
-        let is_admin = characters
-            .get(actor)
-            .map(Character::is_admin)
-            .unwrap_or(false);
-        if !is_admin {
-            continue;
-        }
-        if active.is_some() {
-            info.write(InfoMessage {
-                target: actor,
-                text: "A shutdown is already scheduled.\n".into(),
-            });
-            continue;
-        }
-        broadcast.write(ServerBroadcast {
-            text: warn_text(seconds),
-        });
-        commands.insert_resource(ActiveShutdown(ShutdownCountdown::new(seconds)));
-    }
 }
 
 /// Ticks the active countdown, emitting warnings and finally `AppExit`.
@@ -284,77 +266,25 @@ mod tests {
     }
 
     // ── System-level tests ────────────────────────────────────────
+    //
+    // These cover the being-free half that stays here: the SIGTERM poll, the
+    // countdown tick, and the cross-set ordering. The admin `shutdown` command
+    // handler (which reads a `Character`) moved to `grim-actor`, so its
+    // admin-gate / already-scheduled tests live there.
 
-    use chrono::Utc;
-    use grim_engine_types::components::{Gender, Role};
-    use grim_engine_types::GrimId;
     use std::time::Duration;
 
     fn test_app() -> App {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
         app.add_plugins(ShutdownPlugin);
-        app.add_message::<EngineCommand>()
-            .add_message::<InfoMessage>();
         app
-    }
-
-    fn spawn_character(app: &mut App, roles: Vec<Role>) -> Entity {
-        app.world_mut()
-            .spawn(Character {
-                id: GrimId::new(),
-                name: "Tester".into(),
-                account_id: GrimId::new(),
-                created_at: Utc::now(),
-                last_room: None,
-                roles,
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-            })
-            .id()
     }
 
     fn drain<M: Message + std::fmt::Debug>(app: &App) -> Vec<String> {
         let messages = app.world().resource::<Messages<M>>();
         let mut cursor = messages.get_cursor();
         cursor.read(messages).map(|m| format!("{m:?}")).collect()
-    }
-
-    #[test]
-    fn non_admin_is_denied_and_nothing_scheduled() {
-        let mut app = test_app();
-        let actor = spawn_character(&mut app, Vec::new());
-        app.world_mut().write_message(EngineCommand {
-            client: actor,
-            command: Command::Shutdown { seconds: 30 },
-        });
-        app.update();
-
-        // Silent fail-closed: no schedule, and no output at all (the client
-        // owns the unknown-command masking; the engine must not emit anything
-        // that would leak the command's existence).
-        assert!(app.world().get_resource::<ActiveShutdown>().is_none());
-        assert_eq!(drain::<InfoMessage>(&app).len(), 0);
-        assert_eq!(drain::<ServerBroadcast>(&app).len(), 0);
-    }
-
-    #[test]
-    fn admin_schedules_and_broadcasts() {
-        let mut app = test_app();
-        let actor = spawn_character(&mut app, vec![Role::Admin]);
-        app.world_mut().write_message(EngineCommand {
-            client: actor,
-            command: Command::Shutdown { seconds: 30 },
-        });
-        app.update();
-
-        assert!(app.world().get_resource::<ActiveShutdown>().is_some());
-        let casts = drain::<ServerBroadcast>(&app);
-        assert!(casts.iter().any(|c| c.contains("30")));
     }
 
     #[test]
@@ -394,22 +324,6 @@ mod tests {
     }
 
     #[test]
-    fn second_shutdown_is_rejected() {
-        let mut app = test_app();
-        let actor = spawn_character(&mut app, vec![Role::Admin]);
-        app.world_mut()
-            .insert_resource(ActiveShutdown(ShutdownCountdown::new(30)));
-        app.world_mut().write_message(EngineCommand {
-            client: actor,
-            command: Command::Shutdown { seconds: 10 },
-        });
-        app.update();
-
-        let infos = drain::<InfoMessage>(&app);
-        assert!(infos.iter().any(|i| i.contains("already scheduled")));
-    }
-
-    #[test]
     fn expiry_writes_app_exit() {
         let mut app = test_app();
         app.world_mut()
@@ -427,8 +341,6 @@ mod tests {
         // Bare app (no TimePlugin) so we own the clock deterministically.
         let mut app = App::new();
         app.add_plugins(ShutdownPlugin);
-        app.add_message::<EngineCommand>()
-            .add_message::<InfoMessage>();
         app.init_resource::<Time>();
         app.insert_resource(ActiveShutdown(ShutdownCountdown::new(16)));
 
@@ -445,11 +357,39 @@ mod tests {
         );
     }
 
+    /// The cross-set chain (`Poll` → `Command` → `Tick`) must apply the poll's
+    /// `insert_resource(ActiveShutdown)` before a `Command`-set system runs, so a
+    /// SIGTERM and a same-tick command scheduler do not both schedule. A probe
+    /// system standing in for `grim-actor`'s command verifies the sync point:
+    /// firing the signal, it observes the poll's schedule already present and so
+    /// does not schedule a second, conflicting countdown.
     #[test]
-    fn signal_and_command_in_same_tick_schedule_once() {
+    fn command_set_sees_poll_schedule_via_chain() {
+        #[derive(Resource, Default)]
+        struct ProbeRequest(bool);
+
+        // Mimics the actor command: in the Command set, if asked and nothing is
+        // already scheduled, schedule + broadcast. When the chain works it sees
+        // the poll's insert and stays quiet.
+        fn probe(
+            request: Res<ProbeRequest>,
+            active: Option<Res<ActiveShutdown>>,
+            mut broadcast: MessageWriter<ServerBroadcast>,
+            mut commands: Commands,
+        ) {
+            if !request.0 || active.is_some() {
+                return;
+            }
+            broadcast.write(ServerBroadcast {
+                text: warn_text(10),
+            });
+            commands.insert_resource(ActiveShutdown(ShutdownCountdown::new(10)));
+        }
+
         let mut app = test_app();
-        let admin = spawn_character(&mut app, vec![Role::Admin]);
-        app.update(); // Startup; drain the install-time state.
+        app.init_resource::<ProbeRequest>();
+        app.add_systems(Update, probe.in_set(ShutdownSet::Command));
+        app.update(); // Startup; drain install-time state.
         let _ = drain::<ServerBroadcast>(&app);
 
         // Both triggers arrive before a single update.
@@ -457,15 +397,11 @@ mod tests {
             .resource::<ShutdownSignal>()
             .0
             .store(true, Ordering::SeqCst);
-        app.world_mut().write_message(EngineCommand {
-            client: admin,
-            command: Command::Shutdown { seconds: 10 },
-        });
+        app.world_mut().resource_mut::<ProbeRequest>().0 = true;
         app.update();
 
-        // The chained sync point means the second trigger sees the first's
-        // ActiveShutdown, so exactly one countdown is scheduled and one warning
-        // is broadcast (not two conflicting ones).
+        // Exactly one countdown scheduled, one warning broadcast — the probe saw
+        // the poll's schedule through the chain and stood down.
         assert!(app.world().get_resource::<ActiveShutdown>().is_some());
         assert_eq!(drain::<ServerBroadcast>(&app).len(), 1);
     }

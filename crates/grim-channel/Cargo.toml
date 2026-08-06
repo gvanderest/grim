@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 grim-engine-types = { path = "../grim-engine-types" }
 grim-world = { path = "../grim-world" }
+grim-actor = { path = "../grim-actor" }
 grim-text = { path = "../grim-text" }
 bevy = { workspace = true, default-features = false }
 

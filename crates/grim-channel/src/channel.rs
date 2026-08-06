@@ -1,7 +1,8 @@
 use grim_text::tr;
 
 use bevy::prelude::*;
-use grim_engine_types::components::{Character, InRoom, Name, Player};
+use grim_actor::{Character, InRoom, Player};
+use grim_engine_types::components::Name;
 use grim_engine_types::events::{
     Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
 };
@@ -257,7 +258,9 @@ fn handle_gecho(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_engine_types::components::{Character, Gender, InRoom, Name, Player, Role};
+    use grim_actor::{Character, InRoom, Player, Role};
+    use grim_engine_types::character::Gender;
+    use grim_engine_types::components::Name;
     use grim_engine_types::events::{
         Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
     };

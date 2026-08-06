@@ -114,7 +114,8 @@ plugin registering five scenes. That is correct and not a violation.
 | `grim-scene` | `GrimScenePlugin` | the Scene stack, input routing, output policy |
 | `grim-auth` | `GrimAuthPlugin` | login, account/character creation, selection, MOTD scenes |
 | `grim-editor` | `GrimEditorPlugin` | the Editor scene |
-| `grim-world` | `GrimWorldPlugin` | rooms, areas, exits, movement, `look` |
+| `grim-world` | `GrimWorldPlugin` | rooms, areas, exits, room-address lookups (being-free) |
+| `grim-actor` | `ActorPlugin` | the beings (`Character`/`Player`/`InRoom`/…) + the being-reading verbs (`look`/`move`/`goto`/`quit`/`title`/`shutdown`) |
 | `grim-channel` | `GrimChannelPlugin` | channel registry, audience, eligibility (§7) |
 | `grim-persistence` | `GrimPersistencePlugin` | account/character save and load, player aliases, channel toggles |
 | `grim` | — | facade: re-exports and a default plugin group |
@@ -134,6 +135,12 @@ grim-text ───────┤                             │
 ```
 
 `grim-command` depends on nothing but Bevy.
+
+`grim-actor` (the beings + being-reading verbs) sits **above** `grim-world`:
+`grim-actor ──> grim-world`, never the reverse. `grim-world` is being-free — it
+owns the room topology, not who stands in it — so the actor layer depends on it
+while `grim-channel`, `grim-persistence`, `grim-networking-telnet`, and
+`grim-scene` in turn depend on `grim-actor` for the being types.
 
 ---
 
@@ -498,9 +505,9 @@ Scene **output policy** (§5.3). Channels need no rule of their own.
 
 ## 8. Current state
 
-Fourteen crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-color`,
+Thirteen crates exist: `example-mud`, `grim`, `grim-engine-types`, `grim-color`,
 `grim-text`, `grim-command`, `grim-networking`, `grim-networking-telnet`,
-`grim-scene`, `grim-world`, `grim-channel`, `grim-persistence`.
+`grim-scene`, `grim-world`, `grim-actor`, `grim-channel`, `grim-persistence`.
 
 **Decomposition steps 1–9 are done.** The crate boundaries and dependency
 direction now match §4: the facade `grim` depends on the subsystems and offers

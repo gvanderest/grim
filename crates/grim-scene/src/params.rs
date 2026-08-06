@@ -6,9 +6,8 @@
 //! resume, and output systems.
 
 use bevy::prelude::*;
-use grim_engine_types::components::{
-    Character, InRoom, Linkdead, Name as GrimName, OutputHistory, Player, RoomLocation,
-};
+use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player};
+use grim_engine_types::components::{Name as GrimName, RoomLocation};
 use grim_engine_types::events::{Command, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce};
 use grim_networking::DisconnectRequest;
 use grim_world::{Area, ClassRegistry, RaceRegistry, Room, StartingRoom};

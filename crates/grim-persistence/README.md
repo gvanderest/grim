@@ -2,7 +2,7 @@
 > Loads accounts/characters from disk and mirrors world state back as fire-and-forget JSON writes.
 
 **Role:** horizontal (infrastructure)
-**Depends on:** `grim-engine-types`, `grim-world`, `grim-networking`
+**Depends on:** `grim-engine-types`, `grim-world`, `grim-actor`, `grim-networking`
 
 ## Components
 | Component | File | Purpose |
