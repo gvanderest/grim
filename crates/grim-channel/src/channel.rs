@@ -1,12 +1,18 @@
 use grim_text::tr;
 
 use bevy::prelude::*;
-use grim_actor::{Character, InRoom};
+use grim_actor::{Character, InRoom, Linkdead, Player};
 use grim_engine_types::components::Name;
 use grim_engine_types::events::{
     Command, EngineCommand, GlobalEcho, InfoMessage, OocEvent, SayEvent, YellEvent,
 };
 use grim_world::Room;
+
+/// Query filter for "a player character currently in the world" — a `Character`
+/// that is either connected (`Player`) or `Linkdead`. Excludes mobs (which carry
+/// `Creature`, not `Character`) and stale `Character`-only entities. Shared by the
+/// `tell`/`reply` target lookups.
+type LivePc = (With<Character>, Or<(With<Player>, With<Linkdead>)>);
 
 /// The last player who whispered (`tell`/`whisper`) this character, so `reply`
 /// can answer them. Set on delivery; points at a (boot-local) player entity, so
@@ -75,10 +81,11 @@ fn deliver_whisper(
 /// players; `self` targets the sender.
 fn handle_tell(
     mut engine: MessageReader<EngineCommand>,
-    // Player characters, online or linkdead. A PC always carries `Character`
-    // (a linkdead one keeps it, having only lost its `Player`), while mobs carry
-    // `Creature` instead — so `With<Character>` is exactly "a PC in the world".
-    players: Query<(Entity, &Name), With<Character>>,
+    // Player characters, online or linkdead: a PC carries `Character` + `Name`
+    // and is either connected (`Player`) or `Linkdead`. Requiring one of those
+    // two markers excludes a stale/half-built `Character`-only entity, and mobs
+    // (which carry `Creature`, not `Character`) are excluded outright.
+    players: Query<(Entity, &Name), LivePc>,
     names: Query<&Name>,
     mut info: MessageWriter<InfoMessage>,
     mut commands: Commands,
@@ -119,8 +126,10 @@ fn handle_reply(
     mut engine: MessageReader<EngineCommand>,
     last: Query<&LastWhisperFrom>,
     // A repliable target is a PC still in the world (online or linkdead), i.e.
-    // one that still has `Character`; a fully-quit character is despawned.
-    players: Query<(), With<Character>>,
+    // one that still has `Character` and a `Player`/`Linkdead` marker; a
+    // fully-quit character is despawned and a stale `Character`-only entity is
+    // excluded.
+    players: Query<(), LivePc>,
     names: Query<&Name>,
     mut info: MessageWriter<InfoMessage>,
     mut commands: Commands,
@@ -460,6 +469,77 @@ mod tests {
         app.update();
         let msgs = infos(&app);
         assert!(msgs
+            .iter()
+            .any(|(t, txt)| *t == alice && txt.contains("no longer here")));
+    }
+
+    #[test]
+    fn reply_reaches_linkdead_player() {
+        // A linkdead PC (Character + Linkdead, no Player) is still repliable.
+        let mut app = test_app();
+        let alice = spawn_player(&mut app, "Alice");
+        let bob = spawn_player(&mut app, "Bob");
+        // Bob whispers Alice → Alice.LastWhisperFrom = Bob.
+        app.world_mut().write_message(EngineCommand {
+            client: bob,
+            command: Command::Tell {
+                target: "Alice".into(),
+                text: "hi".into(),
+            },
+        });
+        app.update();
+        // Bob goes linkdead: loses Player, gains Linkdead, still in-world.
+        app.world_mut()
+            .entity_mut(bob)
+            .remove::<Player>()
+            .insert(Linkdead);
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Command::Reply {
+                text: "still there?".into(),
+            },
+        });
+        app.update();
+        let msgs = infos(&app);
+        assert!(msgs
+            .iter()
+            .any(|(t, txt)| *t == alice && txt.contains("You tell Bob")));
+        assert!(msgs
+            .iter()
+            .any(|(t, txt)| *t == bob && txt.contains("Alice tells you")));
+    }
+
+    #[test]
+    fn tell_and_reply_exclude_character_only_entity() {
+        // A stale `Character`-only entity (no `Player`, no `Linkdead`) is not a
+        // live PC and must be excluded from both tell and reply targeting.
+        let mut app = test_app();
+        let alice = spawn_player(&mut app, "Alice");
+        let ghost = app
+            .world_mut()
+            .spawn((Name("Ghost".into()), character(Vec::new())))
+            .id();
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Command::Tell {
+                target: "Ghost".into(),
+                text: "hi".into(),
+            },
+        });
+        app.update();
+        assert!(infos(&app)
+            .iter()
+            .any(|(t, txt)| *t == alice && txt.contains("No one named 'Ghost'")));
+        // reply to it is refused too (LastWhisperFrom points at the stale entity).
+        app.world_mut()
+            .entity_mut(alice)
+            .insert(LastWhisperFrom(ghost));
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Command::Reply { text: "?".into() },
+        });
+        app.update();
+        assert!(infos(&app)
             .iter()
             .any(|(t, txt)| *t == alice && txt.contains("no longer here")));
     }

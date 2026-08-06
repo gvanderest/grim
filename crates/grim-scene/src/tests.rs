@@ -151,6 +151,59 @@ fn spawn_conn(app: &mut App, id: usize) -> Entity {
 
 mod reconnect {
     use super::*;
+    use grim_networking::ConnectionResumed;
+
+    /// Copyover resume of a linkdead resident: the resident has `Character +
+    /// Linkdead` and no `Player`; resuming it must attach a `Player` AND clear
+    /// `Linkdead` in the same step, so it ends online and not linkdead.
+    #[test]
+    fn resume_linkdead_resident_clears_linkdead_and_attaches_player() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let account = Account {
+            id: GrimId::new(),
+            identifier: "resume@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![],
+            created_at: Utc::now(),
+        };
+        let account_id = account.id;
+        app.world_mut().spawn(account);
+
+        let mut stored = make_character(Vec::new());
+        stored.name = "Test".into();
+        stored.account_id = account_id;
+        let (name, actor, character) = stored.into_components();
+        let char_entity = app
+            .world_mut()
+            .spawn((name, actor, character, InRoom { room }, Linkdead))
+            .id();
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 7,
+                addr: "127.0.0.1:12377".parse::<SocketAddr>().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().write_message(ConnectionResumed {
+            connection: conn,
+            character: "Test".into(),
+        });
+        app.update();
+
+        assert!(
+            app.world().get::<Player>(char_entity).is_some(),
+            "resume must attach a Player (online)"
+        );
+        assert!(
+            app.world().get::<Linkdead>(char_entity).is_none(),
+            "resume must clear Linkdead — not both online and linkdead"
+        );
+    }
 
     /// Simulate name-based reconnect: type character name at login prompt,
     /// then password. The character has Linkdead — should reconnect.

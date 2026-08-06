@@ -27,6 +27,8 @@ fn default_string(key: &str) -> String {
         "social.say.first_party" => "{MYou say {x'{m%{text}{x'\n",
         "social.say.third_party" => "{M%{speaker} says {x'{m%{text}{x'\n",
         "error.unknown_command" => "Unknown command. Type 'commands' for a list.\n",
+        "character.takeover" => "Someone else has logged into this character.\n",
+        "character.default_description" => "A new adventurer.",
         other => return other.to_string(),
     }
     .to_string()

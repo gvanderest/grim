@@ -170,10 +170,7 @@ fn takeover_resident(
     // no `Player` is linkdead and handled by the reconnect path, not here.)
     if let Ok(player) = players.get(char_entity) {
         let old_conn = player.connection;
-        outputs.write(ConnectionOutput::new(
-            old_conn,
-            "Someone else has logged into this character.\n",
-        ));
+        outputs.write(ConnectionOutput::new(old_conn, tr!("character.takeover")));
         disconnect.write(DisconnectRequest {
             connection: old_conn,
         });
@@ -216,7 +213,7 @@ fn spawn_from_disk(
             name,
             actor,
             character,
-            Description("A new adventurer.".into()),
+            Description(tr!("character.default_description")),
             Player { connection: conn },
             ConnectedAt(Utc::now()),
             InRoom {
