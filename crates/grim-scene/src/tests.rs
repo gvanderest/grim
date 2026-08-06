@@ -195,9 +195,13 @@ mod reconnect {
         });
         app.update();
 
-        assert!(
-            app.world().get::<Player>(char_entity).is_some(),
-            "resume must attach a Player (online)"
+        let player = app
+            .world()
+            .get::<Player>(char_entity)
+            .expect("resume must attach a Player (online)");
+        assert_eq!(
+            player.connection, conn,
+            "resume must attach the resumed connection, not some other"
         );
         assert!(
             app.world().get::<Linkdead>(char_entity).is_none(),
