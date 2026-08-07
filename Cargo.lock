@@ -1073,7 +1073,6 @@ dependencies = [
  "grim-text",
  "grim-world",
  "serde_json",
- "sha2",
 ]
 
 [[package]]

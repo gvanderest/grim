@@ -10,8 +10,8 @@ use grim_persistence::load_character_by_name;
 
 use crate::finalize;
 use crate::params::{SessionRes, WorldEntry};
-use grim_scene::formatter::{self, MenuItem};
 use crate::validation::{is_name_reserved, validate_character_name};
+use grim_scene::formatter::{self, MenuItem};
 
 /// The three fixed genders, paired with display name + slug for the menu.
 const GENDERS: [(Gender, &str, &str); 3] = [
