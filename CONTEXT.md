@@ -48,6 +48,13 @@ switched, so a player can be in the Editor while still standing in the world.
 _Avoid_: Modal — a layered Scene is not a distinct kind of thing, so a second word
 for it would only raise the question of which one to use.
 
+> **Where the pre-game scenes live today.** The login / account-creation /
+> character-select / MOTD flow is owned by the **`grim-auth`** crate (`AuthPlugin`),
+> layered on `grim-scene`'s session core. It is still **`ClientState`-driven** — the
+> entity-per-Scene stack model above remains deferred (ARCHITECTURE.md §8). Input
+> routing is split so `grim-scene` interprets only in-game (`ClientState::InGame`)
+> lines while `grim-auth` interprets every pre-game state.
+
 **Output policy**:
 What a **Scene** does with game output addressed to a **Session** while that Scene
 is on top — pass it through, buffer it until the Scene is popped, or drop it. The

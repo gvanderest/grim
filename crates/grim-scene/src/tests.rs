@@ -1,8 +1,9 @@
 //! Unit tests for the scene subsystem, grouped into concern-named submodules.
 //! Kept inline (private-item access) — shared fixtures live at this module's
 //! root; each nested `mod` covers one concern and pulls them in via `super::*`.
-//! The pre-game (login/creation/select/MOTD) suites moved to `grim-auth`; what
-//! remains exercises copyover resume, output formatting, and in-game dispatch.
+//! The pre-game (login/creation/select/MOTD) suites moved to the auth crate;
+//! what remains exercises copyover resume, output formatting, and in-game
+//! dispatch.
 
 use bevy::prelude::*;
 use chrono::Utc;

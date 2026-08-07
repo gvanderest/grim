@@ -113,6 +113,16 @@ plugin registering five scenes. That is correct and not a violation.
 | `grim-networking-websocket` | `WebsocketPlugin` | WebSocket `Transport` |
 | `grim-scene` | `GrimScenePlugin` | the Scene stack, input routing, output policy |
 | `grim-auth` | `GrimAuthPlugin` | login, account/character creation, selection, MOTD scenes |
+
+> **NOTE (current reality, Phase 2b).** `grim-auth` now exists, extracted from
+> `grim-scene`. It is still **`ClientState`-driven** (the typed scene-stack model
+> this table anticipates remains deferred — §8), and the plugin is named
+> `AuthPlugin` to match the other subsystem plugins (`ScenePlugin`, `ActorPlugin`,
+> …) rather than `GrimAuthPlugin`. Its real dependency edge is **`grim-auth →
+> grim-scene`** (the pre-game phase layered on the session core, reusing scene's
+> shared `formatter` + `ConnectedAt`/`JustEnteredWorld`/`SceneSystems`), **not**
+> `grim-auth → grim-command` as the diagram below suggests — the pre-game phase
+> parses no in-game commands. `grim-scene` has zero references to `grim-auth`.
 | `grim-editor` | `GrimEditorPlugin` | the Editor scene |
 | `grim-world` | `GrimWorldPlugin` | rooms, areas, exits, room-address lookups, `RoomLocation` (being-free) |
 | `grim-actor` | `ActorPlugin` | the beings — `Actor` base + PC `Character` + `Creature` mob marker + `Player`/`InRoom`/… and the `StoredCharacter` disk DTO — plus the being-reading verbs (`look`/`move`/`goto`/`quit`/`title`/`shutdown`) |
@@ -505,9 +515,10 @@ Scene **output policy** (§5.3). Channels need no rule of their own.
 
 ## 8. Current state
 
-Thirteen crates exist: `example-mud`, `grim`, `grim-core`, `grim-color`,
+Fourteen crates exist: `example-mud`, `grim`, `grim-core`, `grim-color`,
 `grim-text`, `grim-command`, `grim-networking`, `grim-networking-telnet`,
-`grim-scene`, `grim-world`, `grim-actor`, `grim-channel`, `grim-persistence`.
+`grim-scene`, `grim-auth`, `grim-world`, `grim-actor`, `grim-channel`,
+`grim-persistence`.
 
 **Decomposition steps 1–9 are done.** The crate boundaries and dependency
 direction now match §4: the facade `grim` depends on the subsystems and offers
@@ -628,8 +639,14 @@ rewrites a contract the current tests assert and neither is a mechanical move:
 
 - **Scene stack (§5.3).** `grim-scene` still uses the `ClientState` enum. The
   entity-per-scene model with `EntityEvent` routing and output policy (Pass/Buffer/Drop)
-  — and the `grim-auth` / `grim-editor` split that hangs off it — is a from-scratch
-  rewrite of the session loop and lands separately.
+  — and the `grim-editor` split that hangs off it — is a from-scratch rewrite of the
+  session loop and lands separately. **Phase 2b** did extract `grim-auth` (the
+  login / account-creation / character-select / MOTD flow) out of `grim-scene`
+  *without* waiting for that rewrite: it stays `ClientState`-driven and splits the
+  one input dispatcher into two systems (scene handles `InGame`, auth handles every
+  pre-game state) coordinating via `client.state` + a per-tick `JustEnteredWorld`
+  guard. The typed scene-stack redesign will later re-express both crates' state
+  handlers as pushed/popped Scene entities.
 - **Typed-event dispatch (§5.2) and channels-as-data (§7).** The closed `Command` enum
   and the distinct `Say`/`Yell`/`Ooc` events are still in place. Retiring them for
   per-plugin event types and a single scope-resolved `ChannelMessage` (the `add_channel`
