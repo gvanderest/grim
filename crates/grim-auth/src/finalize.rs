@@ -19,10 +19,10 @@ use grim_networking::ConnectionOutput;
 use grim_persistence::{load_character_by_name, PersistenceConfig};
 use grim_text::tr;
 
-use crate::formatter;
 use crate::params::{SessionRes, WorldEntry};
-use crate::session::ConnectedAt;
 use crate::world_entry;
+use grim_scene::formatter;
+use grim_scene::ConnectedAt;
 
 /// Whether `client.account` already owns a character named `name`. Resolves the
 /// on-disk character's id and tests it against the account's `characters`, so a

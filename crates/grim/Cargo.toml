@@ -10,6 +10,7 @@ grim-command = { path = "../grim-command" }
 grim-networking = { path = "../grim-networking" }
 grim-networking-telnet = { path = "../grim-networking-telnet" }
 grim-scene = { path = "../grim-scene" }
+grim-auth = { path = "../grim-auth" }
 grim-world = { path = "../grim-world" }
 grim-actor = { path = "../grim-actor" }
 grim-channel = { path = "../grim-channel" }

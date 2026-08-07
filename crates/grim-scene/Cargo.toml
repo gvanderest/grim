@@ -9,15 +9,16 @@ grim-networking = { path = "../grim-networking" }
 grim-command = { path = "../grim-command" }
 grim-text = { path = "../grim-text" }
 grim-color = { path = "../grim-color" }
+# Copyover resume loads characters from disk; `quit` saves them. Needs the config.
 grim-persistence = { path = "../grim-persistence" }
-# Owns the race/class registry content the creation flow reads (Placement Phase 1).
+# Room/area topology the resume placement resolves + the race/class registries
+# the WHO list reads for column abbreviations.
 grim-world = { path = "../grim-world" }
 # Beings (Character/Player/InRoom/Linkdead/OutputHistory) the session reads.
 grim-actor = { path = "../grim-actor" }
 bevy = { workspace = true, default-features = false }
 chrono = { workspace = true }
 serde_json = { workspace = true }
-sha2 = { workspace = true }
 
 [dev-dependencies]
 # Test harness composes the channel plugin to exercise the full loop.

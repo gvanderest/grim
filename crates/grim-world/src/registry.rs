@@ -5,8 +5,10 @@
 //! record addressed by a `slug`, and the [`RaceRegistry`] / [`ClassRegistry`]
 //! resources hold the set in author-defined order. Each ships a seeded
 //! [`Default`] so the engine works out of the box; an author overrides the set
-//! by inserting the resource before `ScenePlugin` (mirrors
-//! `grim_scene::ReservedNamePrefixes`).
+//! by inserting the resource before `ScenePlugin`/`AuthPlugin` — both
+//! `init_resource` them (scene for the WHO abbreviations, auth for the creation
+//! menus), so insert ahead of the plugin group (mirrors
+//! `grim_auth::ReservedNamePrefixes`, which `AuthPlugin` init_resources).
 //!
 //! Classes carry a **tier ladder**: only tier-1 classes are creatable, and each
 //! names its tier-2 evolution via `evolves_to`. Reroll/evolution is not built

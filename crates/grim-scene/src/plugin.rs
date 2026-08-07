@@ -1,5 +1,7 @@
 //! `ScenePlugin`: wires up the session-lifecycle resources, message types, and
-//! systems that make up the scene subsystem.
+//! systems that make up the scene subsystem. The pre-game flow (login /
+//! creation / character-select / MOTD) lives in the auth crate; this plugin owns
+//! the in-game input dispatch, output formatting, and copyover resume.
 
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::prelude::*;
@@ -12,28 +14,41 @@ use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
 use grim_world::{ClassRegistry, RaceRegistry};
 
 use crate::command::process_command_queue;
-use crate::input::{handle_client_input, handle_connection_established};
+use crate::input::handle_ingame_input;
 use crate::output::{capture_output, format_output, format_server_broadcast};
 use crate::parser;
 use crate::resume::handle_connection_resumed;
-use crate::validation::ReservedNamePrefixes;
+use crate::session::JustEnteredWorld;
+
+/// Public ordering handle for the scene's in-game input dispatch. The auth
+/// pre-game input system runs `.before(SceneSystems::InGameInput)` so a line
+/// that advances a session into the world is consumed there and not
+/// re-dispatched as an in-game command the same tick (see [`JustEnteredWorld`]
+/// and `input.rs`).
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SceneSystems {
+    /// The in-game input dispatcher ([`handle_ingame_input`]).
+    InGameInput,
+}
 
 pub struct ScenePlugin;
 impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(parser::command_registry());
-        // Scene writes account/character JSON, so it needs the persistence
-        // directory. init_resource so ScenePlugin stands alone; if
-        // PersistencePlugin is also present its identical default is a no-op.
+        // Scene writes character JSON on `quit` and reads it on copyover resume,
+        // so it needs the persistence directory. init_resource so ScenePlugin
+        // stands alone; if PersistencePlugin is also present its identical
+        // default is a no-op.
         app.init_resource::<grim_persistence::PersistenceConfig>();
-        // Reserved character-name prefixes. init_resource keeps the built-in
-        // defaults unless the author inserted a custom list before this plugin.
-        app.init_resource::<ReservedNamePrefixes>();
-        // Playable races/classes offered at character creation. init_resource so
-        // the engine ships a full seed; an author overrides by inserting a custom
-        // registry before adding this plugin (mirrors ReservedNamePrefixes).
+        // Playable races/classes: the WHO list reads their abbreviations. The
+        // character-creation flow (auth crate) also reads them and validates the
+        // effective set is non-empty; both plugins init_resource idempotently.
         app.init_resource::<RaceRegistry>();
         app.init_resource::<ClassRegistry>();
+        // Per-tick set of connections a pre-game handler advanced to InGame; the
+        // in-game input system consults it to avoid re-dispatching the line that
+        // triggered the transition (see input.rs).
+        app.init_resource::<JustEnteredWorld>();
         app.add_message::<ConnectionOutput>()
             .add_message::<ConnectionResumed>()
             .add_message::<DisconnectRequest>()
@@ -50,61 +65,16 @@ impl Plugin for ScenePlugin {
             .add_message::<LogoutAnnounce>()
             .add_message::<LinkdeadAnnounce>()
             .add_message::<ServerBroadcast>()
-            .add_systems(Startup, validate_registries)
             .add_systems(
                 Update,
                 (
-                    handle_connection_established,
                     handle_connection_resumed,
-                    handle_client_input.after(handle_connection_established),
+                    handle_ingame_input.in_set(SceneSystems::InGameInput),
                     process_command_queue,
                     format_output,
                     format_server_broadcast,
                     capture_output,
                 ),
             );
-    }
-}
-
-/// Fail fast on a mis-seeded world. An empty `RaceRegistry`, or a `ClassRegistry`
-/// with no tier-1 (creatable) classes, would leave character creation showing a
-/// menu with no options and no exit — trapping the player. Runs at Startup, after
-/// any author override has been inserted, so it validates the effective set.
-fn validate_registries(races: Res<RaceRegistry>, classes: Res<ClassRegistry>) {
-    assert!(
-        !races.0.is_empty(),
-        "RaceRegistry is empty: character creation would trap players with no race \
-         to pick. Seed at least one race."
-    );
-    assert!(
-        classes.creatable().next().is_some(),
-        "ClassRegistry has no tier-1 (creatable) classes: character creation would \
-         trap players. Seed at least one tier-1 class."
-    );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use grim_world::{ClassRegistry, RaceRegistry};
-
-    #[test]
-    #[should_panic(expected = "RaceRegistry is empty")]
-    fn empty_race_registry_panics() {
-        let mut app = App::new();
-        app.insert_resource(RaceRegistry(vec![]));
-        app.insert_resource(ClassRegistry::default());
-        app.add_systems(Startup, validate_registries);
-        app.update();
-    }
-
-    #[test]
-    #[should_panic(expected = "no tier-1")]
-    fn class_registry_without_tier1_panics() {
-        let mut app = App::new();
-        app.insert_resource(RaceRegistry::default());
-        app.insert_resource(ClassRegistry(vec![])); // no creatable classes
-        app.add_systems(Startup, validate_registries);
-        app.update();
     }
 }

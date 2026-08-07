@@ -55,7 +55,8 @@ Everything is a Bevy plugin unless noted. Dependencies point downward only; the 
 
 | Crate | What it holds |
 |---|---|
-| [`grim-scene`](./crates/grim-scene) | `ScenePlugin`: session lifecycle + login/creation state machine, input parsing, output formatting. Owns the `CommandRegistry` resource. |
+| [`grim-scene`](./crates/grim-scene) | `ScenePlugin`: in-game input dispatch, output formatting + broadcast, copyover resume. Owns the `CommandRegistry` resource + shared `formatter`. |
+| [`grim-auth`](./crates/grim-auth) | `AuthPlugin`: the pre-game flow — login, account/character creation, character-select, MOTD. `ClientState`-driven, layered on `grim-scene`. |
 
 ### World & beings
 

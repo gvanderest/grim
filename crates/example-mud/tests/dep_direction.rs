@@ -86,6 +86,25 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // output, so scene → grim-actor is a normal edge. grim-actor does not depend
     // on grim-scene, so no cycle.
     ("grim-scene", "grim-actor"),
+    // ── Pre-game / auth ─────────────────────────────────────────────────────────
+    // NOTE (Phase 2b): grim-auth owns the login / account-creation /
+    // character-select / MOTD flow extracted from grim-scene. It is the pre-game
+    // phase LAYERED ON the session core, so grim-auth → grim-scene is a normal
+    // edge (it reuses scene's shared formatter + ConnectedAt/JustEnteredWorld/
+    // SceneSystems). grim-scene does NOT depend on grim-auth — verified by grep
+    // and by the absence of the reverse edge here. The remaining edges mirror the
+    // flow's reads: beings (grim-actor), room/registry topology (grim-world),
+    // account/character disk I/O (grim-persistence), wire types (grim-networking),
+    // catalog (grim-text), banner rendering (grim-color), and the god-types node
+    // (grim-core). No grim-command edge — the pre-game phase parses no commands.
+    ("grim-auth", "grim-core"),
+    ("grim-auth", "grim-scene"),
+    ("grim-auth", "grim-actor"),
+    ("grim-auth", "grim-world"),
+    ("grim-auth", "grim-persistence"),
+    ("grim-auth", "grim-networking"),
+    ("grim-auth", "grim-text"),
+    ("grim-auth", "grim-color"),
     // ── Gameplay subsystems ────────────────────────────────────────────────────
     // NOTE (divergence #3): §4's diagram routes grim-world / grim-channel through
     // grim-command. Reality: neither depends on grim-command; dispatch is mediated
@@ -139,6 +158,9 @@ const ALLOWED_NORMAL: &[Edge] = &[
     ("grim", "grim-networking"),
     ("grim", "grim-networking-telnet"),
     ("grim", "grim-scene"),
+    // NOTE (Phase 2b): the facade re-exports grim-auth (AuthPlugin +
+    // ReservedNamePrefixes) and adds AuthPlugin to the default plugin groups.
+    ("grim", "grim-auth"),
     ("grim", "grim-world"),
     // NOTE (Placement Phase 2a step 2): the facade re-exports the actor beings +
     // ActorPlugin and adds ActorPlugin to GrimDefaultPlugins.
@@ -155,7 +177,13 @@ const ALLOWED_NORMAL: &[Edge] = &[
 /// deliberately not a normal edge — a normal dependency here would be a real coupling
 /// regression, so it is segregated into its own allow-list. (The scene→world edge was
 /// promoted to a normal dependency in Placement Phase 1; see ALLOWED_NORMAL.)
-const ALLOWED_DEV: &[Edge] = &[("grim-scene", "grim-channel")];
+const ALLOWED_DEV: &[Edge] = &[
+    ("grim-scene", "grim-channel"),
+    // NOTE (Phase 2b): grim-auth's E2E-style harness composes the channel plugin
+    // to exercise the full login → in-game loop (mirrors grim-scene's harness).
+    // DEV-only; a normal edge here would be a coupling regression.
+    ("grim-auth", "grim-channel"),
+];
 
 /// Read the workspace graph and return internal edges split by kind: `(normal, dev)`.
 /// Only edges where both endpoints are workspace members are considered.
