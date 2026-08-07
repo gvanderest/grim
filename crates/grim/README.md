@@ -14,7 +14,7 @@
 
 | System | Schedule | File | Purpose |
 |---|---|---|---|
-| None | — | Registers no systems of its own; the plugin groups compose subsystem plugins. |
+| None | — | — | Registers no systems of its own; the plugin groups compose subsystem plugins. |
 
 ## Commands
 Player-facing verbs and where to find their handlers.
