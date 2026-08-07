@@ -16,7 +16,7 @@ use grim_core::events::*;
 use grim_core::events::Command;
 use grim_core::GrimId;
 use grim_networking::{Connection, ConnectionEstablished, ConnectionInput, ConnectionOutput};
-use grim_persistence::PersistencePlugin;
+use grim_persistence::{PersistenceConfig, PersistencePlugin};
 use grim_world::{Room, StartingRoom, WorldPlugin};
 use std::net::SocketAddr;
 
@@ -24,11 +24,23 @@ use crate::ScenePlugin;
 
 // ─── Shared fixtures ─────────────────────
 
+/// A unique temp dir per call, so parallel tests never share on-disk state.
+fn unique_dir(tag: &str) -> std::path::PathBuf {
+    static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    std::env::temp_dir().join(format!("grim-scene-{tag}-{}-{}", std::process::id(), n))
+}
+
+/// A fresh app on a per-test temp `PersistenceConfig` dir. Uses a unique dir
+/// rather than the process-CWD `data/` dir so parallel tests (e.g. the `quit`
+/// path, which saves a character to disk) never clobber each other.
 fn test_app() -> App {
-    // Clean up persisted data to avoid cross-test contamination
-    let _ = std::fs::remove_dir_all("data/accounts");
-    let _ = std::fs::remove_dir_all("data/characters");
+    let dir = unique_dir("app");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("characters")).unwrap();
+    std::fs::create_dir_all(dir.join("accounts")).unwrap();
     let mut app = App::new();
+    app.insert_resource(PersistenceConfig { dir });
     app.add_plugins(MinimalPlugins);
     app.add_plugins(WorldPlugin);
     app.add_plugins(ChannelPlugin);

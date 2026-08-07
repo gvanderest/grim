@@ -5,30 +5,35 @@
 **Depends on:** `grim-core`, `grim-text`, `grim-command`, `grim-networking`, `grim-networking-telnet`, `grim-scene`, `grim-auth`, `grim-world`, `grim-actor`, `grim-channel`, `grim-persistence`
 
 ## Components
+
 | Component | File | Purpose |
 |---|---|---|
 | None | — | Composition-only facade; defines no components. Re-exports subsystem types (see `src/lib.rs`, `src/prelude.rs`). |
 
 ## Systems
+
 | System | Schedule | File | Purpose |
 |---|---|---|---|
 | None | — | Registers no systems of its own; the plugin groups compose subsystem plugins. |
 
 ## Commands
 Player-facing verbs and where to find their handlers.
+
 | Command | Handler | Summary |
 |---|---|---|
 | None | — | Commands live in the subsystem crates, not the facade. |
 
 ## Resources & Events
+
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
 | None | — | Re-exported only. Resources/events are defined in the subsystem crates. |
 
 ## Plugin groups
+
 | Group | File | Purpose |
 |---|---|---|
-| `GrimHeadlessPlugins` | `src/plugin_groups.rs` | Whole engine **except a transport** (networking wiring + world + actor + channel + persistence + scene). What a headless test harness composes. |
+| `GrimHeadlessPlugins` | `src/plugin_groups.rs` | Whole engine **except a transport** (networking wiring + world + actor + channel + persistence + scene + auth). What a headless test harness composes. |
 | `GrimDefaultPlugins` | `src/plugin_groups.rs` | `GrimHeadlessPlugins` plus the telnet transport (`telnet_port`, default 4000). The full stack a MUD author gets for free. |
 
 ## Notes

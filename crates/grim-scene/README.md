@@ -9,6 +9,7 @@ The pre-game phase (login / account-creation / character-select / MOTD) lives in
 `ClientState::InGame` input; every pre-game state is handled by `grim-auth`.
 
 ## Components
+
 | Component | File | Purpose |
 |---|---|---|
 | `ConnectedAt(DateTime<Utc>)` | `src/session.rs` | When this session connected (used by the WHO list ordering). |
@@ -16,6 +17,7 @@ The pre-game phase (login / account-creation / character-select / MOTD) lives in
 | `ClientState` | (`grim-core::components`) | Login/creation/in-game state machine; the in-game arm drives this crate, the pre-game arms drive `grim-auth`. |
 
 ## Systems
+
 | System | Schedule | File | Purpose |
 |---|---|---|---|
 | `handle_connection_resumed` | `Update` | `src/resume.rs` | Re-attaches a session after copyover / reconnect (skips login). |
@@ -27,6 +29,7 @@ The pre-game phase (login / account-creation / character-select / MOTD) lives in
 
 ## Commands
 Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **session-locally** in `src/command.rs` (they never reach the engine queue).
+
 | Command | Handler | Summary |
 |---|---|---|
 | `who` | `handle_ingame` → `format_who` (`src/command.rs`) | List online characters (admins first, then level/connect/name). |
@@ -38,6 +41,7 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 Other verbs (`look`, `move`, `say`, `shutdown`, …) are parsed here then routed: most enqueue via `process_command_queue`; admin-gated ones (`shutdown`/`goto`/`gecho`) go through `dispatch_admin_gated` (masked as unknown for non-admins).
 
 ## Resources & Events
+
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
 | `JustEnteredWorld` | Resource (routing-split guard; pub) | `src/session.rs` |

@@ -4,19 +4,32 @@
 
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::prelude::*;
-use grim_scene::SceneSystems;
+use grim_scene::{JustEnteredWorld, SceneSystems};
 use grim_world::{ClassRegistry, RaceRegistry};
 
 use crate::greeter::handle_connection_established;
 use crate::input::handle_pregame_input;
 use crate::validation::ReservedNamePrefixes;
 
+/// The pre-game flow, layered on the session core.
+///
+/// **Requires [`grim_scene::ScenePlugin`] as a companion** — auth is the
+/// pre-game phase on top of the session loop: it dispatches its input
+/// `.before(SceneSystems::InGameInput)`, reads scene's shared `formatter` /
+/// `ConnectedAt`, and coordinates the world-entry hand-off through
+/// `JustEnteredWorld`. `GrimHeadlessPlugins` / `GrimDefaultPlugins` add both;
+/// a MUD author composing plugins by hand must add `ScenePlugin` too.
 pub struct AuthPlugin;
 impl Plugin for AuthPlugin {
     fn build(&self, app: &mut App) {
         // Reserved character-name prefixes. init_resource keeps the built-in
         // defaults unless the author inserted a custom list before this plugin.
         app.init_resource::<ReservedNamePrefixes>();
+        // The routing-split guard is owned/defined by grim-scene, but the
+        // pre-game dispatcher writes it, so init here too (idempotent with
+        // ScenePlugin) — loading auth without scene would otherwise panic on the
+        // missing resource.
+        app.init_resource::<JustEnteredWorld>();
         // The creation/login flow writes account/character JSON, so it needs the
         // persistence directory. init_resource so AuthPlugin stands alone; if
         // PersistencePlugin (or ScenePlugin) is also present, the identical

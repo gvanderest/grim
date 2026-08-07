@@ -28,21 +28,11 @@ use crate::AuthPlugin;
 
 // ─── Shared fixtures ─────────────────────
 
+/// A fresh app on a per-test temp `PersistenceConfig` dir. Routes through
+/// [`test_app_in`]/[`unique_dir`] rather than the process-CWD `data/` dir, so
+/// parallel tests never clobber each other's on-disk accounts/characters.
 fn test_app() -> App {
-    // Clean up persisted data to avoid cross-test contamination
-    let _ = std::fs::remove_dir_all("data/accounts");
-    let _ = std::fs::remove_dir_all("data/characters");
-    let mut app = App::new();
-    app.add_plugins(MinimalPlugins);
-    app.add_plugins(WorldPlugin);
-    app.add_plugins(ChannelPlugin);
-    app.add_plugins(PersistencePlugin);
-    app.add_plugins(ScenePlugin);
-    app.add_plugins(AuthPlugin);
-    // Telnet protocol messages not registered by the above plugins
-    app.add_message::<ConnectionEstablished>()
-        .add_message::<ConnectionInput>();
-    app
+    test_app_in(&unique_dir("app"))
 }
 
 fn spawn_room(app: &mut App) -> Entity {
@@ -84,7 +74,7 @@ fn test_app_in(dir: &std::path::Path) -> App {
 fn unique_dir(tag: &str) -> std::path::PathBuf {
     static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    std::env::temp_dir().join(format!("grim-scene-{tag}-{}-{}", std::process::id(), n))
+    std::env::temp_dir().join(format!("grim-auth-{tag}-{}-{}", std::process::id(), n))
 }
 
 /// Write a character to the configured `characters/` dir as if it were saved
@@ -2141,5 +2131,79 @@ mod legacy_backfill {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+// ─── Routing split: intra-tick transition guard ──────────────
+
+mod transition_guard {
+    use super::*;
+
+    /// Regression for the consume-once guard: when the MOTD ENTER (which
+    /// advances the session to `InGame`) and a following in-game command arrive
+    /// as two `ConnectionInput`s in the SAME `app.update()`, the command must
+    /// still be dispatched — not swallowed alongside the transition line. A
+    /// tick-scoped guard would drop everything after the transition; the
+    /// per-connection consume-once guard (`JustEnteredWorld::remove`) swallows
+    /// only the transition line.
+    #[test]
+    fn same_tick_command_after_motd_transition_is_not_dropped() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = spawn_conn(&mut app, 1);
+
+        // A character sitting at the MOTD prompt, ready to enter the world.
+        let stored = StoredCharacter {
+            id: GrimId::new(),
+            name: "Hero".into(),
+            account_id: GrimId::new(),
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: String::new(),
+            class: String::new(),
+            level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
+        };
+        let (name, actor, character) = stored.into_components();
+        let char_entity = app
+            .world_mut()
+            .spawn((
+                name,
+                actor,
+                character,
+                InRoom { room },
+                Player { connection: conn },
+            ))
+            .id();
+        let mut client = Client::new(conn);
+        client.state = ClientState::MotdPrompt;
+        client.character = Some(char_entity);
+        app.world_mut().spawn(client);
+
+        // Two inputs in ONE update: the MOTD ENTER (transition) then a command.
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: String::new(),
+        });
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "blargh".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.connection == conn && o.text.contains("Unknown command")),
+            "the in-game command sharing a tick with the MOTD transition must be \
+             dispatched (unknown-command error), not dropped by the guard"
+        );
     }
 }

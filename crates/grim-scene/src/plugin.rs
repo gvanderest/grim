@@ -20,11 +20,11 @@ use crate::parser;
 use crate::resume::handle_connection_resumed;
 use crate::session::JustEnteredWorld;
 
-/// Public ordering handle for the scene's in-game input dispatch. The pre-game
-/// pre-game (auth) input system runs `.before(SceneSystems::InGameInput)` so a
-/// line that advances a session into the world is consumed by the pre-game
-/// system and not re-dispatched as an in-game command the same tick (see
-/// [`JustEnteredWorld`] and `input.rs`).
+/// Public ordering handle for the scene's in-game input dispatch. The auth
+/// pre-game input system runs `.before(SceneSystems::InGameInput)` so a line
+/// that advances a session into the world is consumed there and not
+/// re-dispatched as an in-game command the same tick (see [`JustEnteredWorld`]
+/// and `input.rs`).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SceneSystems {
     /// The in-game input dispatcher ([`handle_ingame_input`]).

@@ -17,6 +17,7 @@ on `grim-actor`) and stamps `grim_scene::ConnectedAt` when a session enters the
 world.
 
 ## Systems
+
 | System | Schedule | File | Purpose |
 |---|---|---|---|
 | `handle_connection_established` | `Update` | `src/greeter.rs` | Spawns a `Client`, prints the login banner + first prompt — the entry to the flow. |
@@ -26,6 +27,7 @@ world.
 ## State handlers
 The pre-game flow is a state machine, one handler file per concern (not the
 one-file-per-command layout, which is for in-game command handlers).
+
 | `ClientState` | Handler | File |
 |---|---|---|
 | `LoginPrompt` | `login_prompt` | `src/login.rs` |
@@ -42,6 +44,7 @@ character-select, and legacy-backfill (class-pick) paths. Completing a new build
 is `finalize_character` / `backfill_and_enter` in `src/finalize.rs`.
 
 ## Resources & Events
+
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
 | `ReservedNamePrefixes` | Resource (character-name prefix blocklist; author-overridable) | `src/validation.rs` |

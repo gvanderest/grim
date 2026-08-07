@@ -31,7 +31,7 @@ pub(crate) fn handle_ingame_input(
     linkdead: Query<&Linkdead>,
     rooms: RoomResolver,
     res: SessionRes,
-    just_entered: Res<JustEnteredWorld>,
+    mut just_entered: ResMut<JustEnteredWorld>,
     mut outputs: MessageWriter<ConnectionOutput>,
 ) {
     for ev in inputs.read() {
@@ -45,9 +45,12 @@ pub(crate) fn handle_ingame_input(
         if client.state != ClientState::InGame {
             continue;
         }
-        // This line drove the session into the world this tick; the pre-game
-        // system already consumed it. Don't re-dispatch it as a command.
-        if just_entered.0.contains(&ev.connection) {
+        // Consume-once: this connection was advanced into the world THIS tick by
+        // the pre-game system, which already handled the transition line. Swallow
+        // exactly that one line — `remove` returns true only for the first input
+        // per connection this tick, so a command that arrived in the SAME update
+        // after the transition (e.g. ENTER then `look`) still dispatches in order.
+        if just_entered.0.remove(&ev.connection) {
             continue;
         }
         let conn = client.connection;

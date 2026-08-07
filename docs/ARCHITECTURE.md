@@ -112,7 +112,7 @@ plugin registering five scenes. That is correct and not a violation.
 | `grim-networking-ssh` | `SshPlugin` | SSH `Transport` |
 | `grim-networking-websocket` | `WebsocketPlugin` | WebSocket `Transport` |
 | `grim-scene` | `GrimScenePlugin` | the Scene stack, input routing, output policy |
-| `grim-auth` | `GrimAuthPlugin` | login, account/character creation, selection, MOTD scenes |
+| `grim-auth` | `AuthPlugin` | login, account/character creation, selection, MOTD (the pre-game phase, layered on `grim-scene`) |
 
 > **NOTE (current reality, Phase 2b).** `grim-auth` now exists, extracted from
 > `grim-scene`. It is still **`ClientState`-driven** (the typed scene-stack model
@@ -139,10 +139,14 @@ grim-color ──────┐
                  │                             ├──> grim-networking
 grim-text ───────┤                             │
                  ├──> grim-scene <─────────────┘
-                 │        │
-                 │        v
-                 └──> grim-command <──── grim-world, grim-channel, grim-auth, grim-editor
+                 │        │       ^
+                 │        v       └──── grim-auth   (pre-game phase, → grim-scene)
+                 └──> grim-command <──── grim-world, grim-channel, grim-editor
 ```
+
+`grim-auth` (Phase 2b) depends on **`grim-scene`**, not `grim-command`: it is the
+pre-game phase layered on the session core and dispatches no in-game commands.
+`grim-editor` remains aspirational (the deferred scene-stack work).
 
 `grim-command` depends on nothing but Bevy.
 
