@@ -12,9 +12,9 @@ use grim_networking::{ConnectionOutput, DisconnectRequest};
 use grim_persistence::{load_character_by_name, PersistenceConfig};
 use grim_text::tr;
 
-use crate::formatter;
 use crate::params::RoomResolver;
-use crate::session::ConnectedAt;
+use grim_scene::formatter;
+use grim_scene::ConnectedAt;
 
 /// Enter the world as a named character owned by the just-authed account. Used
 /// by both the login-by-name auto-select path and the character-menu selection,

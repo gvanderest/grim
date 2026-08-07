@@ -938,6 +938,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "grim-actor",
+ "grim-auth",
  "grim-channel",
  "grim-command",
  "grim-core",
@@ -961,6 +962,25 @@ dependencies = [
  "grim-world",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "grim-auth"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "chrono",
+ "grim-actor",
+ "grim-channel",
+ "grim-color",
+ "grim-core",
+ "grim-networking",
+ "grim-persistence",
+ "grim-scene",
+ "grim-text",
+ "grim-world",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

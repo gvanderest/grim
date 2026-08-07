@@ -1,0 +1,28 @@
+[package]
+name = "grim-auth"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+grim-core = { path = "../grim-core" }
+# The pre-game phase is layered on the session core: it reuses grim-scene's
+# shared formatter (MOTD/menus) + ConnectedAt stamp. Auth → scene is allowed;
+# scene never depends on auth.
+grim-scene = { path = "../grim-scene" }
+grim-networking = { path = "../grim-networking" }
+grim-text = { path = "../grim-text" }
+grim-color = { path = "../grim-color" }
+grim-persistence = { path = "../grim-persistence" }
+# Race/class registries the creation flow reads, plus room/area topology the
+# world-entry placement resolves.
+grim-world = { path = "../grim-world" }
+# Beings (Character/Player/InRoom/Linkdead/OutputHistory) the login/creation flow reads.
+grim-actor = { path = "../grim-actor" }
+bevy = { workspace = true, default-features = false }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+# Test harness composes the channel plugin to exercise the full login → in-game loop.
+grim-channel = { path = "../grim-channel" }

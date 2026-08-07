@@ -19,6 +19,9 @@ impl bevy::app::PluginGroup for GrimHeadlessPlugins {
             .add(grim_channel::ChannelPlugin)
             .add(grim_persistence::PersistencePlugin)
             .add(grim_scene::ScenePlugin)
+            // The pre-game flow layers on the scene core; added after it so the
+            // in-game input set it orders against is registered.
+            .add(grim_auth::AuthPlugin)
     }
 }
 

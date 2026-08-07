@@ -5,9 +5,10 @@
 pub use grim_actor::{
     Actor, Character, Creature, InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter,
 };
+pub use grim_auth::ReservedNamePrefixes;
 pub use grim_channel::LastWhisperFrom;
 pub use grim_core::prelude::*;
-pub use grim_scene::{ConnectedAt, ReservedNamePrefixes};
+pub use grim_scene::ConnectedAt;
 pub use grim_world::{
     Area, ClassDef, ClassRegistry, Exits, RaceDef, RaceRegistry, Room, RoomLocation, StartingRoom,
 };

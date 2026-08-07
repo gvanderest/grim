@@ -8,6 +8,7 @@ members = [
     "crates/grim",
     "crates/grim-networking-telnet",
     "crates/grim-scene",
+    "crates/grim-auth",
     "crates/grim-core",
     "crates/grim-color",
     "crates/grim-text",

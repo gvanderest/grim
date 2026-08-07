@@ -12,7 +12,7 @@ use grim_networking::{ConnectionOutput, DisconnectRequest};
 use grim_persistence::{load_character_by_name, PersistenceConfig};
 use grim_text::tr;
 
-use crate::character;
+use crate::character_select as character;
 use crate::creation;
 use crate::params::{RoomResolver, SessionRes};
 use crate::validation::{

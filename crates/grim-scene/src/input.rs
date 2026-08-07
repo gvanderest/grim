@@ -1,160 +1,66 @@
-//! Client input entry points: the connection-established greeter and the
-//! per-connection input dispatcher that routes each line to the handler for the
-//! session's current [`ClientState`].
+//! In-game input routing: the per-connection dispatcher that parses each line
+//! for a session in [`ClientState::InGame`] into an in-game command.
+//!
+//! This is one half of the routing split — the pre-game half (login / creation
+//! / character-select / MOTD) lives in the auth crate. This system handles ONLY
+//! `InGame` clients; every pre-game state is skipped here.
+//!
+//! ## Intra-tick transition guard
+//! A single pre-game line can advance a client to `InGame` in the same tick
+//! (the MOTD ENTER, or a login-by-name reconnect). The pre-game (auth) system
+//! runs first, consumes that line, and records the connection in
+//! [`JustEnteredWorld`]. This system skips any connection in that set so the
+//! triggering line is not re-dispatched as an in-game command. Ordering is
+//! enforced by [`crate::SceneSystems::InGameInput`] (auth runs `.before` it).
 
 use bevy::prelude::*;
-use grim_core::components::{Account, Client, ClientState};
-use grim_core::events::{LoginAnnounce, LookRoom};
-use grim_networking::{ConnectionEstablished, ConnectionInput, ConnectionOutput};
-use grim_text::tr;
+use grim_actor::{Actor, Character, Linkdead};
+use grim_core::components::{Client, ClientState, Name as GrimName};
+use grim_networking::{ConnectionInput, ConnectionOutput};
 
-use crate::character;
 use crate::command;
-use crate::creation;
-use crate::login;
-use crate::params::{PlayerChars, SessionRes, WorldEntry};
+use crate::params::{PlayerChars, RoomResolver, SessionRes};
+use crate::session::JustEnteredWorld;
 
-pub(crate) fn handle_connection_established(
-    mut established: MessageReader<ConnectionEstablished>,
-    mut commands: Commands,
-    mut outputs: MessageWriter<ConnectionOutput>,
-) {
-    for ev in established.read() {
-        commands.spawn(Client::new(ev.connection));
-        let banner = grim_color::ansi(include_str!("../../../assets/login-banner.txt"));
-        let text = format!("{}\n\n{}", banner, tr!("login.prompt"));
-        outputs.write(ConnectionOutput {
-            echo: None,
-            ..ConnectionOutput::new(ev.connection, text)
-        });
-    }
-}
-
-// A flat dispatch: one match arm per ClientState, each delegating to its handler.
-// Long by nature (a state table, like parser::build_registry) — waived, not split.
-#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
-pub(crate) fn handle_client_input(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn handle_ingame_input(
     mut inputs: MessageReader<ConnectionInput>,
     mut clients: Query<(Entity, &mut Client)>,
-    mut accounts: Query<(Entity, &mut Account)>,
+    characters: Query<(Entity, &Character, &Actor, &GrimName)>,
     player_chars: PlayerChars,
+    linkdead: Query<&Linkdead>,
+    rooms: RoomResolver,
     res: SessionRes,
-    mut commands: Commands,
+    just_entered: Res<JustEnteredWorld>,
     mut outputs: MessageWriter<ConnectionOutput>,
-    mut look_room: MessageWriter<LookRoom>,
-    mut announce_login: MessageWriter<LoginAnnounce>,
-    mut world: WorldEntry,
 ) {
     for ev in inputs.read() {
-        let Some((client_entity, mut client)) = clients
+        let Some((_, mut client)) = clients
             .iter_mut()
             .find(|(_, c)| c.connection == ev.connection)
         else {
             continue;
         };
-        let text = ev.text.as_str();
-        let conn = client.connection;
-
-        // Match on a clone of the state so each handler can freely mutate the
-        // borrowed `Client` (including its `state`) without a borrow conflict.
-        match client.state.clone() {
-            ClientState::LoginPrompt => login::login_prompt(
-                &mut client,
-                conn,
-                text,
-                &accounts,
-                &world.characters,
-                &world.linkdead,
-                &res.persistence,
-                &mut outputs,
-            ),
-            ClientState::ConfirmCreate { identifier } => {
-                login::confirm_create(&mut client, conn, text, identifier, &mut outputs);
-            }
-            ClientState::PasswordPrompt {
-                identifier,
-                is_new,
-                character,
-            } => login::password_prompt(
-                login::PasswordPromptArgs {
-                    identifier,
-                    is_new,
-                    character,
-                },
-                client_entity,
-                &mut client,
-                conn,
-                text,
-                &accounts,
-                &world.characters,
-                &world.players,
-                &world.linkdead,
-                &mut world.histories,
-                &world.rooms,
-                &res,
-                &mut commands,
-                &mut outputs,
-                &mut world.announce_linkdead,
-                &mut world.disconnect,
-            ),
-            ClientState::CharacterSelect => character::character_select(
-                client_entity,
-                &mut client,
-                conn,
-                text,
-                &accounts,
-                &world.characters,
-                &world.players,
-                &world.linkdead,
-                &mut world.histories,
-                &world.rooms,
-                &res,
-                &mut commands,
-                &mut outputs,
-                &mut world.announce_linkdead,
-                &mut world.disconnect,
-            ),
-            ClientState::CreateCharacter => {
-                creation::create_character(&mut client, conn, text, &res, &mut outputs);
-            }
-            ClientState::SelectGender { name } => {
-                creation::select_gender(&mut client, conn, text, name, &res, &mut outputs);
-            }
-            ClientState::SelectRace { name, gender } => {
-                creation::select_race(&mut client, conn, text, name, gender, &res, &mut outputs);
-            }
-            ClientState::SelectClass { name, gender, race } => creation::select_class(
-                &mut client,
-                conn,
-                text,
-                name,
-                gender,
-                race,
-                &mut accounts,
-                &res,
-                &mut commands,
-                &mut outputs,
-                &mut world,
-            ),
-            ClientState::MotdPrompt => character::motd_prompt(
-                &mut client,
-                &world.characters,
-                &player_chars,
-                &mut commands,
-                &mut announce_login,
-                &mut look_room,
-            ),
-            ClientState::InGame => command::handle_ingame(
-                &mut client,
-                conn,
-                text,
-                &world.characters,
-                &player_chars,
-                &world.linkdead,
-                &world.rooms,
-                &res,
-                &mut outputs,
-            ),
+        // Pre-game states are the auth system's job.
+        if client.state != ClientState::InGame {
+            continue;
         }
+        // This line drove the session into the world this tick; the pre-game
+        // system already consumed it. Don't re-dispatch it as a command.
+        if just_entered.0.contains(&ev.connection) {
+            continue;
+        }
+        let conn = client.connection;
+        command::handle_ingame(
+            &mut client,
+            conn,
+            ev.text.as_str(),
+            &characters,
+            &player_chars,
+            &linkdead,
+            &rooms,
+            &res,
+            &mut outputs,
+        );
     }
 }

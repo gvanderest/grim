@@ -3,6 +3,7 @@
 //! `grim::plugins::WorldPlugin` etc. keep resolving.
 
 pub use grim_actor::ActorPlugin;
+pub use grim_auth::AuthPlugin;
 pub use grim_channel::ChannelPlugin;
 pub use grim_networking::GrimNetworkingPlugin;
 pub use grim_networking_telnet::TelnetPlugin;
