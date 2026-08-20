@@ -941,6 +941,7 @@ dependencies = [
  "grim-auth",
  "grim-channel",
  "grim-command",
+ "grim-command-events",
  "grim-core",
  "grim-networking",
  "grim-networking-telnet",
@@ -1004,6 +1005,14 @@ name = "grim-command"
 version = "0.1.0"
 dependencies = [
  "bevy",
+]
+
+[[package]]
+name = "grim-command-events"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "grim-core",
 ]
 
 [[package]]

@@ -7,6 +7,7 @@ pub use grim_actor::{
 };
 pub use grim_auth::ReservedNamePrefixes;
 pub use grim_channel::LastWhisperFrom;
+pub use grim_command_events::*;
 pub use grim_core::prelude::*;
 pub use grim_scene::ConnectedAt;
 pub use grim_world::{

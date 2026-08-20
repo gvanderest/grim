@@ -167,6 +167,10 @@ const ALLOWED_NORMAL: &[Edge] = &[
     ("grim", "grim-actor"),
     ("grim", "grim-channel"),
     ("grim", "grim-persistence"),
+    // NOTE (typed-event command dispatch): grim-command-events holds semantic
+    // intent events (MoveIntent, LookIntent, etc.) that the facade re-exports.
+    ("grim", "grim-command-events"),
+    ("grim-command-events", "grim-core"),
     ("example-mud", "grim"),
 ];
 
