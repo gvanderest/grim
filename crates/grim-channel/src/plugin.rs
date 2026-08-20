@@ -4,7 +4,9 @@
 
 use bevy::prelude::*;
 
-use crate::{Channel, ChannelRegistry, Identify, ListenEligibility, Scope, SpeakEligibility};
+use crate::{
+    Channel, ChannelMessage, ChannelRegistry, Identify, ListenEligibility, Scope, SpeakEligibility,
+};
 
 /// Handles `say`/`yell`/`ooc`/`tell`/`reply`/`gecho` commands, emitting the
 /// corresponding channel events plus `InfoMessage` echoes.
@@ -17,9 +19,9 @@ impl ChannelPlugin {
     /// are data, not code - one `Channel` configuration registers the
     /// command, audience resolution, and formatting.
     pub fn add_channel(&self, _channel: Channel) {
-        // The actual registration happens in build() - we just store it for later
-        // This method signature is for the API, but we need a different pattern
-        // since Plugin::build() runs once at startup
+        // This is a placeholder for the API. The actual registration happens in build()
+        // when the plugin is added to the app. For runtime channel addition, you'd need
+        // to modify the ChannelRegistry directly.
     }
 }
 
@@ -65,7 +67,15 @@ impl Plugin for ChannelPlugin {
                 key: "channel.ooc".to_string(),
             });
 
-        // Register the command handlers (systems + messages)
+        // Register the channel message for data-driven dispatch
+        app.add_message::<ChannelMessage>();
+
+        // Register the unified channel handler
+        app.add_systems(Update, crate::handler::handle_channel);
+
+        // Register the command handlers for backwards compatibility
+        // These handle the hard-coded Command::Say/Yell/Ooc variants
+        // and emit ChannelMessage based on the channel configuration
         crate::commands::say::register(app);
         crate::commands::yell::register(app);
         crate::commands::ooc::register(app);
