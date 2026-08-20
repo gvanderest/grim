@@ -35,6 +35,9 @@ pub use grim_text::tr;
 // Command resolution.
 pub use grim_command::{CommandRegistry, Contest};
 
+// Command events (semantic intents).
+pub use grim_command_events::*;
+
 pub mod plugins;
 pub use plugins::*;
 
