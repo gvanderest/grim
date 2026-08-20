@@ -12,8 +12,8 @@ use bevy::prelude::*;
 use crate::commands::look;
 use crate::commands::movement;
 use crate::commands::quit;
-use crate::commands::title;
 use crate::commands::shutdown;
+use crate::commands::title;
 
 /// Registers the actor command verbs: `look`, `move`/`goto`, `quit`, `title`,
 /// and the admin `shutdown` gate.
