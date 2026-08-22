@@ -9,8 +9,19 @@
 //! render boundary.
 
 pub mod commands;
+pub mod handler;
+pub mod message;
 pub mod plugin;
+pub mod registry;
 pub mod whisper;
+
+// Re-export channel types from grim-core
+pub use grim_core::channel::{Channel, Identify, ListenEligibility, Scope, SpeakEligibility};
+
+// Re-export types from this crate
+pub use crate::handler::handle_channel;
+pub use crate::message::ChannelMessage;
+pub use crate::registry::ChannelRegistry;
 
 pub use plugin::ChannelPlugin;
 pub use whisper::LastWhisperFrom;
