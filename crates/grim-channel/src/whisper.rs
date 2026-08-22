@@ -21,7 +21,8 @@ pub struct LastWhisperFrom(pub Entity);
 /// Deliver one whisper: echo `You tell <Name> '<text>'` to the sender, and —
 /// for a distinct recipient — `<Sender> tells you '<text>'` plus record the
 /// sender as the recipient's [`LastWhisperFrom`] so they can `reply`. A whisper
-/// to `self` echoes only the "You tell …" line.
+/// to `self` echoes only the "You tell …" line and sets LastWhisperFrom to
+/// allow replying to yourself.
 pub(crate) fn deliver_whisper(
     actor: Entity,
     recipient: Entity,
@@ -44,6 +45,7 @@ pub(crate) fn deliver_whisper(
             target: recipient,
             text: format!("{sender_name} tells you '{text}'\n"),
         });
-        commands.entity(recipient).insert(LastWhisperFrom(actor));
     }
+    // Always set LastWhisperFrom so reply works even when whispering to self
+    commands.entity(recipient).insert(LastWhisperFrom(actor));
 }

@@ -86,6 +86,10 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // output, so scene → grim-actor is a normal edge. grim-actor does not depend
     // on grim-scene, so no cycle.
     ("grim-scene", "grim-actor"),
+    // NOTE (Placement Phase 3): grim-channel's ChannelMessage event flows through
+    // grim-scene for output formatting and per-recipient broadcast. grim-scene reads
+    // ChannelMessage to determine audience and format messages using channel config.
+    ("grim-scene", "grim-channel"),
     // ── Pre-game / auth ─────────────────────────────────────────────────────────
     // NOTE (Phase 2b): grim-auth owns the login / account-creation /
     // character-select / MOTD flow extracted from grim-scene. It is the pre-game

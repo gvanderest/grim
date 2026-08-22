@@ -12,19 +12,6 @@ use crate::{
 /// corresponding channel events plus `InfoMessage` echoes.
 pub struct ChannelPlugin;
 
-impl ChannelPlugin {
-    /// Register a new channel from configuration.
-    ///
-    /// This is the data-driven approach from ARCHITECTURE.md §7. Channels
-    /// are data, not code - one `Channel` configuration registers the
-    /// command, audience resolution, and formatting.
-    pub fn add_channel(&self, _channel: Channel) {
-        // This is a placeholder for the API. The actual registration happens in build()
-        // when the plugin is added to the app. For runtime channel addition, you'd need
-        // to modify the ChannelRegistry directly.
-    }
-}
-
 impl Plugin for ChannelPlugin {
     fn build(&self, app: &mut App) {
         // Initialize the channel registry

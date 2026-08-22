@@ -4,14 +4,15 @@
 
 use bevy::prelude::*;
 use grim_actor::{Character, InRoom, OutputHistory, Player};
+use grim_channel::{ChannelMessage, ChannelRegistry};
 use grim_core::components::{Description, Name as GrimName};
 use grim_core::events::{
-    GlobalEcho, InfoMessage, LookEntity, LookRoom, MoveEvent, OocEvent, SayEvent, ServerBroadcast,
-    YellEvent,
+    GlobalEcho, InfoMessage, LookEntity, LookRoom, MoveEvent, ServerBroadcast,
 };
 use grim_networking::ConnectionOutput;
 use grim_world::{Exits, Room};
 
+use crate::channel_output::emit_channel;
 use crate::formatter;
 use crate::params::AnnounceReaders;
 
@@ -31,13 +32,12 @@ type Occupants<'w, 's> = Query<
 pub(crate) fn format_output(
     mut look_room_events: MessageReader<LookRoom>,
     mut look_entity_events: MessageReader<LookEntity>,
-    mut say_events: MessageReader<SayEvent>,
-    mut yell_events: MessageReader<YellEvent>,
-    mut ooc_events: MessageReader<OocEvent>,
+    mut channel_events: MessageReader<ChannelMessage>,
     mut move_events: MessageReader<MoveEvent>,
     mut info_events: MessageReader<InfoMessage>,
     mut gecho_events: MessageReader<GlobalEcho>,
     mut announces: AnnounceReaders,
+    channel_registry: Res<ChannelRegistry>,
     rooms: Query<(Entity, &Room, &GrimName)>,
     room_occupants: Occupants,
     room_exits: Query<&Exits>,
@@ -78,14 +78,16 @@ pub(crate) fn format_output(
     for ev in look_entity_events.read() {
         emit_look_entity(ev, &room_occupants, &names, &descriptions, &mut outputs);
     }
-    for ev in say_events.read() {
-        emit_say(ev, &names, &room_occupants, &mut outputs);
-    }
-    for ev in yell_events.read() {
-        emit_yell(ev, &rooms, &names, &room_occupants, &mut outputs);
-    }
-    for ev in ooc_events.read() {
-        emit_ooc(ev, &names, &room_occupants, &mut outputs);
+    for ev in channel_events.read() {
+        emit_channel(
+            ev,
+            &channel_registry,
+            &names,
+            &room_occupants,
+            &rooms,
+            &characters,
+            &mut outputs,
+        );
     }
     for ev in move_events.read() {
         emit_move(ev, &names, &room_occupants, &mut outputs);
@@ -180,8 +182,8 @@ fn emit_look_entity(
     });
 }
 
-fn emit_say(
-    ev: &SayEvent,
+fn emit_move(
+    ev: &MoveEvent,
     names: &Query<&GrimName>,
     room_occupants: &Occupants,
     outputs: &mut MessageWriter<ConnectionOutput>,
@@ -189,63 +191,23 @@ fn emit_say(
     let Ok(actor_name) = names.get(ev.actor) else {
         return;
     };
-    let formatted = formatter::format_say(&actor_name.0, &ev.text);
-    broadcast_to_room(ev.room, Some(ev.actor), &formatted, room_occupants, outputs);
+    let dir_str = ev.direction.to_string();
+    let leave_msg = formatter::format_move(&actor_name.0, &dir_str, true);
+    broadcast_to_room(ev.from, Some(ev.actor), &leave_msg, room_occupants, outputs);
+    let arrive_msg = formatter::format_move(&actor_name.0, &dir_str, false);
+    broadcast_to_room(ev.to, Some(ev.actor), &arrive_msg, room_occupants, outputs);
 }
 
-fn emit_yell(
-    ev: &YellEvent,
-    rooms: &Query<(Entity, &Room, &GrimName)>,
-    names: &Query<&GrimName>,
+fn emit_info(
+    ev: &InfoMessage,
     room_occupants: &Occupants,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
-    let Ok(actor_name) = names.get(ev.actor) else {
-        return;
-    };
-    let formatted = formatter::format_yell(&actor_name.0, &ev.text);
-    let area_rooms: Vec<Entity> = rooms
-        .iter()
-        .filter(|(_, r, _)| r.area == ev.area)
-        .map(|(e, _, _)| e)
-        .collect();
-    for (entity, ir, player, _) in room_occupants.iter() {
-        if !area_rooms.contains(&ir.room) {
-            continue;
-        }
-        if entity == ev.actor {
-            continue;
-        }
-        if let Some(p) = player {
-            outputs.write(ConnectionOutput {
-                prepend_newline: true,
-                ..ConnectionOutput::new(p.connection, formatted.clone())
-            });
-        }
-    }
-}
-
-fn emit_ooc(
-    ev: &OocEvent,
-    names: &Query<&GrimName>,
-    room_occupants: &Occupants,
-    outputs: &mut MessageWriter<ConnectionOutput>,
-) {
-    let Ok(actor_name) = names.get(ev.actor) else {
-        return;
-    };
-    let formatted = formatter::format_ooc(&actor_name.0, &ev.text);
-    for (entity, _, player, _) in room_occupants.iter() {
-        if entity == ev.actor {
-            continue;
-        }
-        if let Some(p) = player {
-            outputs.write(ConnectionOutput {
-                prepend_newline: true,
-                ..ConnectionOutput::new(p.connection, formatted.clone())
-            });
-        }
-    }
+    let conn = find_conn(ev.target, room_occupants);
+    outputs.write(ConnectionOutput {
+        prepend_newline: true,
+        ..ConnectionOutput::new(conn, ev.text.clone())
+    });
 }
 
 /// Admin `gecho`: broadcast to every connected player in the world, including
@@ -283,34 +245,6 @@ fn emit_gecho(
             ..ConnectionOutput::new(conn, text)
         });
     }
-}
-
-fn emit_move(
-    ev: &MoveEvent,
-    names: &Query<&GrimName>,
-    room_occupants: &Occupants,
-    outputs: &mut MessageWriter<ConnectionOutput>,
-) {
-    let Ok(actor_name) = names.get(ev.actor) else {
-        return;
-    };
-    let dir_str = ev.direction.to_string();
-    let leave_msg = formatter::format_move(&actor_name.0, &dir_str, true);
-    broadcast_to_room(ev.from, Some(ev.actor), &leave_msg, room_occupants, outputs);
-    let arrive_msg = formatter::format_move(&actor_name.0, &dir_str, false);
-    broadcast_to_room(ev.to, Some(ev.actor), &arrive_msg, room_occupants, outputs);
-}
-
-fn emit_info(
-    ev: &InfoMessage,
-    room_occupants: &Occupants,
-    outputs: &mut MessageWriter<ConnectionOutput>,
-) {
-    let conn = find_conn(ev.target, room_occupants);
-    outputs.write(ConnectionOutput {
-        prepend_newline: true,
-        ..ConnectionOutput::new(conn, ev.text.clone())
-    });
 }
 
 /// Find the Connection entity for a character, using their Player component.

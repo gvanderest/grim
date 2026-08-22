@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 use chrono::Utc;
 use grim_actor::{InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter};
-use grim_channel::ChannelPlugin;
+use grim_channel::{Channel, ChannelMessage, ChannelPlugin};
 use grim_core::components::Name as GrimName;
 use grim_core::components::*;
 use grim_core::events::*;
@@ -175,7 +175,7 @@ mod reconnect {
 mod output_format {
     use super::*;
 
-    /// Verify that format_output broadcasts SayEvent to room occupants.
+    /// Verify that format_output broadcasts ChannelMessage to room occupants.
     #[test]
     fn format_output_say_broadcast() {
         let mut app = test_app();
@@ -222,8 +222,16 @@ mod output_format {
             ))
             .id();
 
-        app.world_mut().write_message(SayEvent {
-            room,
+        app.world_mut().write_message(ChannelMessage {
+            channel: Channel {
+                name: "say".to_string(),
+                scope: grim_core::channel::Scope::Room,
+                identify: grim_core::channel::Identify::Perceived,
+                toggleable: false,
+                speak: grim_core::channel::SpeakEligibility::All,
+                listen: grim_core::channel::ListenEligibility::All,
+                key: "channel.say".to_string(),
+            },
             actor,
             text: "hello".into(),
         });

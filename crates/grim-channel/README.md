@@ -37,21 +37,20 @@ Player-facing verbs and where to find their handlers.
 |---|---|---|
 | `ChannelRegistry` | Resource | `src/registry.rs` | Stores registered channel configurations (name, scope, eligibility). |
 | `ChannelMessage` | Message | `src/message.rs` | **Data-driven** unified channel event - one shared event with data-driven scope/resolution. |
-| `SayEvent` | Message (consumed; defined in `grim-core`) | `src/commands/say.rs` |
-| `YellEvent` | Message (consumed) | `src/commands/yell.rs` |
-| `OocEvent` | Message (consumed) | `src/commands/ooc.rs` |
 | `GlobalEcho` | Message (consumed) | `src/commands/gecho.rs` |
-| `EngineCommand` | Message (input) | each `src/commands/*.rs` |
-| `InfoMessage` | Message (output echo) | each `src/commands/*.rs` |
+| `EngineCommand` | Message (input) | `src/handler.rs`, `src/commands/*.rs` |
+| `InfoMessage` | Message (output echo) | `src/handler.rs`, `src/commands/*.rs` |
 
 ## Configuration
 Channels are **data**, not code. Register channels via `ChannelRegistry`:
 
 ```rust
-use grim_channel::{Channel, Scope, Identify, SpeakEligibility, ListenEligibility};
+use grim_channel::{Channel, Scope, Identify, SpeakEligibility, ListenEligibility, ChannelRegistry};
 
-app.init_resource::<ChannelRegistry>();
+app.add_plugins(ChannelPlugin);
+// ChannelPlugin initializes ChannelRegistry with say/yell/ooc by default
 
+// Add a custom channel
 app.world_mut().resource_mut::<ChannelRegistry>().add_channel(Channel {
     name: "gossip".to_string(),
     scope: Scope::Global,
