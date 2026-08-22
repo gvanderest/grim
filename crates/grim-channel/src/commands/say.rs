@@ -34,6 +34,7 @@ pub(crate) fn handle_say(
 }
 
 /// Wire the `say` handler and the messages it reads/emits.
+#[allow(unused)]
 pub(crate) fn register(app: &mut App) {
     app.add_message::<EngineCommand>()
         .add_message::<InfoMessage>()

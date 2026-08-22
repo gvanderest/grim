@@ -6,27 +6,28 @@
 use bevy::prelude::*;
 
 use crate::{ChannelMessage, ChannelRegistry};
-use grim_actor::InRoom;
-use grim_core::channel::{Channel, Identify, SpeakEligibility};
+use grim_actor::{Character, InRoom, Player};
+use grim_core::channel::{Channel, Identify, ListenEligibility, SpeakEligibility};
 use grim_core::events::{Command, EngineCommand, InfoMessage};
 use grim_text::tr;
 use grim_world::Room;
 
 /// Handle all channel commands based on the channel registry.
+#[allow(clippy::too_many_arguments)]
 pub fn handle_channel(
     mut engine: MessageReader<EngineCommand>,
     mut channel_message: MessageWriter<ChannelMessage>,
     mut info: MessageWriter<InfoMessage>,
     channel_registry: Res<ChannelRegistry>,
-    inroom: Query<&InRoom>,
+    _inroom: Query<&InRoom>,
+    players: Query<&Player>,
+    characters: Query<&Character>,
     _rooms: Query<&Room>,
 ) {
     for cmd in engine.read() {
         // Extract channel name and text from the command
         let (channel_name, text) = match &cmd.command {
-            Command::Say { text } => ("say", text),
-            Command::Yell { text } => ("yell", text),
-            Command::Ooc { text } => ("ooc", text),
+            Command::Channel { channel, text } => (channel, text),
             _ => continue,
         };
 
@@ -40,20 +41,24 @@ pub fn handle_channel(
         };
 
         // Check speak eligibility
-        if !check_speak_eligibility(&channel.speak, cmd.client, &inroom) {
+        if !check_speak_eligibility(&channel.speak, cmd.client, &_inroom, &players, &characters) {
+            continue;
+        }
+
+        // Check listen eligibility for the actor (they must be able to listen to the channel)
+        if !check_listen_eligibility(&channel.listen, cmd.client, &_inroom, &players, &characters) {
             continue;
         }
 
         // Emit the channel message
-        let channel_for_message = channel.clone();
         channel_message.write(ChannelMessage {
-            channel: channel_for_message,
+            channel,
             actor: cmd.client,
             text: text.clone(),
         });
 
         // Send echo to actor (with proper formatting based on channel)
-        let echo_text = format_echo(&channel, text);
+        let echo_text = format_echo(channel_registry.get(channel_name).unwrap(), text);
         info.write(InfoMessage {
             target: cmd.client,
             text: echo_text,
@@ -63,21 +68,52 @@ pub fn handle_channel(
 
 /// Check if the actor can speak on this channel.
 fn check_speak_eligibility(
-    eligibility: &SpeakEligibility,
-    _actor: Entity,
+    speak: &SpeakEligibility,
+    actor: Entity,
     _inroom: &Query<&InRoom>,
+    players: &Query<&Player>,
+    characters: &Query<&Character>,
 ) -> bool {
-    match eligibility {
+    match speak {
         SpeakEligibility::All => true,
         SpeakEligibility::AdminOnly => {
             // Check if actor has admin role
-            // TODO: Implement admin check via Character component
-            false
+            characters
+                .get(actor)
+                .map(Character::is_admin)
+                .unwrap_or(false)
         }
         SpeakEligibility::Authenticated => {
             // Check if actor has a Character (is logged in)
-            // TODO: Implement auth check
-            false
+            players.get(actor).is_ok()
+        }
+    }
+}
+
+/// Check if the actor can listen to this channel.
+fn check_listen_eligibility(
+    listen: &ListenEligibility,
+    actor: Entity,
+    _inroom: &Query<&InRoom>,
+    players: &Query<&Player>,
+    characters: &Query<&Character>,
+) -> bool {
+    match listen {
+        ListenEligibility::All => true,
+        ListenEligibility::AdminOnly => characters
+            .get(actor)
+            .map(Character::is_admin)
+            .unwrap_or(false),
+        ListenEligibility::Authenticated => players.get(actor).is_ok(),
+        ListenEligibility::InRoom => {
+            // Check if actor is in the same room as the actor
+            // This is checked at output time
+            true
+        }
+        ListenEligibility::InArea => {
+            // Check if actor is in the same area as the actor
+            // This is checked at output time
+            true
         }
     }
 }
@@ -123,7 +159,8 @@ mod tests {
         // Send a command
         app.world_mut().write_message(EngineCommand {
             client: actor,
-            command: Command::Say {
+            command: Command::Channel {
+                channel: "say".into(),
                 text: "hello".into(),
             },
         });

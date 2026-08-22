@@ -139,6 +139,37 @@ mod tests {
     }
 
     #[test]
+    fn tell_self_allows_reply_to_self() {
+        let mut app = test_app();
+        // Also register reply handler since we're testing the full flow
+        crate::commands::reply::register(&mut app);
+
+        let alice = spawn_player(&mut app, "Alice");
+        // Alice whispers to herself
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Command::Tell {
+                target: "self".into(),
+                text: "note to self".into(),
+            },
+        });
+        app.update();
+        // Alice replies to herself
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Command::Reply {
+                text: "reply to note".into(),
+            },
+        });
+        app.update();
+        let msgs = infos(&app);
+        // Both messages go to Alice
+        assert!(msgs.contains(&(alice, "You tell Alice 'note to self'\n".to_string())));
+        assert!(msgs.contains(&(alice, "You tell Alice 'reply to note'\n".to_string())));
+        assert_eq!(msgs.len(), 2);
+    }
+
+    #[test]
     fn tell_unknown_target_reports_to_sender() {
         let mut app = test_app();
         let alice = spawn_player(&mut app, "Alice");

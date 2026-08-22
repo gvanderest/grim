@@ -6,6 +6,7 @@
 //! by the pre-game auth crate. Cohesive concerns live in sibling modules; this file is a
 //! shell that wires them together and re-exports the public surface.
 
+mod channel_output;
 mod command;
 mod input;
 mod output;

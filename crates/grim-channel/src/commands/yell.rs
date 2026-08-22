@@ -6,6 +6,7 @@ use grim_core::components::Name;
 use grim_core::events::{Command, EngineCommand, InfoMessage, YellEvent};
 use grim_world::Room;
 
+#[allow(unused)]
 pub(crate) fn handle_yell(
     mut engine: MessageReader<EngineCommand>,
     inroom: Query<(&InRoom, &Name)>,
@@ -37,6 +38,7 @@ pub(crate) fn handle_yell(
 }
 
 /// Wire the `yell` handler and the messages it reads/emits.
+#[allow(unused)]
 pub(crate) fn register(app: &mut App) {
     app.add_message::<EngineCommand>()
         .add_message::<InfoMessage>()
