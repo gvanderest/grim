@@ -25,6 +25,8 @@ pub enum Command {
     Tell { target: String, text: String },
     /// `reply <text>` — private message to the last player who whispered you.
     Reply { text: String },
+    /// `channel <name> <text>` — unified channel command (data-driven).
+    Channel { channel: String, text: String },
     /// `title <text>` sets the actor's WHO title (max 60 chars); a bare `title`
     /// (empty text) clears it.
     Title { text: String },

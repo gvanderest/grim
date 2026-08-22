@@ -54,7 +54,8 @@ fn build_registry() -> CommandRegistry<Command> {
         if rest.is_empty() {
             None
         } else {
-            Some(Command::Say {
+            Some(Command::Channel {
+                channel: "say".to_string(),
                 text: rest.to_string(),
             })
         }
@@ -63,7 +64,8 @@ fn build_registry() -> CommandRegistry<Command> {
         if rest.is_empty() {
             None
         } else {
-            Some(Command::Say {
+            Some(Command::Channel {
+                channel: "say".to_string(),
                 text: rest.to_string(),
             })
         }
@@ -72,7 +74,8 @@ fn build_registry() -> CommandRegistry<Command> {
         if rest.is_empty() {
             None
         } else {
-            Some(Command::Yell {
+            Some(Command::Channel {
+                channel: "yell".to_string(),
                 text: rest.to_string(),
             })
         }
@@ -81,10 +84,25 @@ fn build_registry() -> CommandRegistry<Command> {
         if rest.is_empty() {
             None
         } else {
-            Some(Command::Ooc {
+            Some(Command::Channel {
+                channel: "ooc".to_string(),
                 text: rest.to_string(),
             })
         }
+    });
+    // `channel <name> <text>` — a generic command for all configured channels.
+    // This allows players to use custom channels added via ChannelRegistry.
+    r.register("channel", |rest| {
+        let rest = rest.trim();
+        let (channel, text) = rest.split_once(' ')?;
+        let (channel, text) = (channel.trim(), text.trim());
+        if channel.is_empty() || text.is_empty() {
+            return None;
+        }
+        Some(Command::Channel {
+            channel: channel.to_string(),
+            text: text.to_string(),
+        })
     });
     // `tell <target> <message>` (alias: `whisper`). Needs both a target and a
     // non-empty message; a bare `tell` or `tell name` is rejected.
@@ -314,7 +332,8 @@ mod tests {
     fn test_say_with_text() {
         assert_eq!(
             parse("say hello there"),
-            Some(Command::Say {
+            Some(Command::Channel {
+                channel: "say".to_string(),
                 text: "hello there".to_string()
             })
         );
@@ -330,7 +349,8 @@ mod tests {
     fn test_say_shorthand() {
         assert_eq!(
             parse("' hello"),
-            Some(Command::Say {
+            Some(Command::Channel {
+                channel: "say".to_string(),
                 text: "hello".to_string()
             })
         );
@@ -341,7 +361,8 @@ mod tests {
     fn test_yell_with_text() {
         assert_eq!(
             parse("yell fire"),
-            Some(Command::Yell {
+            Some(Command::Channel {
+                channel: "yell".to_string(),
                 text: "fire".to_string()
             })
         );
@@ -356,7 +377,8 @@ mod tests {
     fn test_ooc_with_text() {
         assert_eq!(
             parse("ooc anyone here?"),
-            Some(Command::Ooc {
+            Some(Command::Channel {
+                channel: "ooc".to_string(),
                 text: "anyone here?".to_string()
             })
         );
@@ -648,7 +670,8 @@ mod tests {
         );
         assert_eq!(
             parse("SAY Hello"),
-            Some(Command::Say {
+            Some(Command::Channel {
+                channel: "say".to_string(),
                 text: "Hello".to_string()
             })
         );
@@ -661,12 +684,14 @@ mod tests {
     fn test_custom_registry_order() {
         let mut r = CommandRegistry::new();
         r.register("note", |rest| {
-            Some(Command::Say {
+            Some(Command::Channel {
+                channel: "say".to_string(),
                 text: rest.to_string(),
             })
         });
         r.register("nordic", |rest| {
-            Some(Command::Yell {
+            Some(Command::Channel {
+                channel: "yell".to_string(),
                 text: rest.to_string(),
             })
         });
@@ -707,14 +732,16 @@ mod tests {
         // "nord" matches only nordic
         assert_eq!(
             r.resolve("nord", ""),
-            Some(Command::Yell {
+            Some(Command::Channel {
+                channel: "yell".to_string(),
                 text: "".to_string()
             })
         );
         // "not" matches only note
         assert_eq!(
             r.resolve("not", ""),
-            Some(Command::Say {
+            Some(Command::Channel {
+                channel: "say".to_string(),
                 text: "".to_string()
             })
         );
