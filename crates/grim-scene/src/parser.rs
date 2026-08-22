@@ -101,6 +101,20 @@ fn build_registry() -> CommandRegistry<Command> {
             text: text.to_string(),
         })
     });
+    // `channel <name> <text>` — a generic command for all configured channels.
+    // This allows players to use custom channels added via ChannelRegistry.
+    r.register("channel", |rest| {
+        let rest = rest.trim();
+        let (channel, text) = rest.split_once(' ')?;
+        let (channel, text) = (channel.trim(), text.trim());
+        if channel.is_empty() || text.is_empty() {
+            return None;
+        }
+        Some(Command::Channel {
+            channel: channel.to_string(),
+            text: text.to_string(),
+        })
+    });
     // `title <text>` sets the WHO title; a bare `title` clears it. Always parses
     // (empty = clear), so it is a recognized command either way.
     r.register("title", |rest| {

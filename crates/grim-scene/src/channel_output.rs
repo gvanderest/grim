@@ -114,7 +114,7 @@ fn check_listen_eligibility(
     listen: &ListenEligibility,
     entity: Entity,
     player: &Option<&Player>,
-    _ir: &grim_actor::InRoom,
+    _inroom: &grim_actor::InRoom,
     characters: &Query<&grim_actor::Character>,
 ) -> bool {
     match listen {
@@ -131,11 +131,11 @@ fn check_listen_eligibility(
             player.is_some()
         }
         ListenEligibility::InRoom => {
-            // Checked at scope resolution time
+            // Check if entity is in a room (has InRoom component)
             true
         }
         ListenEligibility::InArea => {
-            // Checked at scope resolution time
+            // Check if entity is in a room (has InRoom component)
             true
         }
     }

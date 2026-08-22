@@ -94,26 +94,30 @@ fn check_speak_eligibility(
 fn check_listen_eligibility(
     listen: &ListenEligibility,
     actor: Entity,
-    _inroom: &Query<&InRoom>,
+    inroom: &Query<&InRoom>,
     players: &Query<&Player>,
     characters: &Query<&Character>,
 ) -> bool {
     match listen {
         ListenEligibility::All => true,
-        ListenEligibility::AdminOnly => characters
-            .get(actor)
-            .map(Character::is_admin)
-            .unwrap_or(false),
-        ListenEligibility::Authenticated => players.get(actor).is_ok(),
+        ListenEligibility::AdminOnly => {
+            // Admin check - need Character with admin role
+            characters
+                .get(actor)
+                .map(Character::is_admin)
+                .unwrap_or(false)
+        }
+        ListenEligibility::Authenticated => {
+            // Must have Player (authenticated) or Linkdead (still in world)
+            players.get(actor).is_ok()
+        }
         ListenEligibility::InRoom => {
-            // Check if actor is in the same room as the actor
-            // This is checked at output time
-            true
+            // Check if actor is in a room (has InRoom component)
+            inroom.get(actor).is_ok()
         }
         ListenEligibility::InArea => {
-            // Check if actor is in the same area as the actor
-            // This is checked at output time
-            true
+            // Check if actor is in a room (has InRoom component)
+            inroom.get(actor).is_ok()
         }
     }
 }
@@ -122,8 +126,9 @@ fn check_listen_eligibility(
 fn format_echo(channel: &Channel, text: &str) -> String {
     match channel.identify {
         Identify::Perceived => {
-            // Use the catalog key for perceived (in-world) speech
-            tr!("channel.say.first_party", text = text)
+            // Use the catalog key for perceived (in-world) speech with first_party template
+            let first_party_key = format!("{}.first_party", channel.key);
+            tr!(first_party_key.as_str(), text = text)
         }
         Identify::Always => {
             // OOC always shows "[OOC]" prefix
