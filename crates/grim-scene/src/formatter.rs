@@ -62,6 +62,15 @@ pub fn format_ooc(speaker: &str, text: &str) -> String {
     format!("[OOC] {}: {}\n", speaker, escape_codes(text))
 }
 
+/// Format a channel message based on the catalog key from the channel config.
+/// The catalog key determines which template to use (e.g., "channel.say.third_party").
+pub fn format_channel_message(catalog_key: &str, speaker: &str, text: &str) -> String {
+    // Construct the full catalog key from the channel key
+    // For example: "channel.say.third_party"
+    let full_key = format!("{}.third_party", catalog_key);
+    tr!(full_key.as_str(), speaker = speaker, text = text)
+}
+
 /// Render an admin `gecho`. `sender: Some(name)` attributes it (`Name> text`)
 /// for other admins; `None` yields the raw text (sender + non-admins). Text is
 /// escaped so a broadcast can't inject colour codes.

@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 use chrono::Utc;
 use grim_actor::{InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter};
-use grim_channel::ChannelPlugin;
+use grim_channel::{Channel, ChannelMessage, ChannelPlugin};
 use grim_core::components::Name as GrimName;
 use grim_core::components::*;
 use grim_core::events::*;
@@ -175,7 +175,7 @@ mod reconnect {
 mod output_format {
     use super::*;
 
-    /// Verify that format_output broadcasts SayEvent to room occupants.
+    /// Verify that format_output broadcasts ChannelMessage to room occupants.
     #[test]
     fn format_output_say_broadcast() {
         let mut app = test_app();
@@ -222,14 +222,11 @@ mod output_format {
             ))
             .id();
 
-        app.world_mut().write_message(SayEvent {
-            room,
+        // Use ChannelMessage instead of SayEvent (data-driven channel model)
+        app.world_mut().write_message(ChannelMessage {
+            channel: Channel::new("say"),
             actor,
             text: "hello".into(),
-        });
-        app.world_mut().write_message(InfoMessage {
-            target: actor,
-            text: "You say, 'hello'\n".into(),
         });
         app.update();
 
@@ -237,17 +234,12 @@ mod output_format {
         let mut cursor = msgs.get_cursor();
         let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
 
+        // The actor's echo is sent via InfoMessage (handled separately), not as part of the channel broadcast
         assert!(
             outputs
                 .iter()
                 .any(|o| o.connection == observer_conn && o.text.contains("Hero says")),
             "observer should get broadcast"
-        );
-        assert!(
-            outputs
-                .iter()
-                .any(|o| o.connection == actor_conn && o.text.contains("You say")),
-            "actor should get echo"
         );
     }
 

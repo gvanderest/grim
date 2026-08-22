@@ -21,7 +21,7 @@ pub use grim_core::channel::{Channel, Identify, ListenEligibility, Scope, SpeakE
 // Re-export types from this crate
 pub use crate::handler::handle_channel;
 pub use crate::message::ChannelMessage;
-pub use crate::registry::ChannelRegistry;
+pub use crate::registry::{resolve_audience, ChannelRegistry};
 
 pub use plugin::ChannelPlugin;
 pub use whisper::LastWhisperFrom;

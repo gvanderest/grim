@@ -54,7 +54,8 @@ fn build_registry() -> CommandRegistry<Command> {
         if rest.is_empty() {
             None
         } else {
-            Some(Command::Say {
+            Some(Command::Channel {
+                channel: "say".to_string(),
                 text: rest.to_string(),
             })
         }
@@ -63,7 +64,8 @@ fn build_registry() -> CommandRegistry<Command> {
         if rest.is_empty() {
             None
         } else {
-            Some(Command::Say {
+            Some(Command::Channel {
+                channel: "say".to_string(),
                 text: rest.to_string(),
             })
         }
@@ -72,7 +74,8 @@ fn build_registry() -> CommandRegistry<Command> {
         if rest.is_empty() {
             None
         } else {
-            Some(Command::Yell {
+            Some(Command::Channel {
+                channel: "yell".to_string(),
                 text: rest.to_string(),
             })
         }
@@ -81,7 +84,8 @@ fn build_registry() -> CommandRegistry<Command> {
         if rest.is_empty() {
             None
         } else {
-            Some(Command::Ooc {
+            Some(Command::Channel {
+                channel: "ooc".to_string(),
                 text: rest.to_string(),
             })
         }
@@ -314,7 +318,8 @@ mod tests {
     fn test_say_with_text() {
         assert_eq!(
             parse("say hello there"),
-            Some(Command::Say {
+            Some(Command::Channel {
+                channel: "say".to_string(),
                 text: "hello there".to_string()
             })
         );
@@ -330,7 +335,8 @@ mod tests {
     fn test_say_shorthand() {
         assert_eq!(
             parse("' hello"),
-            Some(Command::Say {
+            Some(Command::Channel {
+                channel: "say".to_string(),
                 text: "hello".to_string()
             })
         );
@@ -341,7 +347,8 @@ mod tests {
     fn test_yell_with_text() {
         assert_eq!(
             parse("yell fire"),
-            Some(Command::Yell {
+            Some(Command::Channel {
+                channel: "yell".to_string(),
                 text: "fire".to_string()
             })
         );
@@ -356,7 +363,8 @@ mod tests {
     fn test_ooc_with_text() {
         assert_eq!(
             parse("ooc anyone here?"),
-            Some(Command::Ooc {
+            Some(Command::Channel {
+                channel: "ooc".to_string(),
                 text: "anyone here?".to_string()
             })
         );
@@ -648,7 +656,8 @@ mod tests {
         );
         assert_eq!(
             parse("SAY Hello"),
-            Some(Command::Say {
+            Some(Command::Channel {
+                channel: "say".to_string(),
                 text: "Hello".to_string()
             })
         );

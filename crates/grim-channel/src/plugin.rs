@@ -1,6 +1,6 @@
-//! `ChannelPlugin`: wires the player-speech command verbs. Each command owns
-//! its own systems and message registration via a `register` fn; this plugin
-//! just calls them in turn.
+//! `ChannelPlugin`: wires the player-speech command verbs. Channels are **data**,
+//! not code - configured via `add_channel()` with scope, visibility, and audience
+//! predicates. This plugin emits `ChannelMessage` for all channel commands.
 
 use bevy::prelude::*;
 
@@ -8,8 +8,8 @@ use crate::{
     Channel, ChannelMessage, ChannelRegistry, Identify, ListenEligibility, Scope, SpeakEligibility,
 };
 
-/// Handles `say`/`yell`/`ooc`/`tell`/`reply`/`gecho` commands, emitting the
-/// corresponding channel events plus `InfoMessage` echoes.
+/// Handles `say`/`yell`/`ooc`/`tell`/`reply`/`gecho` commands, emitting
+/// `ChannelMessage` events based on channel configuration.
 pub struct ChannelPlugin;
 
 impl ChannelPlugin {
@@ -20,8 +20,7 @@ impl ChannelPlugin {
     /// command, audience resolution, and formatting.
     pub fn add_channel(&self, _channel: Channel) {
         // This is a placeholder for the API. The actual registration happens in build()
-        // when the plugin is added to the app. For runtime channel addition, you'd need
-        // to modify the ChannelRegistry directly.
+        // when the plugin is added to the app.
     }
 }
 
@@ -70,18 +69,15 @@ impl Plugin for ChannelPlugin {
         // Register the channel message for data-driven dispatch
         app.add_message::<ChannelMessage>();
 
-        // Register the unified channel handler
+        // Register the unified channel handler - dispatches to ChannelMessage
         app.add_systems(Update, crate::handler::handle_channel);
 
-        // Register the command handlers for backwards compatibility
-        // These handle the hard-coded Command::Say/Yell/Ooc variants
-        // and emit ChannelMessage based on the channel configuration
-        crate::commands::say::register(app);
-        crate::commands::yell::register(app);
-        crate::commands::ooc::register(app);
-        crate::commands::gecho::register(app);
+        // Register the tell/reply handlers (these are different - target-based)
         crate::commands::tell::register(app);
         crate::commands::reply::register(app);
+
+        // Register the gecho handler (admin-only, uses GlobalEcho)
+        crate::commands::gecho::register(app);
     }
 }
 

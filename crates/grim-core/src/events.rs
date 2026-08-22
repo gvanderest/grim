@@ -20,6 +20,8 @@ pub enum Command {
     Yell { text: String },
     /// `ooc <text>` — global
     Ooc { text: String },
+    /// `channel <name> <text>` — data-driven channel (replaces Say/Yell/Ooc)
+    Channel { channel: String, text: String },
     /// `tell <target> <text>` — private message to one player (fuzzy-matched by
     /// name; `self` targets the sender).
     Tell { target: String, text: String },

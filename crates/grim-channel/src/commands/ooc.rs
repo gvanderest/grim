@@ -1,8 +1,10 @@
-//! `ooc <text>`: out-of-character global chat.
+//! `ooc <text>`: out-of-character global chat. (Deprecated - use data-driven channels)
 
 use bevy::prelude::*;
 use grim_core::events::{Command, EngineCommand, InfoMessage, OocEvent};
 
+/// `ooc` handler - deprecated in favor of data-driven channel model.
+#[allow(dead_code)]
 pub(crate) fn handle_ooc(
     mut engine: MessageReader<EngineCommand>,
     mut ooc: MessageWriter<OocEvent>,
@@ -23,7 +25,8 @@ pub(crate) fn handle_ooc(
     }
 }
 
-/// Wire the `ooc` handler and the messages it reads/emits.
+/// Wire the `ooc` handler and the messages it reads/emits. (Deprecated)
+#[allow(dead_code)]
 pub(crate) fn register(app: &mut App) {
     app.add_message::<EngineCommand>()
         .add_message::<InfoMessage>()
