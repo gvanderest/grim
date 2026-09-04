@@ -245,6 +245,36 @@ pub fn format_areas_list(entries: &[(String, String)]) -> String {
     out
 }
 
+/// One live connection's `sockets` row inputs, already resolved to
+/// display-ready strings by the caller (`handle_ingame`).
+pub struct SocketRow {
+    /// Transport-side connection id (`Connection::id`).
+    pub id: usize,
+    /// Remote address (`Connection::addr`).
+    pub addr: String,
+    /// Session-state label (e.g. `InGame`, `Login`).
+    pub state: String,
+    /// Character name, or `"-"` while the session has none.
+    pub character: String,
+    /// Account identifier, or `"-"` while the session has none.
+    pub account: String,
+}
+
+/// Render the full `sockets` list from already id-sorted rows.
+pub fn format_sockets_list(rows: &[SocketRow]) -> String {
+    if rows.is_empty() {
+        return "No connections.\n".into();
+    }
+    let mut out = format!("Sockets connected ({}):\n", rows.len());
+    for row in rows {
+        out.push_str(&format!(
+            "  [{}] {} {} {} ({})\n",
+            row.id, row.addr, row.state, row.character, row.account
+        ));
+    }
+    out
+}
+
 #[allow(dead_code)]
 /// Format the command list.
 pub fn format_commands() -> String {
@@ -579,6 +609,35 @@ mod tests {
     #[test]
     fn who_empty_list() {
         assert_eq!(format_who_list(&[]), "No players online.\n");
+    }
+
+    #[test]
+    fn sockets_empty_list() {
+        assert_eq!(format_sockets_list(&[]), "No connections.\n");
+    }
+
+    #[test]
+    fn sockets_rows_render_id_addr_state_names() {
+        let rows = [
+            SocketRow {
+                id: 1,
+                addr: "127.0.0.1:11111".into(),
+                state: "InGame".into(),
+                character: "Hero".into(),
+                account: "admin@example.com".into(),
+            },
+            SocketRow {
+                id: 2,
+                addr: "127.0.0.1:22222".into(),
+                state: "Login".into(),
+                character: "-".into(),
+                account: "-".into(),
+            },
+        ];
+        let got = format_sockets_list(&rows);
+        assert!(got.starts_with("Sockets connected (2):\n"));
+        assert!(got.contains("  [1] 127.0.0.1:11111 InGame Hero (admin@example.com)\n"));
+        assert!(got.contains("  [2] 127.0.0.1:22222 Login - (-)\n"));
     }
 
     /// Column geometry check: the stat block is always 21 chars, so the name

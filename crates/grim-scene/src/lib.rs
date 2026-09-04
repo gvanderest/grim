@@ -15,6 +15,7 @@ mod parser;
 mod plugin;
 mod resume;
 mod session;
+mod sockets;
 
 // Shared render helpers (MOTD text, selection menus) the pre-game auth
 // flow reads. Auth → scene is allowed; scene never depends on auth.

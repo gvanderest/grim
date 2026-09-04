@@ -148,6 +148,13 @@ fn build_registry() -> CommandRegistry<Command> {
     r.register("areas", |_| Some(Command::Areas));
     r.register("commands", |_| Some(Command::Commands));
     r.register("help", |_| Some(Command::Commands));
+    // `sockets` — admin-only, session-local (masked at dispatch, see
+    // `handle_ingame`). Takes no argument, so `sockets <anything>` is unknown.
+    // Registered before the directions so single-letter/short prefixes still
+    // resolve to movement first.
+    r.register("sockets", |rest| {
+        rest.trim().is_empty().then_some(Command::Sockets)
+    });
     r.register("quit", |_| Some(Command::Quit));
     r.register("exit", |_| Some(Command::Quit));
 
@@ -478,6 +485,14 @@ mod tests {
     #[test]
     fn test_where_cmd() {
         assert_eq!(parse("where"), Some(Command::Where));
+    }
+
+    #[test]
+    fn test_sockets() {
+        assert_eq!(parse("sockets"), Some(Command::Sockets));
+        // Unambiguous prefix resolves; an argument rejects (bare verb only).
+        assert_eq!(parse("sock"), Some(Command::Sockets));
+        assert_eq!(parse("sockets foo"), None);
     }
 
     #[test]
