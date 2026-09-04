@@ -38,6 +38,10 @@ pub enum Command {
     Who,
     /// `where` — show who's in your area and their room
     Where,
+    /// `sockets` — admin-only, session-local. List every live connection
+    /// (id, address, session state, character, account). Masked as unknown
+    /// for non-admins, like the other admin verbs.
+    Sockets,
     /// `commands` — list all registered commands
     Commands,
     /// `areas` — list every area in the world by its slug.

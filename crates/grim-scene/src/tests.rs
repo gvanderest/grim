@@ -854,6 +854,175 @@ mod ingame_commands {
         assert_eq!(engine.get_cursor().read(engine).count(), 0);
     }
 
+    /// An admin `sockets` lists every live session by connection id: address,
+    /// session state, character, and account. The pre-game session (no
+    /// character/account) renders `"-"` placeholders.
+    #[test]
+    fn ingame_sockets_lists_sessions_for_admin() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        // Spawned first (snapshot order) with the HIGHER id, so the output
+        // proves the id sort rather than echoing spawn order.
+        let login_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 2,
+                addr: "127.0.0.1:22222".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(login_conn));
+        let admin_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:11111".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        spawn_ingame(&mut app, admin_conn, make_character(vec![Role::Admin]));
+        let account = app
+            .world_mut()
+            .spawn(Account {
+                id: GrimId::new(),
+                identifier: "spy@xf00.com".into(),
+                password_hash: String::new(),
+                characters: Vec::new(),
+                created_at: Utc::now(),
+            })
+            .id();
+        {
+            let mut qs = app.world_mut().query::<&mut Client>();
+            let world = app.world_mut();
+            let mut client = qs
+                .iter_mut(world)
+                .find(|c| c.connection == admin_conn)
+                .expect("admin client");
+            client.account = Some(account);
+        }
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: admin_conn,
+            text: "sockets".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == admin_conn)
+            .expect("expected a response");
+        assert!(
+            out.text.starts_with("Sockets connected (2):\n"),
+            "got: {}",
+            out.text
+        );
+        let first = out.text.find("[1]").expect("admin row");
+        let second = out.text.find("[2]").expect("login row");
+        assert!(
+            first < second,
+            "rows must sort by connection id:\n{}",
+            out.text
+        );
+        assert!(
+            out.text
+                .contains("[1] 127.0.0.1:11111 InGame Hero (spy@@xf00.com)\n"),
+            "got: {}",
+            out.text
+        );
+        assert!(
+            out.text.contains("[2] 127.0.0.1:22222 Login - (-)\n"),
+            "got: {}",
+            out.text
+        );
+        // The `@xf00` above must arrive escaped (`@@`): identifiers are emails
+        // and always contain `@`, which the transport renderer would otherwise
+        // read as colour markup.
+
+        // Answered session-locally: nothing queued for the engine.
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        assert_eq!(engine.get_cursor().read(engine).count(), 0);
+    }
+
+    /// A non-admin `sockets` is masked exactly like an unknown command and
+    /// never forwarded to the engine.
+    #[test]
+    fn ingame_sockets_masked_for_non_admin() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        spawn_ingame(&mut app, conn, make_character(Vec::new()));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "sockets".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == conn)
+            .expect("expected a response");
+        assert_eq!(out.text, "Unknown command. Type 'commands' for a list.\n");
+        assert!(!out.prepend_newline, "must match unknown-command framing");
+
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        assert_eq!(engine.get_cursor().read(engine).count(), 0);
+    }
+
+    /// A `sockets` from a session whose character is absent from the character
+    /// query fails closed: the admin check cannot confirm admin, so the verb
+    /// is masked exactly like an unknown command.
+    #[test]
+    fn ingame_sockets_masked_when_character_missing() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        // No such character entity exists, so `characters.get` fails.
+        let mut client = Client::new(conn);
+        client.state = ClientState::InGame;
+        client.character = Some(Entity::PLACEHOLDER);
+        app.world_mut().spawn(client);
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "sockets".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == conn)
+            .expect("expected a response");
+        assert_eq!(out.text, "Unknown command. Type 'commands' for a list.\n");
+        assert!(!out.prepend_newline, "must match unknown-command framing");
+
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        assert_eq!(engine.get_cursor().read(engine).count(), 0);
+    }
+
     // ── handle_client_input: InGame with blank line ──
     #[test]
     fn ingame_blank_line_triggers_prompt() {

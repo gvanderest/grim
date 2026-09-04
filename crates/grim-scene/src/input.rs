@@ -15,12 +15,13 @@
 
 use bevy::prelude::*;
 use grim_actor::{Actor, Character, Linkdead};
-use grim_core::components::{Client, ClientState, Name as GrimName};
-use grim_networking::{ConnectionInput, ConnectionOutput};
+use grim_core::components::{Account, Client, ClientState, Name as GrimName};
+use grim_networking::{Connection, ConnectionInput, ConnectionOutput};
 
 use crate::command;
 use crate::params::{PlayerChars, RoomResolver, SessionRes};
 use crate::session::JustEnteredWorld;
+use crate::sockets::ClientSnapshot;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_ingame_input(
@@ -31,14 +32,29 @@ pub(crate) fn handle_ingame_input(
     linkdead: Query<&Linkdead>,
     rooms: RoomResolver,
     res: SessionRes,
+    connections: Query<&Connection>,
+    accounts: Query<&Account>,
     mut just_entered: ResMut<JustEnteredWorld>,
     mut outputs: MessageWriter<ConnectionOutput>,
 ) {
+    // Snapshot every session once per tick for the `sockets` list. A second
+    // `Client` query inside `handle_ingame` would conflict with the `&mut`
+    // borrow below, so the data crosses as plain values.
+    let snapshot: Vec<ClientSnapshot> = clients
+        .iter()
+        .map(|(entity, c)| ClientSnapshot {
+            client: entity,
+            connection: c.connection,
+            state: c.state.clone(),
+            account: c.account,
+            character: c.character,
+        })
+        .collect();
     for ev in inputs.read() {
-        let Some((_, mut client)) = clients
-            .iter_mut()
-            .find(|(_, c)| c.connection == ev.connection)
-        else {
+        let Some(snap) = snapshot.iter().find(|s| s.connection == ev.connection) else {
+            continue;
+        };
+        let Ok((_, mut client)) = clients.get_mut(snap.client) else {
             continue;
         };
         // Pre-game states are the auth system's job.
@@ -63,6 +79,9 @@ pub(crate) fn handle_ingame_input(
             &linkdead,
             &rooms,
             &res,
+            &snapshot,
+            &connections,
+            &accounts,
             &mut outputs,
         );
     }

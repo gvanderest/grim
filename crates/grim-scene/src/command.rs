@@ -1,5 +1,5 @@
 //! In-game command handling: parse a line for a session in `InGame`, answer the
-//! session-local commands (who/where/commands/areas), gate admin-only commands,
+//! session-local commands (who/where/sockets/commands/areas), gate admin-only
 //! and drain the per-client queue into engine commands under a cooldown.
 
 use std::cmp::Ordering;
@@ -7,14 +7,15 @@ use std::cmp::Ordering;
 use bevy::prelude::*;
 use chrono::{DateTime, Utc};
 use grim_actor::{Actor, Character, Linkdead, StoredCharacter};
-use grim_core::components::{Client, ClientState, Gender, Name as GrimName};
+use grim_core::components::{Account, Client, ClientState, Gender, Name as GrimName};
 use grim_core::events::{Command, EngineCommand, LogoutAnnounce};
-use grim_networking::{ConnectionOutput, DisconnectRequest};
+use grim_networking::{Connection, ConnectionOutput, DisconnectRequest};
 use grim_text::tr;
 
 use crate::formatter::{self, WhoRow};
 use crate::params::{PlayerChars, RoomResolver, SessionRes};
 use crate::parser;
+use crate::sockets::{format_sockets, ClientSnapshot};
 
 /// InGame: parse the line (honouring `!` repeat), answer session-local commands
 /// directly, admin-gate shutdown/goto, and queue everything else for cooldown.
@@ -28,6 +29,9 @@ pub(crate) fn handle_ingame(
     linkdead: &Query<&Linkdead>,
     rooms: &RoomResolver,
     res: &SessionRes,
+    snapshot: &[ClientSnapshot],
+    connections: &Query<&Connection>,
+    accounts: &Query<&Account>,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
     let Some(char_entity) = client.character else {
@@ -76,6 +80,29 @@ pub(crate) fn handle_ingame(
                     echo: None,
                     ..ConnectionOutput::new(conn, format_areas(rooms))
                 });
+            }
+            Command::Sockets => {
+                // Admin-gated + masked like shutdown/goto/gecho, but answered
+                // session-locally (no engine round-trip): a non-admin gets the
+                // exact unknown-command reply so the verb is not leaked.
+                let is_admin = characters
+                    .get(char_entity)
+                    .map(|(_, c, _, _)| c.is_admin())
+                    .unwrap_or(false);
+                if is_admin {
+                    outputs.write(ConnectionOutput {
+                        echo: None,
+                        ..ConnectionOutput::new(
+                            conn,
+                            format_sockets(snapshot, connections, characters, accounts),
+                        )
+                    });
+                } else {
+                    outputs.write(ConnectionOutput {
+                        echo: None,
+                        ..ConnectionOutput::new(conn, tr!("error.unknown_command"))
+                    });
+                }
             }
             Command::Shutdown { .. } | Command::Goto { .. } | Command::Gecho { .. } => {
                 // Admin-gated + masked: a non-admin must not learn the command

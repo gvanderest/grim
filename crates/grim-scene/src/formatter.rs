@@ -245,6 +245,44 @@ pub fn format_areas_list(entries: &[(String, String)]) -> String {
     out
 }
 
+/// One live connection's `sockets` row inputs, already resolved to
+/// display-ready strings by the caller (`handle_ingame`).
+pub struct SocketRow {
+    /// Transport-side connection id (`Connection::id`).
+    pub id: usize,
+    /// Remote address (`Connection::addr`).
+    pub addr: String,
+    /// Session-state label (e.g. `InGame`, `Login`).
+    pub state: String,
+    /// Character name, or `"-"` while the session has none.
+    pub character: String,
+    /// Account identifier, or `"-"` while the session has none.
+    pub account: String,
+}
+
+/// Render the full `sockets` list from already id-sorted rows. Values render
+/// through the catalog, so connection data (notably `@`-bearing account
+/// identifiers) is escaped and can never read as colour markup.
+pub fn format_sockets_list(rows: &[SocketRow]) -> String {
+    if rows.is_empty() {
+        return tr!("sockets.empty");
+    }
+    let count = rows.len().to_string();
+    let mut out = tr!("sockets.header", total = count);
+    for row in rows {
+        let id = row.id.to_string();
+        out.push_str(&tr!(
+            "sockets.row",
+            id = id,
+            addr = row.addr,
+            state = row.state,
+            name = row.character,
+            account = row.account
+        ));
+    }
+    out
+}
+
 #[allow(dead_code)]
 /// Format the command list.
 pub fn format_commands() -> String {
@@ -579,6 +617,37 @@ mod tests {
     #[test]
     fn who_empty_list() {
         assert_eq!(format_who_list(&[]), "No players online.\n");
+    }
+
+    #[test]
+    fn sockets_empty_list() {
+        assert_eq!(format_sockets_list(&[]), "No connections.\n");
+    }
+
+    #[test]
+    fn sockets_rows_render_id_addr_state_names() {
+        let rows = [
+            SocketRow {
+                id: 1,
+                addr: "127.0.0.1:11111".into(),
+                state: "InGame".into(),
+                character: "Hero".into(),
+                account: "spy@xf00.com".into(),
+            },
+            SocketRow {
+                id: 2,
+                addr: "127.0.0.1:22222".into(),
+                state: "Login".into(),
+                character: "-".into(),
+                account: "-".into(),
+            },
+        ];
+        let got = format_sockets_list(&rows);
+        assert!(got.starts_with("Sockets connected (2):\n"));
+        // `@` in values is escaped (`@@`) so an identifier can never read as
+        // colour markup at the transport renderer.
+        assert!(got.contains("  [1] 127.0.0.1:11111 InGame Hero (spy@@xf00.com)\n"));
+        assert!(got.contains("  [2] 127.0.0.1:22222 Login - (-)\n"));
     }
 
     /// Column geometry check: the stat block is always 21 chars, so the name
