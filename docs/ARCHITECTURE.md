@@ -17,25 +17,34 @@ with exactly those meanings.
 `crates/example-mud` is the only binary in this workspace. Everything else is a
 library. A MUD author's own binary looks the same.
 
+GRIM core is deliberately light: the floor is the least you need to boot a
+plugin-made MUD (types, router, wire shapes, session routing). Everything D&D —
+telnet transport, login/MOTD, rooms, characters, channels, persistence — is the
+default bundle (`GrimDefaultPlugins`), and every line of it is omittable or
+replaceable. D&D is the product; non-D&D setups (a different login flow, a
+ship instead of a character) are probes we use to break designs, not targets.
+Probes must pass as thought experiments — "could an author do this without
+forking?" — but they ship no crates.
+
 ```rust
 fn main() {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins);
 
-    // Foundation
-    app.add_plugins(GrimTextPlugin);
-    app.add_plugins(GrimCommandPlugin);
+    // Floor: types, router shapes, wire shapes, session routing (no game words)
+    // grim-color / grim-text are plain libraries (no plugin); the registry
+    // type lives in grim-command and is inserted as a resource by grim-scene.
     app.add_plugins(GrimNetworkingPlugin);
-    app.add_plugins(GrimScenePlugin);
+    app.add_plugins(ScenePlugin);
 
     // Transports registered against networking
     app.add_plugins(TelnetPlugin::new(4000));
 
-    // Gameplay
-    app.add_plugins(GrimWorldPlugin);
-    app.add_plugins(GrimChannelPlugin);
-    app.add_plugins(GrimAuthPlugin);
-    app.add_plugins(GrimPersistencePlugin);
+    // Default D&D bundle (all replaceable)
+    app.add_plugins(WorldPlugin);
+    app.add_plugins(ChannelPlugin);
+    app.add_plugins(AuthPlugin);
+    app.add_plugins(PersistencePlugin);
 
     app.add_systems(Startup, seed::seed_world);
     app.run();
@@ -46,7 +55,15 @@ Nothing in this file is privileged. Every plugin listed is one a MUD author coul
 omit, replace, or precede with their own.
 
 The `grim` crate exists so an author who wants none of these choices can depend on one
-crate, take the defaults, and only think about their own assets and data.
+crate, take the defaults (`GrimDefaultPlugins` = the D&D bundle), and only think
+about their own assets and data.
+
+Probe checklist (design tests, not features): an author can override MOTD/login
+text via Catalog keys without forking; replace the whole pre-game flow by
+omitting `AuthPlugin` and pushing their own scenes behind `grim-scene`; drive a
+non-character being by bringing their own being components where `Character`
+sits. The closed `ClientState` enum fails probe 2 today — the entity SceneStack
+(ADR-0003) is what fixes it.
 
 ---
 
@@ -58,11 +75,10 @@ A `Plugin` impl exists to put something into the `App`: a system, a resource, an
 observer, an event. A crate with none of those gains nothing from one. An empty
 `impl Plugin` is worse than no plugin, because it becomes a registration the author
 must remember or the crate silently does nothing.
-
 | Kind | Examples | Why |
 |------|----------|-----|
-| Plugin | `grim-networking`, `grim-command`, `grim-scene`, `grim-text`, `grim-world` | own resources, systems, observers |
-| Plain library | `grim-color`, validation helpers | pure functions, no `App` state |
+| Plugin | `grim-networking` (`GrimNetworkingPlugin`), `grim-scene` (`ScenePlugin`), `grim-world` (`WorldPlugin`), `grim-actor` (`ActorPlugin`) | own resources, systems, observers |
+| Plain library | `grim-color`, `grim-text`, `grim-command` (`CommandRegistry` type only — inserted as a resource by `grim-scene`) | pure functions or types, no `App` state of their own |
 
 `grim-color` is pure functions over strings and has no Bevy dependency at all. That is
 deliberate: it is the one piece testable without an `App`.
@@ -89,8 +105,10 @@ when a **second real implementation** appears.
 Speculative extension points are the expensive kind of wrong: the contract gets
 designed against one imagined consumer and fits none.
 
-**`grim-networking` is already past that threshold** — telnet, SSH, and WebSocket are
-three real transports, so it starts split. Everything else starts as one crate.
+**`grim-networking` is the single grandfathered early split.** Telnet is the only
+real transport; SSH and WebSocket are future. There is no `Transport` trait until
+a second transport lands (the tokio bridge stays in the telnet crate per §8 step
+4). Everything else starts as one crate.
 
 ### One plugin per crate, but many registrations
 
@@ -104,31 +122,21 @@ plugin registering five scenes. That is correct and not a violation.
 
 | Crate | Plugin | Owns |
 |-------|--------|------|
-| `grim-color` | — | colour codes, ANSI rendering, palette |
-| `grim-text` | `GrimTextPlugin` | the Catalog: strings, templates, interpolation |
-| `grim-command` | `GrimCommandPlugin` | command registry, resolution, dispatch |
-| `grim-networking` | `GrimNetworkingPlugin` | tokio bridge, `Connection`, `Transport` trait |
-| `grim-networking-telnet` | `TelnetPlugin` | telnet `Transport`, IAC negotiation |
-| `grim-networking-ssh` | `SshPlugin` | SSH `Transport` |
-| `grim-networking-websocket` | `WebsocketPlugin` | WebSocket `Transport` |
-| `grim-scene` | `GrimScenePlugin` | the Scene stack, input routing, output policy |
+| `grim-color` | — (plain library) | colour codes, ANSI rendering, palette |
+| `grim-text` | — (plain library) | the Catalog: strings, templates, interpolation |
+| `grim-command` | — (`CommandRegistry` type; resource held by `grim-scene`) | command registry, resolution, dispatch |
+| `grim-networking` | `GrimNetworkingPlugin` | wire shapes: `Connection`, `ConnectionInput`/`Output`, `Established`/`Closed`, `DisconnectRequest` (no `Transport` trait until a 2nd transport lands) |
+| `grim-networking-telnet` | `TelnetPlugin` | telnet transport: TCP server, IAC negotiation, tokio↔Bevy bridge, ANSI on the wire |
+| `grim-networking-ssh` | *(future)* | SSH transport — not in the workspace yet |
+| `grim-networking-websocket` | *(future)* | WebSocket transport — not in the workspace yet |
+| `grim-scene` | `ScenePlugin` | the Scene stack, input routing, output policy; holds the `CommandRegistry` resource |
 | `grim-auth` | `AuthPlugin` | login, account/character creation, selection, MOTD (the pre-game phase, layered on `grim-scene`) |
-
-> **NOTE (current reality, Phase 2b).** `grim-auth` now exists, extracted from
-> `grim-scene`. It is still **`ClientState`-driven** (the typed scene-stack model
-> this table anticipates remains deferred — §8), and the plugin is named
-> `AuthPlugin` to match the other subsystem plugins (`ScenePlugin`, `ActorPlugin`,
-> …) rather than `GrimAuthPlugin`. Its real dependency edge is **`grim-auth →
-> grim-scene`** (the pre-game phase layered on the session core, reusing scene's
-> shared `formatter` + `ConnectedAt`/`JustEnteredWorld`/`SceneSystems`), **not**
-> `grim-auth → grim-command` as the diagram below suggests — the pre-game phase
-> parses no in-game commands. `grim-scene` has zero references to `grim-auth`.
-| `grim-editor` | `GrimEditorPlugin` | the Editor scene |
-| `grim-world` | `GrimWorldPlugin` | rooms, areas, exits, room-address lookups, `RoomLocation` (being-free) |
+| `grim-editor` | *(future)* | the Editor scene (deferred with the scene-stack rewrite) |
+| `grim-world` | `WorldPlugin` (+ `ShutdownPlugin`) | rooms, areas, exits, room-address lookups, `RoomLocation` (being-free) |
 | `grim-actor` | `ActorPlugin` | the beings — `Actor` base + PC `Character` + `Creature` mob marker + `Player`/`InRoom`/… and the `StoredCharacter` disk DTO — plus the being-reading verbs (`look`/`move`/`goto`/`quit`/`title`/`shutdown`) |
-| `grim-channel` | `GrimChannelPlugin` | channel registry, audience, eligibility (§7) |
-| `grim-persistence` | `GrimPersistencePlugin` | account/character save and load, player aliases, channel toggles |
-| `grim` | — | facade: re-exports and a default plugin group |
+| `grim-channel` | `ChannelPlugin` | channel registry, audience, eligibility (§7) |
+| `grim-persistence` | `PersistencePlugin` | account/character save and load, player aliases, channel toggles |
+| `grim` | — | facade: re-exports and the D&D default plugin group (`GrimDefaultPlugins`) |
 | `example-mud` | *binary* | composition and world seed |
 
 Dependency direction:
@@ -141,12 +149,12 @@ grim-text ───────┤                             │
                  ├──> grim-scene <─────────────┘
                  │        │       ^
                  │        v       └──── grim-auth   (pre-game phase, → grim-scene)
-                 └──> grim-command <──── grim-world, grim-channel, grim-editor
+                 └──> grim-command <──── grim-world, grim-channel (grim-editor: future)
 ```
 
 `grim-auth` (Phase 2b) depends on **`grim-scene`**, not `grim-command`: it is the
 pre-game phase layered on the session core and dispatches no in-game commands.
-`grim-editor` remains aspirational (the deferred scene-stack work).
+`grim-editor` remains future (the deferred scene-stack work).
 
 `grim-command` depends on nothing but Bevy.
 

@@ -33,7 +33,7 @@ telnet localhost 4000
 
 ## Crates
 
-Everything is a Bevy plugin unless noted. Dependencies point downward only; the `grim` facade re-exports every subsystem so a MUD author can depend on one crate. See each crate's README for its components, systems, and command→handler map.
+Everything is a Bevy plugin unless noted. GRIM core is light on purpose: types, the command-registry shape, wire shapes, and session routing. The rest is the default D&D bundle shipped as `GrimDefaultPlugins` — every line replaceable. Dependencies point downward only; the `grim` facade re-exports every subsystem so a MUD author can depend on one crate. See each crate's README for its components, systems, and command→handler map.
 
 ### Foundation (pure libraries — no `App` state)
 
@@ -76,7 +76,7 @@ Everything is a Bevy plugin unless noted. Dependencies point downward only; the 
 
 ## Architecture in one breath
 
-Event-passing layers: no layer calls another's functions or reads its components — communication is exclusively through Bevy `Message` types. Transport frames bytes, the session turns input into an `EngineCommand`, gameplay plugins act on their command variant and emit world events, and the session formats those back to the connection. Colour markup is rendered to ANSI only at the transport edge, just before bytes hit the socket.
+Event-passing gameplay: shared types and resources may be read downward (a `Name`, a `Connection`, a registry); game behaviour crosses crates via Bevy `Message` types. Transport frames bytes, the session turns input into a command event, gameplay plugins act on their command variant and emit world events, and the session formats those back to the connection. Colour markup is rendered to ANSI only at the transport edge, just before bytes hit the socket.
 
 > ⚠️ "Client" is a retired name — it conflated the session state machine, wire framing, and the user's terminal. The session crate is `grim-scene`. See [CONTEXT.md](./CONTEXT.md).
 

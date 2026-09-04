@@ -13,6 +13,10 @@ the command handlers that read them. It sits strictly **above** the being-free
 `grim-world`: it depends on `grim-world` (room topology + address lookups +
 shutdown machinery + `RoomLocation`) and never the reverse.
 
+Replacement seam: this crate is the default D&D being bundle. An author driving
+something other than a character (a ship, a party) brings their own being
+components where `Character` sits and reuses or ignores `Actor`/`InRoom`.
+
 Entity composition: online PC = `Name + Actor + Character + Player + InRoom`;
 linkdead PC = `Name + Actor + Character + Linkdead + InRoom` (no `Player`);
 creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the

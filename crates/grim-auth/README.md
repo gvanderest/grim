@@ -10,6 +10,11 @@ reverse edge is forbidden — `grim-scene` has zero references to `grim-auth`.
 Still driven by `grim_core::ClientState`; the typed scene-stack model remains
 deferred (ARCHITECTURE.md §5.3/§8).
 
+Replacement seam: this crate is the default D&D pre-game bundle, not the floor. An
+author replacing the whole login→world flow omits `AuthPlugin` and pushes their
+own scenes behind `grim-scene`; overriding MOTD/login wording alone is a Catalog
+key override, no code.
+
 ## Components
 `grim-auth` defines no components of its own. It reads/writes the beings
 (`Account` on `grim-core`; `Character`/`Player`/`InRoom`/`Linkdead`/`OutputHistory`
