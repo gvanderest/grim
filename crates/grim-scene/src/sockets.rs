@@ -1,11 +1,15 @@
 //! The admin-only `sockets` list: one row per live session (connection id,
 //! address, session state, character, account), answered session-locally by
-//! `handle_ingame` (no engine round-trip).
+//! `handle_ingame` (no engine round-trip). All author-facing text resolves
+//! through the `grim-text` catalog, which also escapes the interpolated
+//! connection values (account identifiers are emails — their `@` would
+//! otherwise read as colour markup).
 
 use bevy::prelude::*;
 use grim_actor::{Actor, Character};
 use grim_core::components::{Account, ClientState, Name as GrimName};
 use grim_networking::Connection;
+use grim_text::tr;
 
 use crate::formatter::{self, SocketRow};
 
@@ -23,21 +27,21 @@ pub(crate) struct ClientSnapshot {
     pub(crate) character: Option<Entity>,
 }
 
-/// Short session-state label for the `sockets` list. Exhaustive over
-/// [`ClientState`] so a new session state fails to compile until it gets a
-/// label here.
-fn client_state_label(state: &ClientState) -> &'static str {
+/// Short session-state label for the `sockets` list, resolved through the
+/// catalog. The match stays exhaustive over [`ClientState`] so a new session
+/// state fails to compile until it gets a label here.
+fn client_state_label(state: &ClientState) -> String {
     match state {
-        ClientState::InGame => "InGame",
-        ClientState::LoginPrompt => "Login",
-        ClientState::PasswordPrompt { .. } => "Password",
-        ClientState::ConfirmCreate { .. } => "Confirm",
-        ClientState::CharacterSelect => "Select",
-        ClientState::CreateCharacter => "NewChar",
-        ClientState::SelectGender { .. } => "Gender",
-        ClientState::SelectRace { .. } => "Race",
-        ClientState::SelectClass { .. } => "Class",
-        ClientState::MotdPrompt => "MOTD",
+        ClientState::InGame => tr!("sockets.state.ingame"),
+        ClientState::LoginPrompt => tr!("sockets.state.login"),
+        ClientState::PasswordPrompt { .. } => tr!("sockets.state.password"),
+        ClientState::ConfirmCreate { .. } => tr!("sockets.state.confirm"),
+        ClientState::CharacterSelect => tr!("sockets.state.select"),
+        ClientState::CreateCharacter => tr!("sockets.state.newchar"),
+        ClientState::SelectGender { .. } => tr!("sockets.state.gender"),
+        ClientState::SelectRace { .. } => tr!("sockets.state.race"),
+        ClientState::SelectClass { .. } => tr!("sockets.state.class"),
+        ClientState::MotdPrompt => tr!("sockets.state.motd"),
     }
 }
 
@@ -67,7 +71,7 @@ pub(crate) fn format_sockets(
             Some(SocketRow {
                 id: conn.id,
                 addr: conn.addr.to_string(),
-                state: client_state_label(&s.state).to_string(),
+                state: client_state_label(&s.state),
                 character,
                 account,
             })
@@ -75,4 +79,61 @@ pub(crate) fn format_sockets(
         .collect();
     rows.sort_by_key(|r| r.id);
     formatter::format_sockets_list(&rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use grim_core::components::Gender;
+
+    /// Every `ClientState` arm resolves to its catalog label, so no session
+    /// state can reach the admin output unlabelled or unreviewed.
+    #[test]
+    fn every_session_state_has_a_label() {
+        let cases: Vec<(ClientState, &str)> = vec![
+            (ClientState::InGame, "InGame"),
+            (ClientState::LoginPrompt, "Login"),
+            (
+                ClientState::PasswordPrompt {
+                    identifier: String::new(),
+                    is_new: false,
+                    character: None,
+                },
+                "Password",
+            ),
+            (
+                ClientState::ConfirmCreate {
+                    identifier: String::new(),
+                },
+                "Confirm",
+            ),
+            (ClientState::CharacterSelect, "Select"),
+            (ClientState::CreateCharacter, "NewChar"),
+            (
+                ClientState::SelectGender {
+                    name: String::new(),
+                },
+                "Gender",
+            ),
+            (
+                ClientState::SelectRace {
+                    name: String::new(),
+                    gender: Gender::Neutral,
+                },
+                "Race",
+            ),
+            (
+                ClientState::SelectClass {
+                    name: String::new(),
+                    gender: Gender::Neutral,
+                    race: String::new(),
+                },
+                "Class",
+            ),
+            (ClientState::MotdPrompt, "MOTD"),
+        ];
+        for (state, expected) in cases {
+            assert_eq!(client_state_label(&state), expected);
+        }
+    }
 }

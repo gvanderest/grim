@@ -20,6 +20,11 @@ pub fn tr(key: &str, args: &[(&str, &str)]) -> String {
 }
 
 /// The built-in default text for a key, or the key itself when unknown.
+///
+/// Placeholder names must NOT begin with a markup-code character (`k r g y b
+/// m c w` either case, `1`-`8`, `! @ # % ^ & *`, `x X 9`): `convert_16color`
+/// runs before substitution, so `%{count}` would lose its `{c` to the cyan
+/// code. Prefer neutral initials (`total`, `name`, `addr`, `text`).
 fn default_string(key: &str) -> String {
     match key {
         "login.prompt" => "Enter your character name or email address: ",
@@ -35,6 +40,19 @@ fn default_string(key: &str) -> String {
         "error.unknown_command" => "Unknown command. Type 'commands' for a list.\n",
         "character.takeover" => "Someone else has logged into this character.\n",
         "character.default_description" => "A new adventurer.",
+        "sockets.empty" => "No connections.\n",
+        "sockets.header" => "Sockets connected (%{total}):\n",
+        "sockets.row" => "  [%{id}] %{addr} %{state} %{name} (%{account})\n",
+        "sockets.state.ingame" => "InGame",
+        "sockets.state.login" => "Login",
+        "sockets.state.password" => "Password",
+        "sockets.state.confirm" => "Confirm",
+        "sockets.state.select" => "Select",
+        "sockets.state.newchar" => "NewChar",
+        "sockets.state.gender" => "Gender",
+        "sockets.state.race" => "Race",
+        "sockets.state.class" => "Class",
+        "sockets.state.motd" => "MOTD",
         other => return other.to_string(),
     }
     .to_string()

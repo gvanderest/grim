@@ -260,16 +260,24 @@ pub struct SocketRow {
     pub account: String,
 }
 
-/// Render the full `sockets` list from already id-sorted rows.
+/// Render the full `sockets` list from already id-sorted rows. Values render
+/// through the catalog, so connection data (notably `@`-bearing account
+/// identifiers) is escaped and can never read as colour markup.
 pub fn format_sockets_list(rows: &[SocketRow]) -> String {
     if rows.is_empty() {
-        return "No connections.\n".into();
+        return tr!("sockets.empty");
     }
-    let mut out = format!("Sockets connected ({}):\n", rows.len());
+    let count = rows.len().to_string();
+    let mut out = tr!("sockets.header", total = count);
     for row in rows {
-        out.push_str(&format!(
-            "  [{}] {} {} {} ({})\n",
-            row.id, row.addr, row.state, row.character, row.account
+        let id = row.id.to_string();
+        out.push_str(&tr!(
+            "sockets.row",
+            id = id,
+            addr = row.addr,
+            state = row.state,
+            name = row.character,
+            account = row.account
         ));
     }
     out
@@ -624,7 +632,7 @@ mod tests {
                 addr: "127.0.0.1:11111".into(),
                 state: "InGame".into(),
                 character: "Hero".into(),
-                account: "admin@example.com".into(),
+                account: "spy@xf00.com".into(),
             },
             SocketRow {
                 id: 2,
@@ -636,7 +644,9 @@ mod tests {
         ];
         let got = format_sockets_list(&rows);
         assert!(got.starts_with("Sockets connected (2):\n"));
-        assert!(got.contains("  [1] 127.0.0.1:11111 InGame Hero (admin@example.com)\n"));
+        // `@` in values is escaped (`@@`) so an identifier can never read as
+        // colour markup at the transport renderer.
+        assert!(got.contains("  [1] 127.0.0.1:11111 InGame Hero (spy@@xf00.com)\n"));
         assert!(got.contains("  [2] 127.0.0.1:22222 Login - (-)\n"));
     }
 

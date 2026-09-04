@@ -886,7 +886,7 @@ mod ingame_commands {
             .world_mut()
             .spawn(Account {
                 id: GrimId::new(),
-                identifier: "admin@example.com".into(),
+                identifier: "spy@xf00.com".into(),
                 password_hash: String::new(),
                 characters: Vec::new(),
                 created_at: Utc::now(),
@@ -928,7 +928,7 @@ mod ingame_commands {
         );
         assert!(
             out.text
-                .contains("[1] 127.0.0.1:11111 InGame Hero (admin@example.com)\n"),
+                .contains("[1] 127.0.0.1:11111 InGame Hero (spy@@xf00.com)\n"),
             "got: {}",
             out.text
         );
@@ -937,6 +937,9 @@ mod ingame_commands {
             "got: {}",
             out.text
         );
+        // The `@xf00` above must arrive escaped (`@@`): identifiers are emails
+        // and always contain `@`, which the transport renderer would otherwise
+        // read as colour markup.
 
         // Answered session-locally: nothing queued for the engine.
         let engine = app.world().resource::<Messages<EngineCommand>>();
@@ -959,6 +962,47 @@ mod ingame_commands {
             })
             .id();
         spawn_ingame(&mut app, conn, make_character(Vec::new()));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "sockets".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == conn)
+            .expect("expected a response");
+        assert_eq!(out.text, "Unknown command. Type 'commands' for a list.\n");
+        assert!(!out.prepend_newline, "must match unknown-command framing");
+
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        assert_eq!(engine.get_cursor().read(engine).count(), 0);
+    }
+
+    /// A `sockets` from a session whose character is absent from the character
+    /// query fails closed: the admin check cannot confirm admin, so the verb
+    /// is masked exactly like an unknown command.
+    #[test]
+    fn ingame_sockets_masked_when_character_missing() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        // No such character entity exists, so `characters.get` fails.
+        let mut client = Client::new(conn);
+        client.state = ClientState::InGame;
+        client.character = Some(Entity::PLACEHOLDER);
+        app.world_mut().spawn(client);
 
         app.world_mut().write_message(ConnectionInput {
             connection: conn,
