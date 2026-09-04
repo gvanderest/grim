@@ -125,6 +125,7 @@ plugin registering five scenes. That is correct and not a violation.
 | `grim-color` | — (plain library) | colour codes, ANSI rendering, palette |
 | `grim-text` | — (plain library) | the Catalog: strings, templates, interpolation |
 | `grim-command` | — (`CommandRegistry` type; resource held by `grim-scene`) | command registry, resolution, dispatch |
+| `grim-core` | — (transitional, dissolving — not the floor) | leftover shared types until each moves to its owner: `Name`→actor, `RoomLocation` already→world, `Command` dies with typed dispatch, game events→owners, validation→owners |
 | `grim-networking` | `GrimNetworkingPlugin` | wire shapes: `Connection`, `ConnectionInput`/`Output`, `Established`/`Closed`, `DisconnectRequest` (no `Transport` trait until a 2nd transport lands) |
 | `grim-networking-telnet` | `TelnetPlugin` | telnet transport: TCP server, IAC negotiation, tokio↔Bevy bridge, ANSI on the wire |
 | `grim-networking-ssh` | *(future)* | SSH transport — not in the workspace yet |
@@ -306,9 +307,10 @@ choice, or a Command. This is why `grim-command` never needs to know about trans
 and the observer that renders it. A central formatter cannot survive the plugin model:
 it would have to `use` every event type in the engine, so every third-party command
 would require editing a crate the author does not own.
-
 **Authors override the string, not the code.** That is what makes the Catalog a seam
-rather than a constant.
+rather than a constant. Confirmed target: `strings/`+`templates/` files loading
+into a `Catalog` resource with an extraction tool. Today's static inlined `tr!`
+defaults in `grim-text` are the interim — behaviour unchanged, filing to come.
 
 ```
 strings/<locale>/*.json        single-line entries, merged
@@ -586,7 +588,7 @@ redesigns were deliberately deferred rather than done blind — see
 
 | Issue | Detail |
 |-------|--------|
-| `grim-core` is a god-types crate | colour (step 1), `tr` (step 2), command registry (step 3), and wire events + `Connection` (step 4) are out. Remaining: game events, components, validation |
+| `grim-core` is a god-types crate (confirmed: dissolves over time) | colour (step 1), `tr` (step 2), command registry (step 3), and wire events + `Connection` (step 4) are out. Remaining move per-type: `Name`→actor, game events→owners, validation→owners, `Command` dies with typed dispatch |
 | ~~`grim` owns three plugins~~ | Fixed in step 7 (+8). World/shutdown → `grim-world`, Persistence → `grim-persistence`, Social → `grim-channel`; `grim` is a facade |
 | `ChannelPlugin` holds `say`/`yell`/`ooc` as code | still three coded handlers; `add_channel` data model (§7) is deferred with typed-event dispatch |
 | No attempt/fact split | `SayEvent`/`MoveEvent` are facts with no cancellable phase, so nothing can veto (§6) |
