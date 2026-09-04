@@ -14,6 +14,7 @@ use grim_text::tr;
 use grim_world::StartingRoom;
 
 use crate::params::RoomResolver;
+use crate::scene_stack::push_ingame_scene;
 use crate::session::ConnectedAt;
 
 #[allow(clippy::too_many_arguments)]
@@ -160,8 +161,9 @@ fn finalize_resume(
     client.state = ClientState::InGame;
     client.account = Some(account_entity);
     client.character = Some(char_entity);
-    commands.spawn(client);
-
+    let session = commands.spawn(client).id();
+    // Copyover resume skips login: push the in-game scene directly.
+    push_ingame_scene(commands, session);
     // Capture output on the new connection, greet, and show the room.
     commands.entity(conn).insert(OutputHistory::with_max(100));
     outputs.write(ConnectionOutput {

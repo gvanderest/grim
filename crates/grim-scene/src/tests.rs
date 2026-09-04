@@ -20,6 +20,7 @@ use grim_persistence::{PersistenceConfig, PersistencePlugin};
 use grim_world::{Room, StartingRoom, WorldPlugin};
 use std::net::SocketAddr;
 
+use crate::scene_stack::{InGameScene, SceneStack};
 use crate::ScenePlugin;
 
 // ─── Shared fixtures ─────────────────────
@@ -84,7 +85,13 @@ fn spawn_ingame(app: &mut App, conn: Entity, stored: StoredCharacter) -> Entity 
     let mut client = Client::new(conn);
     client.state = ClientState::InGame;
     client.character = Some(char_entity);
-    app.world_mut().spawn(client);
+    let session = app.world_mut().spawn(client).id();
+    // Mirror the world-entry push: in-game scene as child + stack top.
+    let scene = app.world_mut().spawn(InGameScene).id();
+    app.world_mut().entity_mut(session).add_child(scene);
+    app.world_mut()
+        .entity_mut(session)
+        .insert(SceneStack(vec![scene]));
     char_entity
 }
 
@@ -706,7 +713,12 @@ mod ingame_commands {
         let mut client = Client::new(conn);
         client.state = ClientState::InGame;
         client.character = Some(char_entity);
-        app.world_mut().spawn(client);
+        let session = app.world_mut().spawn(client).id();
+        let scene = app.world_mut().spawn(InGameScene).id();
+        app.world_mut().entity_mut(session).add_child(scene);
+        app.world_mut()
+            .entity_mut(session)
+            .insert(SceneStack(vec![scene]));
 
         app.world_mut().write_message(ConnectionInput {
             connection: conn,
@@ -1002,7 +1014,12 @@ mod ingame_commands {
         let mut client = Client::new(conn);
         client.state = ClientState::InGame;
         client.character = Some(Entity::PLACEHOLDER);
-        app.world_mut().spawn(client);
+        let session = app.world_mut().spawn(client).id();
+        let scene = app.world_mut().spawn(InGameScene).id();
+        app.world_mut().entity_mut(session).add_child(scene);
+        app.world_mut()
+            .entity_mut(session)
+            .insert(SceneStack(vec![scene]));
 
         app.world_mut().write_message(ConnectionInput {
             connection: conn,
@@ -1051,7 +1068,12 @@ mod ingame_commands {
         let mut client = Client::new(conn);
         client.state = ClientState::InGame;
         client.character = Some(char_entity);
-        app.world_mut().spawn(client);
+        let session = app.world_mut().spawn(client).id();
+        let scene = app.world_mut().spawn(InGameScene).id();
+        app.world_mut().entity_mut(session).add_child(scene);
+        app.world_mut()
+            .entity_mut(session)
+            .insert(SceneStack(vec![scene]));
 
         app.world_mut().write_message(ConnectionInput {
             connection: conn,

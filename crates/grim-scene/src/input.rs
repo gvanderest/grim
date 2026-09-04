@@ -15,11 +15,12 @@
 
 use bevy::prelude::*;
 use grim_actor::{Actor, Character, Linkdead};
-use grim_core::components::{Account, Client, ClientState, Name as GrimName};
+use grim_core::components::{Account, Client, Name as GrimName};
 use grim_networking::{Connection, ConnectionInput, ConnectionOutput};
 
 use crate::command;
 use crate::params::{PlayerChars, RoomResolver, SessionRes};
+use crate::scene_stack::{top_is_ingame, InGameScene, SceneStack};
 use crate::session::JustEnteredWorld;
 use crate::sockets::ClientSnapshot;
 
@@ -27,6 +28,8 @@ use crate::sockets::ClientSnapshot;
 pub(crate) fn handle_ingame_input(
     mut inputs: MessageReader<ConnectionInput>,
     mut clients: Query<(Entity, &mut Client)>,
+    stacks: Query<&SceneStack>,
+    ingame: Query<&InGameScene>,
     characters: Query<(Entity, &Character, &Actor, &GrimName)>,
     player_chars: PlayerChars,
     linkdead: Query<&Linkdead>,
@@ -57,8 +60,13 @@ pub(crate) fn handle_ingame_input(
         let Ok((_, mut client)) = clients.get_mut(snap.client) else {
             continue;
         };
-        // Pre-game states are the auth system's job.
-        if client.state != ClientState::InGame {
+        // Only the topmost scene interprets the line. Sessions without an
+        // in-game scene on top (pre-game, or mid-transition) are the auth
+        // system's job — a missing stack reads as not-in-game, fail closed.
+        let in_world = stacks
+            .get(snap.client)
+            .is_ok_and(|stack| top_is_ingame(stack, |top| ingame.get(top).is_ok()));
+        if !in_world {
             continue;
         }
         // Consume-once: this connection was advanced into the world THIS tick by

@@ -14,6 +14,7 @@ mod params;
 mod parser;
 mod plugin;
 mod resume;
+mod scene_stack;
 mod session;
 mod sockets;
 
@@ -25,4 +26,5 @@ pub mod formatter;
 mod tests;
 
 pub use plugin::{ScenePlugin, SceneSystems};
+pub use scene_stack::{push_ingame_scene, top_is_ingame, InGameScene, SceneStack};
 pub use session::{ConnectedAt, JustEnteredWorld};
