@@ -38,7 +38,7 @@ creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the
 
 | System | Schedule | File | Purpose |
 |---|---|---|---|
-| `look::handle_look` | `Update` | `src/commands/look.rs` | Reads `Command::Look`; emits `LookRoom` (no target) or `LookEntity`, else a "not here" `InfoMessage`. `look self` targets the actor; creatures also match a `Keywords` prefix. |
+| `look::handle_look` | `Update` | `src/commands/look.rs` | Reads `Command::Look`; emits `LookRoom` (no target) or `LookEntity`, else a "not here" `InfoMessage`. Ranking: `self`, exact name, exact keyword, shortest prefix name. |
 | `desc::handle_desc` | `Update` | `src/commands/desc.rs` | Reads `Command::Desc`; views/edits the actor's own `Description` paragraphs (`Show` reuses `LookEntity` on self). |
 | `movement::handle_move` | `Update` | `src/commands/movement.rs` | Reads `Command::Move`; walks an exit, refreshes `last_room`, emits `MoveEvent` + auto-look. |
 | `movement::handle_goto` | `Update` | `src/commands/movement.rs` | Admin teleport to a room by address (entity/grim id/slug, `area:room`). |
@@ -51,7 +51,7 @@ Player-facing verbs and where to find their handlers.
 
 | Command | Handler | Summary |
 |---|---|---|
-| `look [target]` | `src/commands/look.rs` | Describe the current room, or a named entity within it (`self` = you; creature keywords prefix-match). |
+| `look [target]` | `src/commands/look.rs` | Describe the current room, or a named entity within it (`self` = you; exact name beats prefix, shortest prefix name wins). |
 | `desc [clear\|+\|-]` | `src/commands/desc.rs` | View or edit your description paragraphs (`clear` empties, `+ <line>` appends, `-` drops the last). |
 | `move` — `n`/`e`/`s`/`w`/`u`/`d` (+ `north`…) | `src/commands/movement.rs` | Walk through an exit; emits `MoveEvent`. Direction aliases parsed in `grim-scene`. |
 | `goto <address>` | `src/commands/movement.rs` | Admin teleport to a room by address. |
