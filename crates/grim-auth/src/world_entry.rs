@@ -213,7 +213,7 @@ fn spawn_from_disk(
             name,
             actor,
             character,
-            Description(tr!("character.default_description")),
+            Description(vec![tr!("character.default_description")]),
             Player { connection: conn },
             ConnectedAt(Utc::now()),
             InRoom {

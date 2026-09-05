@@ -960,6 +960,7 @@ dependencies = [
  "grim-color",
  "grim-core",
  "grim-networking",
+ "grim-text",
  "grim-world",
  "serde",
  "serde_json",

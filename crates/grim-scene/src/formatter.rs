@@ -26,13 +26,22 @@ pub fn room_title(name: &str, debug: Option<RoomDebugIds>) -> String {
 }
 
 /// Format a room's full description.
-pub fn format_room(name: &str, desc: &str, exits: &[String], occupants: &[String]) -> String {
+///
+/// `presence` holds one ready-made listing line per other being in the room
+/// (a creature's long description, `"<name> is standing here."` for a
+/// player) — each renders on its own line under the exits. The exits line,
+/// when present, is wrapped in blank lines above and below.
+pub fn format_room(name: &str, desc: &str, exits: &[String], presence: &[String]) -> String {
     let mut out = format!("{}\n{}", name, desc);
     if !exits.is_empty() {
-        out.push_str(&format!("\nExits: {}", exits.join(", ")));
+        out.push_str(&format!("\n\nExits: {}", exits.join(", ")));
     }
-    if !occupants.is_empty() {
-        out.push_str(&format!("\nAlso here: {}", occupants.join(", ")));
+    if !presence.is_empty() {
+        out.push('\n');
+        if !exits.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(&presence.join("\n"));
     }
     out.push('\n');
     out
@@ -42,6 +51,7 @@ pub fn format_room(name: &str, desc: &str, exits: &[String], occupants: &[String
 pub fn format_entity(name: &str, desc: &str) -> String {
     format!("{}\n{}\n", name, desc)
 }
+
 pub fn format_say(speaker: &str, text: &str) -> String {
     tr!("social.say.third_party", speaker = speaker, text = text)
 }
@@ -259,7 +269,6 @@ pub struct SocketRow {
     /// Account identifier, or `"-"` while the session has none.
     pub account: String,
 }
-
 /// Render the full `sockets` list from already id-sorted rows. Values render
 /// through the catalog, so connection data (notably `@`-bearing account
 /// identifiers) is escaped and can never read as colour markup.
@@ -289,8 +298,9 @@ pub fn format_commands() -> String {
     let cmds = [
         "look [target]       — Look at the room or a specific target",
         "l [target]          — Shortcut for look",
+        "finger <name>       — Show a character's sheet, online or off",
+        "desc [clear|+/-]    — View or edit your description paragraphs",
         "say <text>          — Speak to everyone in the room",
-        "'<text>             — Shortcut for say",
         "yell <text>         — Shout to everyone in the area",
         "ooc <text>          — Out-of-character global chat",
         "tell <who> <text>   — Private message a player (alias: whisper)",
@@ -423,30 +433,33 @@ mod tests {
     // ── format_room ──────────────────────────────────────────────
 
     #[test]
-    fn room_with_exits_and_occupants() {
+    fn room_with_exits_and_presence() {
         let exits = vec!["north".into(), "east".into()];
-        let occs = vec!["Alice".into(), "Bob".into()];
-        let got = format_room("The Tavern", "A warm room.", &exits, &occs);
-        assert!(got.starts_with("The Tavern\nA warm room."));
-        assert!(got.contains("Exits: north, east"));
-        assert!(got.contains("Also here: Alice, Bob"));
-        assert!(got.ends_with("\n"));
+        let presence = vec![
+            "Grimmok Ironhand stands here, hammering metal.".into(),
+            "Alice is standing here.".into(),
+        ];
+        let got = format_room("The Tavern", "A warm room.", &exits, &presence);
+        assert_eq!(
+            got,
+            "The Tavern\nA warm room.\n\nExits: north, east\n\nGrimmok Ironhand stands here, hammering metal.\nAlice is standing here.\n"
+        );
+        assert!(!got.contains("Also here:"));
     }
 
     #[test]
     fn room_no_exits() {
-        let got = format_room("Void", "Empty.", &[], &["Guard".into()]);
+        let got = format_room("Void", "Empty.", &[], &["Guard is here.".into()]);
         assert!(got.starts_with("Void\nEmpty."));
         assert!(!got.contains("Exits:"));
-        assert!(got.contains("Also here: Guard"));
+        assert!(got.contains("\nGuard is here.\n"));
     }
 
     #[test]
     fn room_no_occupants() {
         let exits = vec!["south".into()];
         let got = format_room("Cell", "Dark.", &exits, &[]);
-        assert!(got.contains("Exits: south"));
-        assert!(!got.contains("Also here:"));
+        assert_eq!(got, "Cell\nDark.\n\nExits: south\n");
     }
 
     #[test]

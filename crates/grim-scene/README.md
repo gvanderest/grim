@@ -35,6 +35,8 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | Command | Handler | Summary |
 |---|---|---|
 | `who` | `handle_ingame` → `format_who` (`src/command.rs`) | List online characters (admins first, then level/connect/name). |
+| `finger <name>` | `handle_ingame` → `finger::format` (`src/finger.rs`) | Character sheet (name/level/gender/race/class + description), online or off-disk. |
+| `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last). |
 | `sockets` | `handle_ingame` → `format_sockets` (`src/sockets.rs`) | List live connections by id (admin-only; masked as unknown for others). |
 | `where` | `handle_ingame` → `format_where` (`src/command.rs`) | Show where players are located. |
 | `areas` | `handle_ingame` → `format_areas` (`src/command.rs`) | List known areas. |

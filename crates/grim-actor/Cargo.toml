@@ -8,6 +8,7 @@ grim-core = { path = "../grim-core" }
 grim-world = { path = "../grim-world" }
 grim-networking = { path = "../grim-networking" }
 grim-color = { path = "../grim-color" }
+grim-text = { path = "../grim-text" }
 bevy = { workspace = true, default-features = false }
 chrono = { workspace = true }
 serde = { workspace = true }

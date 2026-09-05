@@ -7,11 +7,13 @@ use std::cmp::Ordering;
 use bevy::prelude::*;
 use chrono::{DateTime, Utc};
 use grim_actor::{Actor, Character, Linkdead, StoredCharacter};
-use grim_core::components::{Account, Client, ClientState, Gender, Name as GrimName};
+use grim_core::components::{Account, Client, ClientState, Description, Gender, Name as GrimName};
 use grim_core::events::{Command, EngineCommand, LogoutAnnounce};
 use grim_networking::{Connection, ConnectionOutput, DisconnectRequest};
+use grim_persistence::PersistenceConfig;
 use grim_text::tr;
 
+use crate::finger;
 use crate::formatter::{self, WhoRow};
 use crate::params::{PlayerChars, RoomResolver, SessionRes};
 use crate::parser;
@@ -26,6 +28,8 @@ pub(crate) fn handle_ingame(
     text: &str,
     characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
     player_chars: &PlayerChars,
+    descriptions: &Query<&Description>,
+    persistence: &PersistenceConfig,
     linkdead: &Query<&Linkdead>,
     rooms: &RoomResolver,
     res: &SessionRes,
@@ -67,6 +71,15 @@ pub(crate) fn handle_ingame(
                 outputs.write(ConnectionOutput {
                     echo: None,
                     ..ConnectionOutput::new(conn, format_where(char_entity, player_chars, rooms))
+                });
+            }
+            Command::Finger { target } => {
+                outputs.write(ConnectionOutput {
+                    echo: None,
+                    ..ConnectionOutput::new(
+                        conn,
+                        finger::format(target, player_chars, descriptions, persistence),
+                    )
                 });
             }
             Command::Commands => {

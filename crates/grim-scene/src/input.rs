@@ -15,8 +15,9 @@
 
 use bevy::prelude::*;
 use grim_actor::{Actor, Character, Linkdead};
-use grim_core::components::{Account, Client, Name as GrimName};
+use grim_core::components::{Account, Client, Description, Name as GrimName};
 use grim_networking::{Connection, ConnectionInput, ConnectionOutput};
+use grim_persistence::PersistenceConfig;
 
 use crate::command;
 use crate::params::{PlayerChars, RoomResolver, SessionRes};
@@ -32,6 +33,8 @@ pub(crate) fn handle_ingame_input(
     ingame: Query<&InGameScene>,
     characters: Query<(Entity, &Character, &Actor, &GrimName)>,
     player_chars: PlayerChars,
+    descriptions: Query<&Description>,
+    persistence: Res<PersistenceConfig>,
     linkdead: Query<&Linkdead>,
     rooms: RoomResolver,
     res: SessionRes,
@@ -84,6 +87,8 @@ pub(crate) fn handle_ingame_input(
             ev.text.as_str(),
             &characters,
             &player_chars,
+            &descriptions,
+            &persistence,
             &linkdead,
             &rooms,
             &res,

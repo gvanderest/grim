@@ -14,7 +14,9 @@
       "npcs": [
         {
           "name": "Grimmok Ironhand",
-          "description": "A burly dwarf with a scorched beard and arms thick as tree trunks. He hammers rhythmically at a glowing blade, seemingly unaware of your presence."
+          "description": ["A burly dwarf with a scorched beard and arms thick as tree trunks.", "He hammers rhythmically at a glowing blade, seemingly unaware of your presence."],
+          "keywords": ["grimmok", "ironhand", "dwarf", "smith"],
+          "room_description": "Grimmok Ironhand stands here, hammering metal."
         }
       ]
     },
