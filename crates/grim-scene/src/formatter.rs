@@ -29,14 +29,19 @@ pub fn room_title(name: &str, debug: Option<RoomDebugIds>) -> String {
 ///
 /// `presence` holds one ready-made listing line per other being in the room
 /// (a creature's long description, `"<name> is standing here."` for a
-/// player) — each renders on its own line under the exits.
+/// player) — each renders on its own line under the exits. The exits line,
+/// when present, is wrapped in blank lines above and below.
 pub fn format_room(name: &str, desc: &str, exits: &[String], presence: &[String]) -> String {
     let mut out = format!("{}\n{}", name, desc);
     if !exits.is_empty() {
-        out.push_str(&format!("\nExits: {}", exits.join(", ")));
+        out.push_str(&format!("\n\nExits: {}", exits.join(", ")));
     }
-    for line in presence {
-        out.push_str(&format!("\n{}", line));
+    if !presence.is_empty() {
+        out.push('\n');
+        if !exits.is_empty() {
+            out.push('\n');
+        }
+        out.push_str(&presence.join("\n"));
     }
     out.push('\n');
     out
@@ -435,12 +440,11 @@ mod tests {
             "Alice is standing here.".into(),
         ];
         let got = format_room("The Tavern", "A warm room.", &exits, &presence);
-        assert!(got.starts_with("The Tavern\nA warm room."));
-        assert!(got.contains("Exits: north, east"));
-        assert!(got.contains("\nGrimmok Ironhand stands here, hammering metal.\n"));
-        assert!(got.contains("\nAlice is standing here.\n"));
+        assert_eq!(
+            got,
+            "The Tavern\nA warm room.\n\nExits: north, east\n\nGrimmok Ironhand stands here, hammering metal.\nAlice is standing here.\n"
+        );
         assert!(!got.contains("Also here:"));
-        assert!(got.ends_with("\n"));
     }
 
     #[test]
@@ -455,8 +459,7 @@ mod tests {
     fn room_no_occupants() {
         let exits = vec!["south".into()];
         let got = format_room("Cell", "Dark.", &exits, &[]);
-        assert!(got.contains("Exits: south"));
-        assert_eq!(got, "Cell\nDark.\nExits: south\n");
+        assert_eq!(got, "Cell\nDark.\n\nExits: south\n");
     }
 
     #[test]
