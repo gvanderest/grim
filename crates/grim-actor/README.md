@@ -38,7 +38,8 @@ creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the
 
 | System | Schedule | File | Purpose |
 |---|---|---|---|
-| `look::handle_look` | `Update` | `src/commands/look.rs` | Reads `Command::Look`; emits `LookRoom` (no target) or `LookEntity`, else a "not here" `InfoMessage`. |
+| `look::handle_look` | `Update` | `src/commands/look.rs` | Reads `Command::Look`; emits `LookRoom` (no target) or `LookEntity`, else a "not here" `InfoMessage`. `look self` targets the actor; creatures also match a `Keywords` prefix. |
+| `desc::handle_desc` | `Update` | `src/commands/desc.rs` | Reads `Command::Desc`; views/edits the actor's own `Description` paragraphs (`Show` reuses `LookEntity` on self). |
 | `movement::handle_move` | `Update` | `src/commands/movement.rs` | Reads `Command::Move`; walks an exit, refreshes `last_room`, emits `MoveEvent` + auto-look. |
 | `movement::handle_goto` | `Update` | `src/commands/movement.rs` | Admin teleport to a room by address (entity/grim id/slug, `area:room`). |
 | `quit::handle_quit` | `Update` | `src/commands/quit.rs` | Reads `Command::Quit`; emits `DisconnectRequest` for the player's connection. |
@@ -50,7 +51,8 @@ Player-facing verbs and where to find their handlers.
 
 | Command | Handler | Summary |
 |---|---|---|
-| `look [target]` | `src/commands/look.rs` | Describe the current room, or a named entity within it. |
+| `look [target]` | `src/commands/look.rs` | Describe the current room, or a named entity within it (`self` = you; creature keywords prefix-match). |
+| `desc [clear\|+\|-]` | `src/commands/desc.rs` | View or edit your description paragraphs (`clear` empties, `+ <line>` appends, `-` drops the last). |
 | `move` — `n`/`e`/`s`/`w`/`u`/`d` (+ `north`…) | `src/commands/movement.rs` | Walk through an exit; emits `MoveEvent`. Direction aliases parsed in `grim-scene`. |
 | `goto <address>` | `src/commands/movement.rs` | Admin teleport to a room by address. |
 | `quit` | `src/commands/quit.rs` | Request a clean disconnect (save + despawn happen in `grim-scene`). |
@@ -62,9 +64,9 @@ Player-facing verbs and where to find their handlers.
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
 | `EngineCommand` | Message (input, from `grim-core`) | each `src/commands/*.rs` |
-| `InfoMessage` | Message (output, from `grim-core`) | `look`/`movement`/`title`/`shutdown` |
+| `InfoMessage` | Message (output, from `grim-core`) | `look`/`desc`/`movement`/`title`/`shutdown` |
+| `LookRoom` / `LookEntity` / `MoveEvent` | Message (world-happening events, **registered by `grim_world::WorldPlugin`**) | emitted by `look`/`movement`/`desc` (`Show`) |
 | `DisconnectRequest` | Message (from `grim-networking`) | `src/commands/quit.rs` |
-| `LookRoom` / `LookEntity` / `MoveEvent` | Message (world-happening events, **registered by `grim_world::WorldPlugin`**) | emitted by `look`/`movement` |
 | `ServerBroadcast` | Message (**registered by `grim_world::ShutdownPlugin`**) | `src/commands/shutdown.rs` |
 
 ## Types

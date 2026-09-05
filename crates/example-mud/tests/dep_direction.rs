@@ -129,6 +129,9 @@ const ALLOWED_NORMAL: &[Edge] = &[
     ("grim-actor", "grim-world"),
     ("grim-actor", "grim-networking"),
     ("grim-actor", "grim-color"),
+    // NOTE (desc verb): actor replies (`desc` confirmations) render through the
+    // catalog like grim-channel's do — same subsystem→leaf shape, no cycle.
+    ("grim-actor", "grim-text"),
     ("grim-channel", "grim-core"),
     ("grim-channel", "grim-text"),
     // NOTE (Placement Phase 2a step 2): grim-channel reads beings (Character/

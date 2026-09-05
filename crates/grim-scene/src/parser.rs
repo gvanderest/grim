@@ -1,6 +1,6 @@
 use bevy::log::warn;
 use grim_command::CommandRegistry;
-use grim_core::events::Command;
+use grim_core::events::{Command, DescOp};
 
 /// Parse a raw input line into a Command using `registry`.
 ///
@@ -143,8 +143,33 @@ fn build_registry() -> CommandRegistry<Command> {
             })
         }
     });
+    // `desc` views your paragraphs; `desc clear` empties them,
+    // `desc + <line>` appends one, `desc -` drops the last. Anything else
+    // (including a bare `+`) is unknown.
+    r.register("desc", |rest| {
+        let rest = rest.trim();
+        if rest.is_empty() {
+            Some(Command::Desc { op: DescOp::Show })
+        } else if rest.eq_ignore_ascii_case("clear") {
+            Some(Command::Desc { op: DescOp::Clear })
+        } else if rest == "-" {
+            Some(Command::Desc { op: DescOp::Remove })
+        } else {
+            let line = rest.strip_prefix('+')?.trim();
+            (!line.is_empty()).then(|| Command::Desc {
+                op: DescOp::Add(line.to_string()),
+            })
+        }
+    });
     r.register("who", |_| Some(Command::Who));
     r.register("where", |_| Some(Command::Where));
+    // `finger <name>` — rejected with no argument so a bare `finger` is unknown.
+    r.register("finger", |rest| {
+        let target = rest.trim();
+        (!target.is_empty()).then(|| Command::Finger {
+            target: target.to_string(),
+        })
+    });
     r.register("areas", |_| Some(Command::Areas));
     r.register("commands", |_| Some(Command::Commands));
     r.register("help", |_| Some(Command::Commands));
@@ -229,6 +254,7 @@ mod tests {
     use grim_command::CommandRegistry;
     use grim_core::cardinal::Cardinal;
     use grim_core::events::Command;
+    use grim_core::events::DescOp;
 
     use super::{command_registry, parse_command};
 
@@ -485,6 +511,37 @@ mod tests {
     #[test]
     fn test_where_cmd() {
         assert_eq!(parse("where"), Some(Command::Where));
+    }
+
+    #[test]
+    fn test_finger() {
+        assert_eq!(
+            parse("finger wrack"),
+            Some(Command::Finger {
+                target: "wrack".to_string()
+            })
+        );
+        assert_eq!(parse("finger"), None);
+        assert_eq!(parse("finger   "), None);
+    }
+
+    #[test]
+    fn test_desc() {
+        assert_eq!(parse("desc"), Some(Command::Desc { op: DescOp::Show }));
+        assert_eq!(
+            parse("desc clear"),
+            Some(Command::Desc { op: DescOp::Clear })
+        );
+        assert_eq!(
+            parse("desc + Hello there."),
+            Some(Command::Desc {
+                op: DescOp::Add("Hello there.".to_string())
+            })
+        );
+        assert_eq!(parse("desc -"), Some(Command::Desc { op: DescOp::Remove }));
+        assert_eq!(parse("desc +"), None);
+        assert_eq!(parse("desc +   "), None);
+        assert_eq!(parse("desc bogus"), None);
     }
 
     #[test]

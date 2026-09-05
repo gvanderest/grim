@@ -1,9 +1,10 @@
 //! `look` rendering: turn a `look` command into the room/entity description
 //! events (`LookRoom`/`LookEntity`) or a "not here" info message. Reads the
-//! actor's [`InRoom`] placement and the [`Name`] of entities sharing the room.
+//! actor's [`InRoom`] placement and the [`Name`] of entities sharing the room;
+//! creatures also match a [`Keywords`] prefix (`look smi` finds `smith`).
 
 use bevy::prelude::*;
-use grim_core::components::Name;
+use grim_core::components::{Keywords, Name};
 use grim_core::events::{Command, EngineCommand, InfoMessage, LookEntity, LookRoom};
 
 use crate::placement::InRoom;
@@ -12,7 +13,7 @@ use crate::placement::InRoom;
 pub(crate) fn handle_look(
     mut engine: MessageReader<EngineCommand>,
     inroom: Query<&InRoom>,
-    named: Query<(Entity, &InRoom, &Name)>,
+    named: Query<(Entity, &InRoom, &Name, Option<&Keywords>)>,
     mut look_room: MessageWriter<LookRoom>,
     mut look_entity: MessageWriter<LookEntity>,
     mut info: MessageWriter<InfoMessage>,
@@ -35,10 +36,22 @@ pub(crate) fn handle_look(
             Some(name) => {
                 let want = name.to_lowercase();
                 let room = actor_room.room;
-                let subject = named
-                    .iter()
-                    .find(|(_, ir, nm)| ir.room == room && nm.0.to_lowercase() == want)
-                    .map(|(e, _, _)| e);
+                // `look self` always means your own character.
+                let subject = if want == "self" {
+                    Some(actor)
+                } else {
+                    named
+                        .iter()
+                        .find(|(_, ir, nm, kw)| {
+                            ir.room == room
+                                && !want.is_empty()
+                                && (nm.0.to_lowercase() == want
+                                    || kw.is_some_and(|kw| {
+                                        kw.0.iter().any(|k| k.to_lowercase().starts_with(&want))
+                                    }))
+                        })
+                        .map(|(e, _, _, _)| e)
+                };
                 match subject {
                     Some(subject) => {
                         look_entity.write(LookEntity {
@@ -130,6 +143,66 @@ mod tests {
         assert_eq!(ev.target, actor);
         assert_eq!(ev.subject, goblin);
         assert!(iter.next().is_none(), "expected exactly one LookEntity");
+    }
+
+    #[test]
+    fn look_self_targets_own_character() {
+        let mut app = test_app();
+        let room = app.world_mut().spawn(()).id();
+        let actor = app
+            .world_mut()
+            .spawn((InRoom { room }, Name("hero".into())))
+            .id();
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Look {
+                target: Some("self".into()),
+            },
+        });
+        app.update();
+        let messages = app.world().resource::<Messages<LookEntity>>();
+        let mut cursor = messages.get_cursor();
+        let mut iter = cursor.read(messages);
+        let ev = iter.next().expect("expected one LookEntity");
+        assert_eq!(ev.target, actor);
+        assert_eq!(ev.subject, actor);
+        assert!(iter.next().is_none(), "expected exactly one LookEntity");
+    }
+
+    #[test]
+    fn look_keyword_matches_creature() {
+        let mut app = test_app();
+        let room = app.world_mut().spawn(()).id();
+        let actor = app
+            .world_mut()
+            .spawn((InRoom { room }, Name("hero".into())))
+            .id();
+        let smith = app
+            .world_mut()
+            .spawn((
+                InRoom { room },
+                Name("Grimmok Ironhand".into()),
+                Keywords(vec!["grimmok".into(), "smith".into()]),
+            ))
+            .id();
+        for target in ["SMITH", "smi"] {
+            app.world_mut().write_message(EngineCommand {
+                client: actor,
+                command: Command::Look {
+                    target: Some(target.into()),
+                },
+            });
+        }
+        app.update();
+        let messages = app.world().resource::<Messages<LookEntity>>();
+        let mut cursor = messages.get_cursor();
+        let mut iter = cursor.read(messages);
+        for _ in 0..2 {
+            let ev = iter.next().expect("expected one LookEntity");
+            assert_eq!(ev.target, actor);
+            assert_eq!(ev.subject, smith);
+        }
+        assert!(iter.next().is_none(), "expected exactly two LookEntity");
     }
 
     #[test]

@@ -157,7 +157,7 @@ mod reconnect {
                 name,
                 actor,
                 character,
-                Description("A test character.".into()),
+                Description(vec!["A test character.".into()]),
                 InRoom { room },
                 Linkdead,
                 OutputHistory::with_max(100),
@@ -303,7 +303,7 @@ mod reconnect {
                 name,
                 actor,
                 character,
-                Description("A test character.".into()),
+                Description(vec!["A test character.".into()]),
                 InRoom { room },
                 Linkdead,
                 OutputHistory::with_max(100),
@@ -433,8 +433,12 @@ mod reconnect {
         // Entity A: stale — loaded from disk, no Linkdead
         let stale_uuid = GrimId::new();
         let (name, actor, character) = make_char(stale_uuid, "human", "warrior").into_components();
-        app.world_mut()
-            .spawn((name, actor, character, Description("Stale copy.".into())));
+        app.world_mut().spawn((
+            name,
+            actor,
+            character,
+            Description(vec!["Stale copy.".into()]),
+        ));
 
         // Entity B: real — in-world, went linkdead
         let (name, actor, character) = make_char(GrimId::new(), "", "").into_components();
@@ -444,7 +448,7 @@ mod reconnect {
                 name,
                 actor,
                 character,
-                Description("Real character.".into()),
+                Description(vec!["Real character.".into()]),
                 InRoom { room },
                 Linkdead,
                 OutputHistory::with_max(100),
@@ -545,8 +549,12 @@ mod reconnect {
 
         // Entity A: stale (no Linkdead)
         let (name, actor, character) = make_char(stale_uuid).into_components();
-        app.world_mut()
-            .spawn((name, actor, character, Description("Stale copy.".into())));
+        app.world_mut().spawn((
+            name,
+            actor,
+            character,
+            Description(vec!["Stale copy.".into()]),
+        ));
 
         // Entity B: real (with Linkdead)
         let (name, actor, character) = make_char(real_uuid).into_components();
@@ -556,7 +564,7 @@ mod reconnect {
                 name,
                 actor,
                 character,
-                Description("Real character.".into()),
+                Description(vec!["Real character.".into()]),
                 InRoom { room },
                 Linkdead,
                 OutputHistory::with_max(100),
@@ -652,7 +660,7 @@ mod reconnect {
                 name,
                 actor,
                 character,
-                Description("A linkdead character.".into()),
+                Description(vec!["A linkdead character.".into()]),
                 InRoom { room },
                 Linkdead,
                 OutputHistory::with_max(100),
@@ -1209,7 +1217,7 @@ mod character_select {
                 name,
                 actor,
                 character,
-                Description(format!("Character {}.", i + 1)),
+                Description(vec![format!("Character {}.", i + 1)]),
                 InRoom { room },
             ));
         }
@@ -1299,7 +1307,7 @@ mod character_select {
             name,
             actor,
             character,
-            Description("A linkdead character.".into()),
+            Description(vec!["A linkdead character.".into()]),
             InRoom { room },
             Linkdead,
             OutputHistory::with_max(100),
@@ -1372,7 +1380,7 @@ mod character_select {
             name,
             actor,
             character,
-            Description("Heir of Isildur.".into()),
+            Description(vec!["Heir of Isildur.".into()]),
             InRoom { room },
             OutputHistory::with_max(100),
         ));
@@ -1725,7 +1733,7 @@ mod disk_lifecycle {
                 name,
                 actor,
                 character,
-                Description("Already online.".into()),
+                Description(vec!["Already online.".into()]),
                 InRoom { room },
                 Player {
                     connection: old_conn,
@@ -2209,7 +2217,7 @@ mod legacy_backfill {
                 name,
                 actor,
                 character,
-                Description("A faded soul.".into()),
+                Description(vec!["A faded soul.".into()]),
                 InRoom { room },
                 Linkdead,
                 OutputHistory::with_max(100),

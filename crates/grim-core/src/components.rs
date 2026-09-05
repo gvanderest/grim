@@ -106,6 +106,21 @@ pub struct Account {
 #[derive(Component, Debug, Clone)]
 pub struct Name(pub String);
 
-/// Long description shown by `look <target>`.
+/// Paragraphs shown by `look <target>`, one line each: entries carry no
+/// newlines and the renderer joins them with `\n`. One entry per paragraph.
 #[derive(Component, Debug, Clone)]
-pub struct Description(pub String);
+pub struct Description(pub Vec<String>);
+
+/// Extra lookup words for `look <keyword>` (e.g. `["grimmok", "smith"]` for
+/// "Grimmok Ironhand"). Characters match by name and carry none of these;
+/// creatures match by name or by any keyword prefix (case-insensitive).
+#[derive(Component, Debug, Clone, Default)]
+pub struct Keywords(pub Vec<String>);
+
+/// Room-listing line for a being or object: the sentence shown under the room
+/// description (e.g. `"Grimmok Ironhand stands here, hammering metal."`).
+/// Distinct from [`Description`], which is the detail shown by `look <target>`.
+/// Player characters do not carry this — their line is rendered from their
+/// position (`"<name> is standing here."` until positions exist).
+#[derive(Component, Debug, Clone)]
+pub struct RoomDescription(pub String);

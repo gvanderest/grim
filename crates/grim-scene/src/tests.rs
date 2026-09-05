@@ -678,6 +678,121 @@ mod output_format {
             "Observer should see departure message"
         );
     }
+
+    // ── look_room presence lines: players above creatures, sorted ──
+    #[test]
+    fn look_room_lists_players_above_creatures() {
+        use grim_actor::Creature;
+
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let mk_conn = |app: &mut App, id: usize| {
+            app.world_mut()
+                .spawn(Connection {
+                    id,
+                    addr: "127.0.0.1:12345".parse().unwrap(),
+                    echo_hidden: false,
+                })
+                .id()
+        };
+        let viewer_conn = mk_conn(&mut app, 1);
+        let viewer = spawn_ingame(&mut app, viewer_conn, make_character(Vec::new()));
+        // The other player, sorted by name (Zara after Hero, irrelevant here).
+        let mut zara = make_character(Vec::new());
+        zara.name = "Zara".into();
+        let zara_conn = mk_conn(&mut app, 2);
+        let zara_entity = spawn_ingame(&mut app, zara_conn, zara);
+        for e in [viewer, zara_entity] {
+            app.world_mut()
+                .entity_mut(e)
+                .insert(InRoom { room })
+                .insert(Description(vec!["A hero.".into()]));
+        }
+        // Creatures: one with a long room line, one falling back.
+        app.world_mut().spawn((
+            GrimName("Grimmok Ironhand".into()),
+            Creature,
+            RoomDescription("Grimmok Ironhand stands here, hammering metal.".into()),
+            InRoom { room },
+        ));
+        app.world_mut()
+            .spawn((GrimName("Goblin".into()), Creature, InRoom { room }));
+
+        app.world_mut().write_message(LookRoom {
+            target: viewer,
+            room,
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let text: String = cursor
+            .read(msgs)
+            .filter(|o| o.connection == viewer_conn)
+            .map(|o| o.text.clone())
+            .collect();
+        assert!(
+            !text.contains("Also here:"),
+            "no summary line; got:\n{text}"
+        );
+        let zara_at = text.find("Zara is standing here.").expect("player line");
+        let goblin_at = text.find("Goblin is here.").expect("fallback line");
+        let grimmok_at = text
+            .find("Grimmok Ironhand stands here, hammering metal.")
+            .expect("room line");
+        assert!(
+            zara_at < goblin_at && zara_at < grimmok_at,
+            "players sort above creatures; got:\n{text}"
+        );
+        assert!(
+            goblin_at < grimmok_at,
+            "creatures sort by name; got:\n{text}"
+        );
+    }
+
+    // ── look_entity joins paragraphs with single newlines ──
+    #[test]
+    fn look_entity_joins_paragraphs_with_newlines() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let viewer = spawn_ingame(&mut app, conn, make_character(Vec::new()));
+        let subject = app
+            .world_mut()
+            .spawn((
+                GrimName("Statue".into()),
+                Description(vec!["Para one.".into(), "Para two.".into()]),
+                InRoom { room },
+            ))
+            .id();
+
+        app.world_mut().write_message(LookEntity {
+            target: viewer,
+            subject,
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let text: String = cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn)
+            .map(|o| o.text.clone())
+            .collect();
+        assert!(
+            text.contains("Statue\nPara one.\nPara two.\n"),
+            "paragraphs join with single newlines; got:\n{text}"
+        );
+    }
 }
 
 // ─── In-game command dispatch ────────────
@@ -1089,6 +1204,116 @@ mod ingame_commands {
                 .iter()
                 .any(|o| o.connection == conn && o.text == " "),
             "Blank line should write a space to trigger prompt"
+        );
+    }
+
+    // ── finger: online sheet, offline sheet, unknown name ──
+    fn finger_conn(app: &mut App, id: usize) -> Entity {
+        app.world_mut()
+            .spawn(Connection {
+                id,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id()
+    }
+
+    fn finger_text(app: &App, conn: Entity) -> String {
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn)
+            .map(|o| o.text.clone())
+            .collect()
+    }
+
+    #[test]
+    fn finger_online_answers_live_sheet() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let viewer_conn = finger_conn(&mut app, 1);
+        let viewer = spawn_ingame(&mut app, viewer_conn, make_character(Vec::new()));
+        app.world_mut().entity_mut(viewer).insert(InRoom { room });
+
+        let mut zara = make_character(Vec::new());
+        zara.name = "Zara".into();
+        zara.race = "elf".into();
+        zara.class = "mage".into();
+        zara.level = 3;
+        zara.gender = Gender::Female;
+        let zara_conn = finger_conn(&mut app, 2);
+        let zara_entity = spawn_ingame(&mut app, zara_conn, zara);
+        app.world_mut()
+            .entity_mut(zara_entity)
+            .insert(InRoom { room })
+            .insert(Description(vec!["Brave.".into(), "Bold.".into()]));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: viewer_conn,
+            text: "finger zara".into(),
+        });
+        app.update();
+
+        assert_eq!(
+            finger_text(&app, viewer_conn),
+            "Name: Zara\nLevel: 3\nGender: Female\nRace: elf\nClass: mage\nDescription:\nBrave.\nBold.\n"
+        );
+    }
+
+    #[test]
+    fn finger_offline_answers_stored_sheet() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let viewer_conn = finger_conn(&mut app, 1);
+        let viewer = spawn_ingame(&mut app, viewer_conn, make_character(Vec::new()));
+        app.world_mut().entity_mut(viewer).insert(InRoom { room });
+
+        let mut wrack = make_character(Vec::new());
+        wrack.name = "Wrack".into();
+        wrack.race = "human".into();
+        wrack.class = "warrior".into();
+        wrack.level = 5;
+        wrack.gender = Gender::Male;
+        let config = app.world().resource::<PersistenceConfig>().clone();
+        std::fs::write(
+            config.characters_dir().join("Wrack.json"),
+            serde_json::to_string(&wrack).unwrap(),
+        )
+        .unwrap();
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: viewer_conn,
+            text: "finger Wrack".into(),
+        });
+        app.update();
+
+        assert_eq!(
+            finger_text(&app, viewer_conn),
+            "Name: Wrack\nLevel: 5\nGender: Male\nRace: human\nClass: warrior\nDescription:\nA new adventurer.\n"
+        );
+    }
+
+    #[test]
+    fn finger_unknown_name_misses() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let viewer_conn = finger_conn(&mut app, 1);
+        let viewer = spawn_ingame(&mut app, viewer_conn, make_character(Vec::new()));
+        app.world_mut().entity_mut(viewer).insert(InRoom { room });
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: viewer_conn,
+            text: "finger Nobody".into(),
+        });
+        app.update();
+
+        assert_eq!(
+            finger_text(&app, viewer_conn),
+            "You don't know anyone by that name.\n"
         );
     }
 }

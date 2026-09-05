@@ -15,7 +15,9 @@ in **`grim-actor`**, and the world-topology components (`Area`/`Room`/`Exits`) p
 | `Client` | `src/components.rs` | Session state machine, one per connection (holds `ClientState`, account/character links, input queue, cooldown). |
 | `Account` | `src/components.rs` | Persisted account: identifier, password hash, owned character IDs. |
 | `Name` | `src/components.rs` | Display name for any visible entity (a being's name lives here, not on `Character`). |
-| `Description` | `src/components.rs` | Long description shown by `look <target>`. |
+| `Description` | `src/components.rs` | Long description shown by `look <target>`: paragraphs with no embedded newlines, newline-joined at render. |
+| `Keywords` | `src/components.rs` | Extra `look <keyword>` words for creatures (prefix-matched, case-insensitive). |
+| `RoomDescription` | `src/components.rs` | Room-listing line for a being/object (the creature long line); PCs render from position instead. |
 
 ## Systems
 None. This crate is type definitions only — no `Plugin`, no `add_systems`, no observers.
@@ -25,9 +27,9 @@ This crate *defines* the `Command` enum (the closed set of player verbs, `src/ev
 
 | Command(s) | Handler crate → file |
 |---|---|
-| `look` / `move` / `goto` / `quit` / `title` / `shutdown` | `grim-actor` → `src/commands/<name>.rs` |
+| `look` / `desc` / `move` / `goto` / `quit` / `title` / `shutdown` | `grim-actor` → `src/commands/<name>.rs` |
 | `say` / `yell` / `ooc` / `tell` / `reply` / `gecho` | `grim-channel` → `src/channel.rs` |
-| login / account-creation / character-select verbs | `grim-scene` (session state machine) |
+| `finger` / `who` / `where` / `sockets` / `commands` / `areas` | `grim-scene` → `src/command.rs` (session-local) |
 
 The closed `Command` enum + last-registered-wins registry are documented as defects slated for per-plugin typed dispatch (ARCHITECTURE.md §5.2, §8).
 

@@ -30,6 +30,10 @@ pub enum Command {
     /// `title <text>` sets the actor's WHO title (max 60 chars); a bare `title`
     /// (empty text) clears it.
     Title { text: String },
+    /// `desc` views your description paragraphs; `desc clear` empties them,
+    /// `desc + <line>` appends one, `desc -` drops the last. (A future
+    /// `desc edit` will open the line editor.)
+    Desc { op: DescOp },
     /// Movement via cardinal direction
     Move { direction: Cardinal },
     /// `quit` — clean disconnect
@@ -38,6 +42,11 @@ pub enum Command {
     Who,
     /// `where` — show who's in your area and their room
     Where,
+    /// `finger <name>` — show a character's description, online or off.
+    /// Online characters answer from their live description; offline ones
+    /// load from disk (custom descriptions do not persist yet, so offline
+    /// output is the default description for now).
+    Finger { target: String },
     /// `sockets` — admin-only, session-local. List every live connection
     /// (id, address, session state, character, account). Masked as unknown
     /// for non-admins, like the other admin verbs.
@@ -56,6 +65,19 @@ pub enum Command {
     /// `shutdown <seconds>` — admin-only. Schedules a graceful server shutdown
     /// after a countdown, broadcasting warnings to all connected players.
     Shutdown { seconds: u64 },
+}
+
+/// The `desc` sub-operation: which self-description edit to apply.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DescOp {
+    /// Bare `desc` — show your own paragraphs.
+    Show,
+    /// `desc clear` — drop every paragraph.
+    Clear,
+    /// `desc + <line>` — append one paragraph.
+    Add(String),
+    /// `desc -` — drop the last paragraph.
+    Remove,
 }
 
 // ─── Engine → Client (semantic events for formatting) ───────────────

@@ -5,11 +5,12 @@
 use bevy::prelude::*;
 use grim_actor::{Character, InRoom, OutputHistory, Player};
 use grim_channel::{ChannelMessage, ChannelRegistry};
-use grim_core::components::{Description, Name as GrimName};
+use grim_core::components::{Description, Name as GrimName, RoomDescription};
 use grim_core::events::{
     GlobalEcho, InfoMessage, LookEntity, LookRoom, MoveEvent, ServerBroadcast,
 };
 use grim_networking::ConnectionOutput;
+use grim_text::tr;
 use grim_world::{Exits, Room};
 
 use crate::channel_output::emit_channel;
@@ -17,7 +18,7 @@ use crate::formatter;
 use crate::params::AnnounceReaders;
 
 /// Room-occupant query shape, shared by every broadcast helper below.
-type Occupants<'w, 's> = Query<
+pub(crate) type Occupants<'w, 's> = Query<
     'w,
     's,
     (
@@ -25,6 +26,7 @@ type Occupants<'w, 's> = Query<
         &'static InRoom,
         Option<&'static Player>,
         &'static GrimName,
+        Option<&'static RoomDescription>,
     ),
 >;
 
@@ -107,7 +109,7 @@ fn find_conn(target: Entity, room_occupants: &Occupants) -> Entity {
     room_occupants
         .get(target)
         .ok()
-        .and_then(|(_, _, p, _)| p.map(|p| p.connection))
+        .and_then(|(_, _, p, _, _)| p.map(|p| p.connection))
         .unwrap_or(target)
 }
 
@@ -131,12 +133,37 @@ fn emit_look_room(
             dirs
         })
         .unwrap_or_default();
-    let mut occupant_names: Vec<String> = Vec::new();
-    for (e, ir, _, occ_name) in room_occupants.iter() {
-        if ir.room == ev.room && e != ev.target {
-            occupant_names.push(occ_name.0.clone());
+    // Presence lines, one per other being in the room: player characters
+    // (standing line, position-driven once positions exist) sort above
+    // creatures (their long room line, or a plain fallback). Each group
+    // sorts by name so the listing is deterministic.
+    let mut players: Vec<(String, String)> = Vec::new();
+    let mut creatures: Vec<(String, String)> = Vec::new();
+    for (e, ir, _, occ_name, room_line) in room_occupants.iter() {
+        if ir.room != ev.room || e == ev.target {
+            continue;
+        }
+        if characters.get(e).is_ok() {
+            players.push((
+                occ_name.0.clone(),
+                tr!("room.presence.standing", name = occ_name.0.as_str()),
+            ));
+        } else if let Some(line) = room_line.filter(|l| !l.0.is_empty()) {
+            creatures.push((occ_name.0.clone(), line.0.clone()));
+        } else {
+            creatures.push((
+                occ_name.0.clone(),
+                tr!("room.presence.here", name = occ_name.0.as_str()),
+            ));
         }
     }
+    players.sort();
+    creatures.sort();
+    let presence: Vec<String> = players
+        .into_iter()
+        .chain(creatures)
+        .map(|(_, line)| line)
+        .collect();
     // Admins see the room's ids in the title for building/debugging.
     let is_admin = characters
         .get(ev.target)
@@ -156,7 +183,7 @@ fn emit_look_room(
         echo: None,
         ..ConnectionOutput::new(
             conn,
-            formatter::format_room(&title, &room.description, &exits, &occupant_names),
+            formatter::format_room(&title, &room.description, &exits, &presence),
         )
     });
 }
@@ -171,9 +198,10 @@ fn emit_look_entity(
     let Ok(subj_name) = names.get(ev.subject) else {
         return;
     };
+    // Entries hold no newlines themselves; each warrants one between them.
     let desc = descriptions
         .get(ev.subject)
-        .map(|d| d.0.clone())
+        .map(|d| d.0.join("\n"))
         .unwrap_or_default();
     let conn = find_conn(ev.target, room_occupants);
     outputs.write(ConnectionOutput {
@@ -226,7 +254,7 @@ fn emit_gecho(
     let attributed = sender_name
         .as_deref()
         .map(|n| formatter::format_gecho(Some(n), &ev.text));
-    for (entity, _, player, _) in room_occupants.iter() {
+    for (entity, _, player, _, _) in room_occupants.iter() {
         let Some(p) = player else {
             continue;
         };
@@ -275,7 +303,7 @@ fn broadcast_to_room(
     occupants: &Occupants,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
-    for (entity, ir, player, _) in occupants.iter() {
+    for (entity, ir, player, _, _) in occupants.iter() {
         if ir.room != room {
             continue;
         }
@@ -310,7 +338,7 @@ fn broadcast_global(
     occupants: &Occupants,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
-    for (_, _, player, _) in occupants.iter() {
+    for (_, _, player, _, _) in occupants.iter() {
         if let Some(p) = player {
             outputs.write(ConnectionOutput {
                 prepend_newline: true,

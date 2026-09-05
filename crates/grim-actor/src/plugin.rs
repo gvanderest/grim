@@ -9,19 +9,21 @@
 
 use bevy::prelude::*;
 
+use crate::commands::desc;
 use crate::commands::look;
 use crate::commands::movement;
 use crate::commands::quit;
 use crate::commands::shutdown;
 use crate::commands::title;
 
-/// Registers the actor command verbs: `look`, `move`/`goto`, `quit`, `title`,
-/// and the admin `shutdown` gate.
+/// Registers the actor command verbs: `look`, `desc`, `move`/`goto`, `quit`,
+/// `title`, and the admin `shutdown` gate.
 pub struct ActorPlugin;
 
 impl Plugin for ActorPlugin {
     fn build(&self, app: &mut App) {
         look::register(app);
+        desc::register(app);
         movement::register(app);
         quit::register(app);
         title::register(app);

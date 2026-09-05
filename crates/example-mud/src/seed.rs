@@ -23,8 +23,8 @@ use std::path::PathBuf;
 use bevy::log::{error, warn};
 use bevy::prelude::*;
 use grim::prelude::{
-    Actor, Area, Cardinal, Creature, Description, Exits, Gender, GrimId, InRoom, Name as GrimName,
-    Room, StartingRoom,
+    Actor, Area, Cardinal, Creature, Description, Exits, Gender, GrimId, InRoom, Keywords,
+    Name as GrimName, Room, RoomDescription, StartingRoom,
 };
 use serde::Deserialize;
 
@@ -77,7 +77,15 @@ struct RoomBlueprint {
 #[derive(Deserialize)]
 struct NpcBlueprint {
     name: String,
-    description: String,
+    /// Look paragraphs (`look <name>` shows them newline-joined).
+    description: Vec<String>,
+    /// Extra `look <keyword>` words (matched case-insensitively).
+    #[serde(default)]
+    keywords: Vec<String>,
+    /// Room-listing line shown under the room description. Empty falls back
+    /// to `"<name> is here."`.
+    #[serde(default)]
+    room_description: String,
 }
 
 /// Seed the initial world by reading area blueprints from [`AreaBlueprintDir`]
@@ -231,6 +239,8 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
                 },
                 GrimName(npc.name.clone()),
                 Description(npc.description.clone()),
+                Keywords(npc.keywords.clone()),
+                RoomDescription(npc.room_description.clone()),
                 InRoom { room: from },
             ));
         }
@@ -317,6 +327,24 @@ mod tests {
             .iter(app.world())
             .count();
         assert_eq!(creatures, 1);
+
+        // The creature carries its look paragraphs, keywords, and room line.
+        let mut descs = app.world_mut().query::<(&GrimName, &Description)>();
+        let (name, desc) = descs.iter(app.world()).next().unwrap();
+        assert_eq!(name.0, "Grimmok Ironhand");
+        assert_eq!(desc.0.len(), 2);
+        let mut keys = app.world_mut().query::<&Keywords>();
+        assert!(keys
+            .iter(app.world())
+            .next()
+            .unwrap()
+            .0
+            .contains(&"smith".to_string()));
+        let mut lines = app.world_mut().query::<&RoomDescription>();
+        assert_eq!(
+            lines.iter(app.world()).next().unwrap().0,
+            "Grimmok Ironhand stands here, hammering metal."
+        );
     }
 
     #[test]

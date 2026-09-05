@@ -8,6 +8,7 @@
 
 mod channel_output;
 mod command;
+mod finger;
 mod input;
 mod output;
 mod params;
