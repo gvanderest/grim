@@ -146,9 +146,12 @@ pub(crate) fn handle_pregame_input(
             ),
         }
 
-        // If this line advanced the session into the world, record its
-        // connection so the scene in-game system skips the same line this tick.
+        // If this line advanced the session into the world, push its in-game
+        // scene (once — an already-InGame session `continue`s above before
+        // reaching here) and record its connection so the scene in-game system
+        // skips the same line this tick.
         if client.state == ClientState::InGame {
+            grim_scene::push_ingame_scene(&mut commands, client_entity);
             just_entered.0.insert(ev.connection);
         }
     }

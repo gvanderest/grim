@@ -5,23 +5,25 @@
 **Depends on:** `grim-core`, `grim-networking`, `grim-command`, `grim-text`, `grim-color`, `grim-persistence`, `grim-world`, `grim-actor`
 
 The pre-game phase (login / account-creation / character-select / MOTD) lives in
-`grim-auth`, which layers on this crate (auth → scene). `grim-scene` handles only
-`ClientState::InGame` input; every pre-game state is handled by `grim-auth`.
+`grim-auth`, which layers on this crate (auth → scene). `grim-scene` routes only
+lines whose session stack tops at `InGameScene`; stackless sessions are handled
+by `grim-auth`.
 
 ## Components
 
 | Component | File | Purpose |
 |---|---|---|
 | `ConnectedAt(DateTime<Utc>)` | `src/session.rs` | When this session connected (used by the WHO list ordering). |
+| `SceneStack(Vec<Entity>)` | `src/scene_stack.rs` | Ordered scene stack on the session; input is interpreted by the top. Thin slice: only the in-game scene exists — pushed once at world entry (auth transition guard, copyover resume), read by the router, cascaded on despawn. |
+| `InGameScene` | `src/scene_stack.rs` | Marker on the scene entity topping an in-world session. Missing/empty stack reads as not-in-game (fail closed). |
 | `Client` | (`grim-core::components`) | Per-connection session state; consumed here, defined upstream. |
-| `ClientState` | (`grim-core::components`) | Login/creation/in-game state machine; the in-game arm drives this crate, the pre-game arms drive `grim-auth`. |
+| `ClientState` | (`grim-core::components`) | Login/creation/in-game state machine; the in-game arm drives this crate, the pre-game arms drive `grim-auth`. Still the pre-game driver — the stack mirrors only world entry until ADR-0003 lands fully. |
 
 ## Systems
 
 | System | Schedule | File | Purpose |
-|---|---|---|---|
+| `handle_ingame_input` | `Update` (`SceneSystems::InGameInput`) | `src/input.rs` | Routes a line whose session stack tops at `InGameScene` into an in-game command; skips stackless sessions (auth's job) and the line that just entered the world (`JustEnteredWorld`). |
 | `handle_connection_resumed` | `Update` | `src/resume.rs` | Re-attaches a session after copyover / reconnect (skips login). |
-| `handle_ingame_input` | `Update` (`SceneSystems::InGameInput`) | `src/input.rs` | Routes a line for an `InGame` session into an in-game command; skips pre-game sessions (auth's job) and the line that just entered the world (`JustEnteredWorld`). |
 | `process_command_queue` | `Update` | `src/command.rs` | Drains queued `Command`s under cooldown; emits `EngineCommand`; handles `quit` (save+despawn). |
 | `format_output` | `Update` | `src/output.rs` | Renders domain events per-recipient into `ConnectionOutput`. |
 | `format_server_broadcast` | `Update` | `src/output.rs` | Renders `ServerBroadcast` (e.g. shutdown warnings) to all sessions. |
@@ -60,11 +62,11 @@ The shared render helpers in `src/formatter.rs` (`format_motd`, `format_selectio
 
 ## Notes
 - Single plugin: `ScenePlugin`. It is the **bridge** between `grim-networking` and `grim-command` (ARCHITECTURE.md §5.2/§5.3): reads raw in-game input, parses to `Command`, dispatches, and renders every domain event back per-recipient.
-- **Input routing split (Phase 2b).** One `handle_client_input` became two systems keyed off `client.state`: `handle_ingame_input` here (InGame only) and `handle_pregame_input` in `grim-auth` (every pre-game state). A single line can advance a session into the world (MOTD ENTER / login-by-name reconnect); the pre-game system runs first (`.before(SceneSystems::InGameInput)`), records the connection in `JustEnteredWorld`, and this crate's system skips that line so it is not re-dispatched as a command the same tick.
+- **Input routing split (Phase 2b + scene-stack thin slice).** One `handle_client_input` became two systems: `handle_ingame_input` here (stack top is `InGameScene`) and `handle_pregame_input` in `grim-auth` (every pre-game `ClientState`). The pre-game system runs first (`.before(SceneSystems::InGameInput)`); a line that advances a session into the world also pushes its in-game scene there and records the connection in `JustEnteredWorld`, so this crate's system skips that line the same tick and routes by stack from the next tick on.
 - Parser (`src/parser.rs`) owns direction aliases (`n`/`north` …), the `whisper`→`tell` alias, `help`→`commands`, and prefix resolution (last-registered wins on ties; e.g. `n` → north over social).
 - `!` repeats the last input; blank lines re-trigger the prompt.
 - Admin-gated commands are byte-identical to "unknown command" for non-admins (no information leak) — see `dispatch_admin_gated`.
-- Scene stack (§5.3) still uses the `ClientState` enum; the typed scene-stack redesign is deferred (see MEMORY / ARCHITECTURE §5.3).
+- Scene stack (§5.3): thin slice landed — `SceneStack` + `InGameScene`, pushed at world entry, routing by top. Pre-game scenes, pop, and output policy are still deferred (ADR-0003).
 
 ---
 *Format: [`docs/README.template.md`](../../docs/README.template.md). Improve over time.*
