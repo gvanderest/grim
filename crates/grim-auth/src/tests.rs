@@ -926,6 +926,120 @@ mod login_flow {
             "Should show invalid password message"
         );
     }
+    // ── PasswordPrompt: wrong password re-masks the retry prompt ──
+    // The transport auto-restores echo when a line is submitted, so the
+    // retry prompt must hide input again or the password shows plaintext.
+    #[test]
+    fn password_prompt_wrong_password_remasks() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+
+        let account = Account {
+            id: GrimId::new(),
+            identifier: "test@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![],
+            created_at: Utc::now(),
+        };
+        app.world_mut().spawn(account);
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "test@example.com".into(),
+        });
+        app.update();
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "wrongpassword".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let retry = cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn && o.text.contains("Password: "))
+            .last()
+            .expect("expected a password retry prompt");
+        assert_eq!(
+            retry.echo,
+            Some(false),
+            "retry prompt must re-mask input or the password shows plaintext"
+        );
+    }
+
+    // ── PasswordPrompt (is_new): rejected password re-masks the retry ──
+    #[test]
+    fn password_prompt_rejected_new_password_remasks() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "newuser@example.com".into(),
+        });
+        app.update();
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "yes".into(),
+        });
+        app.update();
+
+        // Too short: rejected, re-prompted.
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "x".into(),
+        });
+        app.update();
+
+        let mut query = app.world_mut().query::<(Entity, &Client)>();
+        let found = query.iter(app.world()).find(|(_, c)| c.connection == conn);
+        let (_, client) = found.unwrap();
+        assert!(
+            matches!(
+                client.state,
+                ClientState::PasswordPrompt { is_new: true, .. }
+            ),
+            "rejected password should stay at the password prompt"
+        );
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let retry = cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn && o.text.contains("Choose a password: "))
+            .last()
+            .expect("expected a choose-a-password retry prompt");
+        assert_eq!(
+            retry.echo,
+            Some(false),
+            "retry prompt must re-mask input or the password shows plaintext"
+        );
+    }
 
     // ── PasswordPrompt with is_new=true → creates account ──
     #[test]

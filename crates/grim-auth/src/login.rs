@@ -281,8 +281,10 @@ fn create_account(
             );
         }
         Err(e) => {
+            // The transport auto-restored echo when the rejected password was
+            // submitted, so re-mask before re-prompting.
             outputs.write(ConnectionOutput {
-                echo: None,
+                echo: Some(false),
                 ..ConnectionOutput::new(
                     conn,
                     format!("Invalid password: {}\nChoose a password: ", e),
@@ -371,8 +373,10 @@ fn authenticate(
                     );
                 }
             } else {
+                // The transport auto-restored echo when the wrong password was
+                // submitted, so re-mask before re-prompting.
                 outputs.write(ConnectionOutput {
-                    echo: None,
+                    echo: Some(false),
                     ..ConnectionOutput::new(conn, "Invalid password.\nPassword: ")
                 });
             }
