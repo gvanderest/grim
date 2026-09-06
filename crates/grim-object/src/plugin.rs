@@ -4,18 +4,21 @@
 //! scene layer renders it per-recipient).
 
 use bevy::prelude::*;
-use grim_core::events::ItemEvent;
+use grim_core::events::{ItemEvent, TransferEvent};
 
-use crate::commands::{get, inventory};
+use crate::commands::{get, give, inventory, steal};
 
-/// Registers the object verbs: `get`, `drop`, `inventory`.
+/// Registers the object verbs: `get`, `drop`, `inventory`, `give`, `steal`.
 pub struct ObjectPlugin;
 
 impl Plugin for ObjectPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<ItemEvent>();
+        app.add_message::<TransferEvent>();
         get::register(app);
+        give::register(app);
         inventory::register(app);
+        steal::register(app);
     }
 }
 

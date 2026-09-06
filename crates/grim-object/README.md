@@ -21,26 +21,29 @@ room description; `Keywords` feeds get/drop matching with `look`'s ranking.
 | `handle_get` | `Update` | `src/commands/get.rs` | Reads `Command::Get`; swaps `InRoom`→`CarriedBy`, emits `ItemEvent::Pickup`, else a "not here" `InfoMessage`. |
 | `handle_drop` | `Update` | `src/commands/get.rs` | Reads `Command::Drop`; swaps `CarriedBy`→`InRoom`, emits `ItemEvent::Drop`, else a "not carrying" `InfoMessage`. |
 | `handle_inventory` | `Update` | `src/commands/inventory.rs` | Reads `Command::Inventory`; emits an `InfoMessage` listing carried shorts (sorted) or the empty line. |
+| `handle_give` | `Update` | `src/commands/give.rs` | Reads `Command::Give`; moves the match into a PC's pack, emits `TransferEvent::Give`. Creatures refuse; misses answer directly. |
+| `handle_steal` | `Update` | `src/commands/steal.rs` | Reads `Command::Steal`; moves the victim's match into the thief's pack, emits `TransferEvent::Steal`. Existence checks only. |
 
 ## Commands
 Player-facing verbs and where to find their handlers.
-| Command | Handler | Summary |
-|---|---|---|
 | `get <keyword>` | `get::handle_get` | Pick up the best-matching ground object (exact name, exact keyword, shortest-prefix). |
 | `drop <keyword>` | `get::handle_drop` | Drop the best-matching carried object into the room. |
-| `inventory` | `inventory::handle_inventory` | List carried short names. |
+| `inventory` / `inv` | `inventory::handle_inventory` | List carried short names. |
+| `give <item> <who>` | `give::handle_give` | Hand a carried object to a PC here (creatures refuse). |
+| `steal <item> <who>` | `steal::handle_steal` | Take a carried object from a being here. |
 
 ## Resources & Events
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
 | `ItemEvent` | Message (emitted; `grim-core`) | `src/commands/get.rs` |
-| `EngineCommand` | Message (consumed) | `src/commands/get.rs`, `src/commands/inventory.rs` |
-| `InfoMessage` | Message (emitted) | `src/commands/get.rs`, `src/commands/inventory.rs` |
+| `TransferEvent` | Message (emitted; `grim-core`) | `src/commands/give.rs`, `src/commands/steal.rs` |
+| `EngineCommand` | Message (consumed) | `src/commands/` |
+| `InfoMessage` | Message (emitted) | `src/commands/` |
 
 ## Notes
-- Rendering is per-recipient in `grim-scene` (`format_item_events`): the actor sees "You pick up …", the rest of the room "<name> picks up …".
-- Room listings show ground objects' `RoomDescription` under the creatures (`grim-scene`).
-- Carried objects are memory-only: nothing persists, so a reboot respawns the seeded objects and empties every inventory.
+- Rendering is per-recipient in `grim-scene` (`format_item_events`, `format_transfer_events`): the mover sees first-party, the other party second-party, the room third-party — every line names both parties and the item.
+- Room listings show ground objects' `RoomDescription` under the creatures (`grim-scene`); `look <being>` appends their pack below the description (`format_look_pack`).
+- Packs persist whole per instance (`persist`, into the character file's `inventory`); ground objects regenerate from blueprints, so post-reboot duplicates are correct state.
 
 ---
 *Format: [`docs/README.template.md`](../../docs/README.template.md). Improve over time.*

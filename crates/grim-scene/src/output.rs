@@ -7,7 +7,7 @@ use grim_actor::{Character, InRoom, OutputHistory, Player};
 use grim_channel::{ChannelMessage, ChannelRegistry};
 use grim_core::components::{Description, Name as GrimName, RoomDescription};
 use grim_core::events::{
-    GlobalEcho, InfoMessage, ItemEvent, ItemKind, LookEntity, LookRoom, MoveEvent, ServerBroadcast,
+    GlobalEcho, InfoMessage, LookEntity, LookRoom, MoveEvent, ServerBroadcast,
 };
 use grim_networking::ConnectionOutput;
 use grim_object::Object;
@@ -107,7 +107,7 @@ pub(crate) fn format_output(
 /// The connection entity for a recipient, from its `Player`, else the entity.
 /// A linkdead recipient has no `Player`, so this falls back to the entity (its
 /// `OutputHistory` buffers what is written there — see [`capture_output`]).
-fn find_conn(target: Entity, room_occupants: &Occupants) -> Entity {
+pub(crate) fn find_conn(target: Entity, room_occupants: &Occupants) -> Entity {
     room_occupants
         .get(target)
         .ok()
@@ -235,44 +235,9 @@ fn emit_move(
     };
     let dir_str = ev.direction.to_string();
     let leave_msg = formatter::format_move(&actor_name.0, &dir_str, true);
-    broadcast_to_room(ev.from, Some(ev.actor), &leave_msg, room_occupants, outputs);
+    broadcast_to_room(ev.from, &[ev.actor], &leave_msg, room_occupants, outputs);
     let arrive_msg = formatter::format_move(&actor_name.0, &dir_str, false);
-    broadcast_to_room(ev.to, Some(ev.actor), &arrive_msg, room_occupants, outputs);
-}
-
-/// Object pickup/drop: per-recipient render of an [`ItemEvent`]. The actor
-/// sees the first-party line ("You pick up …"); everyone else in the room
-/// sees it attributed ("<name> picks up …"). A separate system from
-/// [`format_output`] because that one is already at Bevy's system-parameter
-/// ceiling.
-pub(crate) fn format_item_events(
-    mut items: MessageReader<ItemEvent>,
-    room_occupants: Occupants,
-    mut outputs: MessageWriter<ConnectionOutput>,
-) {
-    for ev in items.read() {
-        let (first_key, third_key) = match ev.kind {
-            ItemKind::Pickup => ("item.pickup.first", "item.pickup.third"),
-            ItemKind::Drop => ("item.drop.first", "item.drop.third"),
-        };
-        let conn = find_conn(ev.actor, &room_occupants);
-        outputs.write(ConnectionOutput {
-            echo: None,
-            ..ConnectionOutput::new(conn, tr!(first_key, short = ev.short.as_str()))
-        });
-        let third = tr!(
-            third_key,
-            name = ev.actor_name.as_str(),
-            short = ev.short.as_str()
-        );
-        broadcast_to_room(
-            ev.room,
-            Some(ev.actor),
-            &third,
-            &room_occupants,
-            &mut outputs,
-        );
-    }
+    broadcast_to_room(ev.to, &[ev.actor], &arrive_msg, room_occupants, outputs);
 }
 
 fn emit_info(
@@ -343,11 +308,10 @@ pub(crate) fn capture_output(
         }
     }
 }
-
-/// Send text to every player in the given room, optionally excluding one entity.
-fn broadcast_to_room(
+/// Send text to every player in the given room, skipping `exclude`.
+pub(crate) fn broadcast_to_room(
     room: Entity,
-    exclude: Option<Entity>,
+    exclude: &[Entity],
     text: &str,
     occupants: &Occupants,
     outputs: &mut MessageWriter<ConnectionOutput>,
@@ -356,7 +320,7 @@ fn broadcast_to_room(
         if ir.room != room {
             continue;
         }
-        if Some(entity) == exclude {
+        if exclude.contains(&entity) {
             continue;
         }
         if let Some(p) = player {

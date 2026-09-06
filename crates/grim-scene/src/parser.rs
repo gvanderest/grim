@@ -45,6 +45,17 @@ fn parse_tell(rest: &str) -> Option<Command> {
     })
 }
 
+/// Split `<item> <target>` for `give`/`steal`: the item is the first word,
+/// the being everything after it. Both parts required.
+fn split_transfer(rest: &str) -> Option<(String, String)> {
+    let (item, target) = rest.split_once(' ')?;
+    let (item, target) = (item.trim(), target.trim());
+    if item.is_empty() || target.is_empty() {
+        return None;
+    }
+    Some((item.to_string(), target.to_string()))
+}
+
 #[allow(clippy::too_many_lines)] // reason: flat command-registration list
 fn build_registry() -> CommandRegistry<Command> {
     let mut r = CommandRegistry::new();
@@ -172,6 +183,8 @@ fn build_registry() -> CommandRegistry<Command> {
     });
     r.register("inventory", |_| Some(Command::Inventory));
     r.register("equipment", |_| Some(Command::Equipment));
+    r.register("inv", |_| Some(Command::Inventory));
+    r.register("eq", |_| Some(Command::Equipment));
     r.register("areas", |_| Some(Command::Areas));
     r.register("commands", |_| Some(Command::Commands));
     r.register("help", |_| Some(Command::Commands));
@@ -198,6 +211,17 @@ fn build_registry() -> CommandRegistry<Command> {
         (!target.is_empty()).then(|| Command::Drop {
             target: target.to_string(),
         })
+    });
+    // `give <item> <target>` / `steal <item> <target>` — item is the first
+    // word, the being the rest; both parts required. Alongside get/drop so
+    // the `ge` prefix still reaches `gecho`.
+    r.register("give", |rest| {
+        let (item, target) = split_transfer(rest)?;
+        Some(Command::Give { item, target })
+    });
+    r.register("steal", |rest| {
+        let (item, target) = split_transfer(rest)?;
+        Some(Command::Steal { item, target })
     });
 
     // ── Admin ────────────────────────────────────────────────────
@@ -636,7 +660,9 @@ mod tests {
     #[test]
     fn test_inventory_and_equipment() {
         assert_eq!(parse("inventory"), Some(Command::Inventory));
+        assert_eq!(parse("inv"), Some(Command::Inventory));
         assert_eq!(parse("equipment"), Some(Command::Equipment));
+        assert_eq!(parse("eq"), Some(Command::Equipment));
         // Single `e` still moves east; `eq` reaches equipment unambiguously.
         assert_eq!(
             parse("e"),
@@ -688,6 +714,30 @@ mod tests {
                 target: "square".into()
             })
         );
+    }
+
+    // ── Give / steal ────────────────────────────────────────────────
+    #[test]
+    fn test_give_and_steal_split_item_and_target() {
+        assert_eq!(
+            parse("give lantern bob"),
+            Some(Command::Give {
+                item: "lantern".into(),
+                target: "bob".into()
+            })
+        );
+        assert_eq!(
+            parse("steal coin grimmok"),
+            Some(Command::Steal {
+                item: "coin".into(),
+                target: "grimmok".into()
+            })
+        );
+        // Either half missing is unknown.
+        assert_eq!(parse("give"), None);
+        assert_eq!(parse("give lantern"), None);
+        assert_eq!(parse("steal"), None);
+        assert_eq!(parse("steal coin"), None);
     }
 
     // ── Quit ──────────────────────────────────────────────────────

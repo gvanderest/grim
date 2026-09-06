@@ -60,6 +60,11 @@ pub enum Command {
     Get { target: String },
     /// `drop <keyword>` — drop a carried object into the room.
     Drop { target: String },
+    /// `give <item> <target>` — hand a carried object to a being in the room.
+    Give { item: String, target: String },
+    /// `steal <item> <target>` — take an object from a being's inventory in
+    /// the room. Existence checks only; no skill checks (example workflow).
+    Steal { item: String, target: String },
     /// `commands` — list all registered commands
     Commands,
     /// `areas` — list every area in the world by its slug.
@@ -95,6 +100,30 @@ pub struct ItemEvent {
 pub enum ItemKind {
     Pickup,
     Drop,
+}
+
+/// An object moved between two packs in a room: handed over (`give`) or taken
+/// (`steal`). Rendered per-recipient with all three wordings — the mover sees
+/// the first-party line ("You give …"), the other party the second-party line
+/// ("… gives you …" / "… steals your …"), and the rest of the room the
+/// third-party line ("… gives … to …"). Names and the short are precomputed
+/// so renderers need no lookups.
+#[derive(Message, Debug, Clone, PartialEq)]
+pub struct TransferEvent {
+    pub mover: Entity,
+    pub mover_name: String,
+    pub other: Entity,
+    pub other_name: String,
+    pub room: Entity,
+    pub short: String,
+    pub kind: TransferKind,
+}
+
+/// Which way a [`TransferEvent`] moved the object.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferKind {
+    Give,
+    Steal,
 }
 
 /// The `desc` sub-operation: which self-description edit to apply.

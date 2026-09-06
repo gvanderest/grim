@@ -130,6 +130,7 @@ fn save_on_disconnect(
     histories: Query<&OutputHistory>,
     mut announce_linkdead: MessageWriter<LinkdeadAnnounce>,
     players: Query<&Player>,
+    pack: grim_object::persist::Carried,
     config: Res<PersistenceConfig>,
 ) {
     for ev in closed.read() {
@@ -178,7 +179,8 @@ fn save_on_disconnect(
                             });
                         }
                     }
-                    let stored = StoredCharacter::from_components(name, actor, &character);
+                    let mut stored = StoredCharacter::from_components(name, actor, &character);
+                    stored.inventory = grim_object::persist::snapshot_pack(&pack, char_e);
                     let path = config.characters_dir().join(format!("{}.json", name.0));
                     if let Ok(json) = serde_json::to_string_pretty(&stored) {
                         let _ = fs::write(path, json);
@@ -224,6 +226,7 @@ fn save_on_disconnect(
 fn save_on_move(
     mut moves: MessageReader<MoveEvent>,
     characters: Query<(&GrimName, &Actor, &Character)>,
+    pack: grim_object::persist::Carried,
     config: Res<PersistenceConfig>,
 ) {
     for ev in moves.read() {
@@ -235,13 +238,13 @@ fn save_on_move(
         let dir = config.characters_dir();
         let _ = fs::create_dir_all(&dir);
         let path = dir.join(format!("{}.json", name.0));
-        let stored = StoredCharacter::from_components(name, actor, character);
+        let mut stored = StoredCharacter::from_components(name, actor, character);
+        stored.inventory = grim_object::persist::snapshot_pack(&pack, ev.actor);
         if let Ok(json) = serde_json::to_string_pretty(&stored) {
             let _ = fs::write(path, json);
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,6 +291,7 @@ mod tests {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
         }
     }
 

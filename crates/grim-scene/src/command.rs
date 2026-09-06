@@ -322,6 +322,7 @@ pub(crate) fn process_command_queue(
     characters: Query<(&GrimName, &Actor, &Character)>,
     persistence: Res<grim_persistence::PersistenceConfig>,
     mut commands: Commands,
+    pack: grim_object::persist::Carried,
 ) {
     for (entity, mut client) in clients.iter_mut() {
         let conn = client.connection;
@@ -347,7 +348,8 @@ pub(crate) fn process_command_queue(
                 // ensuing `ConnectionClosed` finds no client and no linkdead is set.
                 if let Some(char_entity) = client.character {
                     if let Ok((name, actor, ch)) = characters.get(char_entity) {
-                        let stored = StoredCharacter::from_components(name, actor, ch);
+                        let mut stored = StoredCharacter::from_components(name, actor, ch);
+                        stored.inventory = grim_object::persist::snapshot_pack(&pack, char_entity);
                         let path = persistence
                             .characters_dir()
                             .join(format!("{}.json", name.0));
@@ -356,6 +358,15 @@ pub(crate) fn process_command_queue(
                             let _ = std::fs::write(path, json);
                         }
                     }
+                    // The pack went to disk with the character; despawn the live
+                    // objects too, or their `CarriedBy` dangles at this entity.
+                    // They re-spawn from the snapshot on next login.
+                    let held: Vec<Entity> = pack
+                        .iter()
+                        .filter(|(_, _, _, _, _, held)| held.carrier == char_entity)
+                        .map(|(e, _, _, _, _, _)| e)
+                        .collect();
+                    grim_object::persist::unload(&mut commands, held.into_iter());
                     commands.entity(char_entity).despawn();
                 }
                 commands.entity(entity).despawn();

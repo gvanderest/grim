@@ -173,6 +173,7 @@ pub(crate) fn finalize_character(
         level: 1,
         title: None,
         restrings: std::collections::HashMap::new(),
+        inventory: Vec::new(),
     };
     // Save character to disk immediately.
     let path = res

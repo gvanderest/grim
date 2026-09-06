@@ -10,6 +10,7 @@ mod channel_output;
 mod command;
 mod finger;
 mod input;
+mod item_output;
 mod output;
 mod params;
 mod parser;

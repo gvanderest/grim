@@ -43,6 +43,8 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | `equipment` | `handle_ingame` → `tr!("equipment.empty")` (`src/command.rs`) | Dummy: always "You are wearing nothing." (no item system yet). |
 | `get <keyword>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Pick up the best-matching ground object; room sees "<name> picks up <short>". |
 | `drop <keyword>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Drop the best-matching carried object; room sees "<name> drops <short>". |
+| `give <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/give.rs`) | Hand a carried object to a PC here (creatures refuse); mover/other/room each see a named line (`format_transfer_events`). |
+| `steal <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/steal.rs`) | Take a carried object from a being here; same three-way echo. Existence checks only. |
 | `areas` | `handle_ingame` → `format_areas` (`src/command.rs`) | List known areas. |
 | `commands` | `handle_ingame` → `format_commands` (`src/formatter.rs`) | Show the command list. |
 | `help` | `handle_ingame` → `format_commands` (`src/command.rs`) | Alias for `commands` (parser maps `help` → `Command::Commands`). |
@@ -58,9 +60,8 @@ Other verbs (`look`, `move`, `say`, `shutdown`, …) are parsed here then routed
 | `CommandRegistry<Command>` | Resource (built by `command_registry()`) | `src/parser.rs` |
 | `EngineCommand` | Message (emitted to engine) | `src/command.rs` |
 | `ConnectionOutput` | Message (emitted; from `grim-networking`) | `src/output.rs` |
-| `InfoMessage` | Message (consumed → rendered) | `src/output.rs` |
+| `ItemEvent` / `TransferEvent` | Message (consumed → rendered per-recipient) | `src/item_output.rs` (`format_item_events`, `format_transfer_events`, `format_look_pack`) |
 | `LookRoom` / `LookEntity` / `MoveEvent` | Message (consumed → rendered) | `src/output.rs` |
-| `ItemEvent` | Message (consumed → rendered per-recipient) | `src/output.rs` (`format_item_events`) |
 | `SayEvent` / `YellEvent` / `OocEvent` / `GlobalEcho` | Message (consumed → rendered) | `src/output.rs` |
 | `LoginAnnounce` / `LogoutAnnounce` / `LinkdeadAnnounce` | Message (session announces) | `src/output.rs`, `src/command.rs` |
 | `ServerBroadcast` | Message (consumed → rendered) | `src/output.rs` |

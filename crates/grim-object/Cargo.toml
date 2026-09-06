@@ -11,3 +11,4 @@ bevy = { workspace = true, default-features = false }
 
 [dev-dependencies]
 grim-world = { path = "../grim-world" }
+chrono = { workspace = true }

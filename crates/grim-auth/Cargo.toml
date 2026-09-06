@@ -18,6 +18,9 @@ grim-persistence = { path = "../grim-persistence" }
 grim-world = { path = "../grim-world" }
 # Beings (Character/Player/InRoom/Linkdead/OutputHistory) the login/creation flow reads.
 grim-actor = { path = "../grim-actor" }
+# Things the login flow restores into the pack (snapshot lives in the
+# character file; auth → object is allowed, object never depends on auth).
+grim-object = { path = "../grim-object" }
 bevy = { workspace = true, default-features = false }
 chrono = { workspace = true }
 serde_json = { workspace = true }

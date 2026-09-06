@@ -207,6 +207,10 @@ fn spawn_from_disk(
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
     let last = loaded.last_room.clone();
+    // The pack snapshot rides alongside the DTO (not in it — `into_components`
+    // only splits the being parts); re-spawn it carried by the new entity.
+    // Ground listings are untouched, so a seed twin stays on the ground.
+    let inventory = loaded.inventory.clone();
     let (name, actor, character) = loaded.into_components();
     let char_entity = commands
         .spawn((
@@ -221,6 +225,7 @@ fn spawn_from_disk(
             },
         ))
         .id();
+    grim_object::persist::restore(commands, char_entity, &inventory);
     client.character = Some(char_entity);
     client.state = ClientState::MotdPrompt;
     outputs.write(ConnectionOutput {

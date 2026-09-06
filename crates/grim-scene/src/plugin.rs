@@ -7,7 +7,7 @@ use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::prelude::*;
 use grim_core::events::{
     EngineCommand, GlobalEcho, InfoMessage, ItemEvent, LinkdeadAnnounce, LookEntity, LookRoom,
-    MoveEvent, OocEvent, SayEvent, ServerBroadcast, YellEvent,
+    MoveEvent, OocEvent, SayEvent, ServerBroadcast, TransferEvent, YellEvent,
 };
 use grim_core::events::{LoginAnnounce, LogoutAnnounce};
 use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
@@ -15,7 +15,8 @@ use grim_world::{ClassRegistry, RaceRegistry};
 
 use crate::command::process_command_queue;
 use crate::input::handle_ingame_input;
-use crate::output::{capture_output, format_item_events, format_output, format_server_broadcast};
+use crate::item_output::{format_item_events, format_look_pack, format_transfer_events};
+use crate::output::{capture_output, format_output, format_server_broadcast};
 use crate::parser;
 use crate::resume::handle_connection_resumed;
 use crate::session::JustEnteredWorld;
@@ -61,6 +62,7 @@ impl Plugin for ScenePlugin {
             .add_message::<GlobalEcho>()
             .add_message::<MoveEvent>()
             .add_message::<ItemEvent>()
+            .add_message::<TransferEvent>()
             .add_message::<InfoMessage>()
             .add_message::<LoginAnnounce>()
             .add_message::<LogoutAnnounce>()
@@ -74,6 +76,10 @@ impl Plugin for ScenePlugin {
                     process_command_queue,
                     format_output,
                     format_item_events,
+                    format_transfer_events,
+                    // The pack block belongs below the description `format_output`
+                    // just wrote for the same `LookEntity`.
+                    format_look_pack.after(format_output),
                     format_server_broadcast,
                     capture_output,
                 ),

@@ -17,6 +17,7 @@ pub use grim_core::*;
 pub mod prelude;
 pub use grim_actor::{
     Actor, Character, Creature, InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter,
+    StoredObject,
 };
 pub use grim_auth::{AuthPlugin, ReservedNamePrefixes};
 pub use grim_channel::LastWhisperFrom;

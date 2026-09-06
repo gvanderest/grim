@@ -113,6 +113,9 @@ const ALLOWED_NORMAL: &[Edge] = &[
     ("grim-auth", "grim-networking"),
     ("grim-auth", "grim-text"),
     ("grim-auth", "grim-color"),
+    // NOTE (pack persistence): world entry re-spawns the pack snapshot on
+    // login, so auth reads things. grim-object does not depend on grim-auth.
+    ("grim-auth", "grim-object"),
     // ── Gameplay subsystems ────────────────────────────────────────────────────
     // NOTE (divergence #3): §4's diagram routes grim-world / grim-channel through
     // grim-command. Reality: neither depends on grim-command; dispatch is mediated
@@ -166,6 +169,10 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // moved into grim-world), so it now depends on grim-world. grim-world does not
     // depend on grim-persistence, so this adds no cycle.
     ("grim-persistence", "grim-world"),
+    // NOTE (pack persistence): saves snapshot carried objects into the
+    // character file, so persistence reads things. grim-object does not
+    // depend on grim-persistence, so no cycle.
+    ("grim-persistence", "grim-object"),
     // ── Facade + binary ────────────────────────────────────────────────────────
     // NOTE (divergence #4): absent from §4's subsystem diagram. The facade `grim`
     // depends on and re-exports every subsystem (GrimDefaultPlugins, §1/§8 step 9);

@@ -8,6 +8,7 @@ grim-core = { path = "../grim-core" }
 grim-world = { path = "../grim-world" }
 grim-actor = { path = "../grim-actor" }
 grim-networking = { path = "../grim-networking" }
+grim-object = { path = "../grim-object" }
 bevy = { workspace = true, default-features = false }
 serde_json = { workspace = true }
 chrono = { workspace = true }

@@ -6,7 +6,6 @@
 //! the actor layer's [`InRoom`]: an object on the ground carries `InRoom` for
 //! its room, a carried one carries [`CarriedBy`] for its carrier instead —
 //! never both, so room listings (which filter on `InRoom`) never show carried
-//! objects.
 //!
 //! Entity composition: ground = `Object + Name + Keywords + RoomDescription +
 //! InRoom`; carried = the same minus `InRoom`, plus `CarriedBy`.
@@ -14,11 +13,11 @@
 //! It depends on `grim-actor` (for `InRoom` and the shared target ranking) and
 //! never the reverse: beings never know about things.
 //!
-//! Carried objects are memory-only: nothing here persists, so a reboot respawns
-//! the seeded objects and empties every inventory.
-
+//! Carried objects snapshot whole into the character file on save and re-spawn
+//! on login (`persist`); ground objects regenerate from area blueprints.
 pub mod commands;
 pub mod object;
+pub mod persist;
 pub mod plugin;
 
 pub use object::{CarriedBy, Object};

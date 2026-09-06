@@ -978,6 +978,7 @@ dependencies = [
  "grim-color",
  "grim-core",
  "grim-networking",
+ "grim-object",
  "grim-persistence",
  "grim-scene",
  "grim-text",
@@ -1060,6 +1061,7 @@ name = "grim-object"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "chrono",
  "grim-actor",
  "grim-core",
  "grim-text",
@@ -1075,6 +1077,7 @@ dependencies = [
  "grim-actor",
  "grim-core",
  "grim-networking",
+ "grim-object",
  "grim-world",
  "serde_json",
 ]
