@@ -39,6 +39,8 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last). |
 | `sockets` | `handle_ingame` → `format_sockets` (`src/sockets.rs`) | List live connections by id (admin-only; masked as unknown for others). |
 | `where` | `handle_ingame` → `format_where` (`src/command.rs`) | Show where players are located. |
+| `inventory` | `handle_ingame` → `tr!("inventory.empty")` (`src/command.rs`) | Dummy: always "You are carrying nothing." (no item system yet). |
+| `equipment` | `handle_ingame` → `tr!("equipment.empty")` (`src/command.rs`) | Dummy: always "You are wearing nothing." (no item system yet). |
 | `areas` | `handle_ingame` → `format_areas` (`src/command.rs`) | List known areas. |
 | `commands` | `handle_ingame` → `format_commands` (`src/formatter.rs`) | Show the command list. |
 | `help` | `handle_ingame` → `format_commands` (`src/command.rs`) | Alias for `commands` (parser maps `help` → `Command::Commands`). |

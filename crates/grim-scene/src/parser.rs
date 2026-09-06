@@ -170,6 +170,8 @@ fn build_registry() -> CommandRegistry<Command> {
             target: target.to_string(),
         })
     });
+    r.register("inventory", |_| Some(Command::Inventory));
+    r.register("equipment", |_| Some(Command::Equipment));
     r.register("areas", |_| Some(Command::Areas));
     r.register("commands", |_| Some(Command::Commands));
     r.register("help", |_| Some(Command::Commands));
@@ -615,6 +617,19 @@ mod tests {
     fn test_commands_and_help() {
         assert_eq!(parse("commands"), Some(Command::Commands));
         assert_eq!(parse("help"), Some(Command::Commands));
+    }
+    #[test]
+    fn test_inventory_and_equipment() {
+        assert_eq!(parse("inventory"), Some(Command::Inventory));
+        assert_eq!(parse("equipment"), Some(Command::Equipment));
+        // Single `e` still moves east; `eq` reaches equipment unambiguously.
+        assert_eq!(
+            parse("e"),
+            Some(Command::Move {
+                direction: Cardinal::East
+            })
+        );
+        assert_eq!(parse("eq"), Some(Command::Equipment));
     }
 
     // ── Quit ──────────────────────────────────────────────────────

@@ -82,6 +82,9 @@ pub(crate) fn handle_ingame(
                     )
                 });
             }
+            Command::Inventory | Command::Equipment => {
+                answer_dummy(&cmd, conn, outputs);
+            }
             Command::Commands => {
                 outputs.write(ConnectionOutput {
                     echo: None,
@@ -147,6 +150,19 @@ pub(crate) fn handle_ingame(
             ..ConnectionOutput::new(conn, tr!("error.unknown_command"))
         });
     }
+}
+/// Dummy `inventory` / `equipment`: no item system exists yet, so always
+/// report empty. Kept out of `handle_ingame` to hold its line count down.
+fn answer_dummy(cmd: &Command, conn: Entity, outputs: &mut MessageWriter<ConnectionOutput>) {
+    let key = if matches!(cmd, Command::Inventory) {
+        "inventory.empty"
+    } else {
+        "equipment.empty"
+    };
+    outputs.write(ConnectionOutput {
+        echo: None,
+        ..ConnectionOutput::new(conn, tr!(key))
+    });
 }
 
 /// The WHO ordering keys for one online character.
