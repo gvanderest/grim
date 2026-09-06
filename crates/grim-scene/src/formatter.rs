@@ -300,6 +300,8 @@ pub fn format_commands() -> String {
         "l [target]          — Shortcut for look",
         "finger <name>       — Show a character's sheet, online or off",
         "desc [clear|+/-]    — View or edit your description paragraphs",
+        "inventory           — List what you are carrying",
+        "equipment           — List what you are wearing",
         "say <text>          — Speak to everyone in the room",
         "yell <text>         — Shout to everyone in the area",
         "ooc <text>          — Out-of-character global chat",

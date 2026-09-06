@@ -47,6 +47,8 @@ fn default_string(key: &str) -> String {
         "desc.added" => "Line added to your description.\n",
         "desc.removed" => "Last line removed from your description.\n",
         "desc.empty" => "Your description is already empty.\n",
+        "inventory.empty" => "You are carrying nothing.\n",
+        "equipment.empty" => "You are wearing nothing.\n",
         "sockets.empty" => "No connections.\n",
         "sockets.header" => "Sockets connected (%{total}):\n",
         "sockets.row" => "  [%{id}] %{addr} %{state} %{name} (%{account})\n",

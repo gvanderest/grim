@@ -51,6 +51,10 @@ pub enum Command {
     /// (id, address, session state, character, account). Masked as unknown
     /// for non-admins, like the other admin verbs.
     Sockets,
+    /// `inventory` — dummy: always reports empty (no item system yet).
+    Inventory,
+    /// `equipment` — dummy: always reports empty (no item system yet).
+    Equipment,
     /// `commands` — list all registered commands
     Commands,
     /// `areas` — list every area in the world by its slug.
