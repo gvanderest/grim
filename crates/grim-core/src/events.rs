@@ -51,10 +51,15 @@ pub enum Command {
     /// (id, address, session state, character, account). Masked as unknown
     /// for non-admins, like the other admin verbs.
     Sockets,
-    /// `inventory` — dummy: always reports empty (no item system yet).
+    /// `inventory` — list the short names of carried objects.
     Inventory,
     /// `equipment` — dummy: always reports empty (no item system yet).
     Equipment,
+    /// `get <keyword>` — pick up an object in the room (matched by name or
+    /// keyword, same ranking as `look`).
+    Get { target: String },
+    /// `drop <keyword>` — drop a carried object into the room.
+    Drop { target: String },
     /// `commands` — list all registered commands
     Commands,
     /// `areas` — list every area in the world by its slug.
@@ -69,6 +74,27 @@ pub enum Command {
     /// `shutdown <seconds>` — admin-only. Schedules a graceful server shutdown
     /// after a countdown, broadcasting warnings to all connected players.
     Shutdown { seconds: u64 },
+}
+
+/// An object changed hands: picked up from a room or dropped into one.
+/// Rendered per-recipient — the actor sees the first-party line ("You pick
+/// up …"), everyone else in the room the third-party line ("<name> picks
+/// up …"). `actor_name` and `short` are precomputed so renderers need no
+/// lookups.
+#[derive(Message, Debug, Clone, PartialEq)]
+pub struct ItemEvent {
+    pub actor: Entity,
+    pub room: Entity,
+    pub actor_name: String,
+    pub short: String,
+    pub kind: ItemKind,
+}
+
+/// Which way an [`ItemEvent`] moved the object.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ItemKind {
+    Pickup,
+    Drop,
 }
 
 /// The `desc` sub-operation: which self-description edit to apply.

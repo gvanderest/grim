@@ -7,9 +7,10 @@ use grim_actor::{Character, InRoom, OutputHistory, Player};
 use grim_channel::{ChannelMessage, ChannelRegistry};
 use grim_core::components::{Description, Name as GrimName, RoomDescription};
 use grim_core::events::{
-    GlobalEcho, InfoMessage, LookEntity, LookRoom, MoveEvent, ServerBroadcast,
+    GlobalEcho, InfoMessage, ItemEvent, ItemKind, LookEntity, LookRoom, MoveEvent, ServerBroadcast,
 };
 use grim_networking::ConnectionOutput;
+use grim_object::Object;
 use grim_text::tr;
 use grim_world::{Exits, Room};
 
@@ -27,6 +28,7 @@ pub(crate) type Occupants<'w, 's> = Query<
         Option<&'static Player>,
         &'static GrimName,
         Option<&'static RoomDescription>,
+        Option<&'static Object>,
     ),
 >;
 
@@ -109,7 +111,7 @@ fn find_conn(target: Entity, room_occupants: &Occupants) -> Entity {
     room_occupants
         .get(target)
         .ok()
-        .and_then(|(_, _, p, _, _)| p.map(|p| p.connection))
+        .and_then(|(_, _, p, _, _, _)| p.map(|p| p.connection))
         .unwrap_or(target)
 }
 
@@ -133,13 +135,16 @@ fn emit_look_room(
             dirs
         })
         .unwrap_or_default();
-    // Presence lines, one per other being in the room: player characters
-    // (standing line, position-driven once positions exist) sort above
-    // creatures (their long room line, or a plain fallback). Each group
-    // sorts by name so the listing is deterministic.
+    // Presence lines, one per other being — plus one per ground object — in
+    // the room: player characters (standing line, position-driven once
+    // positions exist) sort above creatures (their long room line, or a plain
+    // fallback), with objects (their long room line, or the short name) last.
+    // Each group sorts by name so the listing is deterministic. Objects share
+    // the presence block with no blank line between the groups.
     let mut players: Vec<(String, String)> = Vec::new();
     let mut creatures: Vec<(String, String)> = Vec::new();
-    for (e, ir, _, occ_name, room_line) in room_occupants.iter() {
+    let mut objects: Vec<(String, String)> = Vec::new();
+    for (e, ir, _, occ_name, room_line, is_object) in room_occupants.iter() {
         if ir.room != ev.room || e == ev.target {
             continue;
         }
@@ -148,6 +153,13 @@ fn emit_look_room(
                 occ_name.0.clone(),
                 tr!("room.presence.standing", name = occ_name.0.as_str()),
             ));
+        } else if is_object.is_some() {
+            // Ground only: carried objects have no `InRoom`, so they never
+            // reach this loop.
+            match room_line.filter(|l| !l.0.is_empty()) {
+                Some(line) => objects.push((occ_name.0.clone(), line.0.clone())),
+                None => objects.push((occ_name.0.clone(), occ_name.0.clone())),
+            }
         } else if let Some(line) = room_line.filter(|l| !l.0.is_empty()) {
             creatures.push((occ_name.0.clone(), line.0.clone()));
         } else {
@@ -159,9 +171,11 @@ fn emit_look_room(
     }
     players.sort();
     creatures.sort();
+    objects.sort();
     let presence: Vec<String> = players
         .into_iter()
         .chain(creatures)
+        .chain(objects)
         .map(|(_, line)| line)
         .collect();
     // Admins see the room's ids in the title for building/debugging.
@@ -226,6 +240,41 @@ fn emit_move(
     broadcast_to_room(ev.to, Some(ev.actor), &arrive_msg, room_occupants, outputs);
 }
 
+/// Object pickup/drop: per-recipient render of an [`ItemEvent`]. The actor
+/// sees the first-party line ("You pick up …"); everyone else in the room
+/// sees it attributed ("<name> picks up …"). A separate system from
+/// [`format_output`] because that one is already at Bevy's system-parameter
+/// ceiling.
+pub(crate) fn format_item_events(
+    mut items: MessageReader<ItemEvent>,
+    room_occupants: Occupants,
+    mut outputs: MessageWriter<ConnectionOutput>,
+) {
+    for ev in items.read() {
+        let (first_key, third_key) = match ev.kind {
+            ItemKind::Pickup => ("item.pickup.first", "item.pickup.third"),
+            ItemKind::Drop => ("item.drop.first", "item.drop.third"),
+        };
+        let conn = find_conn(ev.actor, &room_occupants);
+        outputs.write(ConnectionOutput {
+            echo: None,
+            ..ConnectionOutput::new(conn, tr!(first_key, short = ev.short.as_str()))
+        });
+        let third = tr!(
+            third_key,
+            name = ev.actor_name.as_str(),
+            short = ev.short.as_str()
+        );
+        broadcast_to_room(
+            ev.room,
+            Some(ev.actor),
+            &third,
+            &room_occupants,
+            &mut outputs,
+        );
+    }
+}
+
 fn emit_info(
     ev: &InfoMessage,
     room_occupants: &Occupants,
@@ -254,7 +303,7 @@ fn emit_gecho(
     let attributed = sender_name
         .as_deref()
         .map(|n| formatter::format_gecho(Some(n), &ev.text));
-    for (entity, _, player, _, _) in room_occupants.iter() {
+    for (entity, _, player, _, _, _) in room_occupants.iter() {
         let Some(p) = player else {
             continue;
         };
@@ -303,7 +352,7 @@ fn broadcast_to_room(
     occupants: &Occupants,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
-    for (entity, ir, player, _, _) in occupants.iter() {
+    for (entity, ir, player, _, _, _) in occupants.iter() {
         if ir.room != room {
             continue;
         }
@@ -338,7 +387,7 @@ fn broadcast_global(
     occupants: &Occupants,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
-    for (_, _, player, _, _) in occupants.iter() {
+    for (_, _, player, _, _, _) in occupants.iter() {
         if let Some(p) = player {
             outputs.write(ConnectionOutput {
                 prepend_newline: true,

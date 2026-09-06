@@ -302,6 +302,8 @@ pub fn format_commands() -> String {
         "desc [clear|+/-]    — View or edit your description paragraphs",
         "inventory           — List what you are carrying",
         "equipment           — List what you are wearing",
+        "get <keyword>        — Pick up an object in the room",
+        "drop <keyword>       — Drop a carried object",
         "say <text>          — Speak to everyone in the room",
         "yell <text>         — Shout to everyone in the area",
         "ooc <text>          — Out-of-character global chat",

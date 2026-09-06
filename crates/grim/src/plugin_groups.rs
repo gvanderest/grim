@@ -16,6 +16,7 @@ impl bevy::app::PluginGroup for GrimHeadlessPlugins {
             .add(grim_world::WorldPlugin)
             .add(grim_world::ShutdownPlugin)
             .add(ActorPlugin)
+            .add(grim_object::ObjectPlugin)
             .add(grim_channel::ChannelPlugin)
             .add(grim_persistence::PersistencePlugin)
             .add(grim_scene::ScenePlugin)

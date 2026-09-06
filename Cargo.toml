@@ -18,6 +18,7 @@ members = [
     "crates/grim-actor",
     "crates/grim-persistence",
     "crates/grim-channel",
+    "crates/grim-object",
 ]
 
 [workspace.dependencies]

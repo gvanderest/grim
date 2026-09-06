@@ -39,8 +39,10 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last). |
 | `sockets` | `handle_ingame` → `format_sockets` (`src/sockets.rs`) | List live connections by id (admin-only; masked as unknown for others). |
 | `where` | `handle_ingame` → `format_where` (`src/command.rs`) | Show where players are located. |
-| `inventory` | `handle_ingame` → `tr!("inventory.empty")` (`src/command.rs`) | Dummy: always "You are carrying nothing." (no item system yet). |
+| `inventory` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/inventory.rs`) | List carried objects' short names (sorted), or the empty line. |
 | `equipment` | `handle_ingame` → `tr!("equipment.empty")` (`src/command.rs`) | Dummy: always "You are wearing nothing." (no item system yet). |
+| `get <keyword>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Pick up the best-matching ground object; room sees "<name> picks up <short>". |
+| `drop <keyword>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Drop the best-matching carried object; room sees "<name> drops <short>". |
 | `areas` | `handle_ingame` → `format_areas` (`src/command.rs`) | List known areas. |
 | `commands` | `handle_ingame` → `format_commands` (`src/formatter.rs`) | Show the command list. |
 | `help` | `handle_ingame` → `format_commands` (`src/command.rs`) | Alias for `commands` (parser maps `help` → `Command::Commands`). |
@@ -58,6 +60,7 @@ Other verbs (`look`, `move`, `say`, `shutdown`, …) are parsed here then routed
 | `ConnectionOutput` | Message (emitted; from `grim-networking`) | `src/output.rs` |
 | `InfoMessage` | Message (consumed → rendered) | `src/output.rs` |
 | `LookRoom` / `LookEntity` / `MoveEvent` | Message (consumed → rendered) | `src/output.rs` |
+| `ItemEvent` | Message (consumed → rendered per-recipient) | `src/output.rs` (`format_item_events`) |
 | `SayEvent` / `YellEvent` / `OocEvent` / `GlobalEcho` | Message (consumed → rendered) | `src/output.rs` |
 | `LoginAnnounce` / `LogoutAnnounce` / `LinkdeadAnnounce` | Message (session announces) | `src/output.rs`, `src/command.rs` |
 | `ServerBroadcast` | Message (consumed → rendered) | `src/output.rs` |

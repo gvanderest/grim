@@ -184,6 +184,21 @@ fn build_registry() -> CommandRegistry<Command> {
     });
     r.register("quit", |_| Some(Command::Quit));
     r.register("exit", |_| Some(Command::Quit));
+    // `get <keyword>` / `drop <keyword>` — need a target, so a bare `get` or
+    // `drop` is unknown. Registered before the admin verbs so the `ge` prefix
+    // still resolves to `gecho` (later registrations win prefix ties).
+    r.register("get", |rest| {
+        let target = rest.trim();
+        (!target.is_empty()).then(|| Command::Get {
+            target: target.to_string(),
+        })
+    });
+    r.register("drop", |rest| {
+        let target = rest.trim();
+        (!target.is_empty()).then(|| Command::Drop {
+            target: target.to_string(),
+        })
+    });
 
     // ── Admin ────────────────────────────────────────────────────
     // `shutdown [seconds]` — defaults to 30s when no/invalid count given.
@@ -630,6 +645,49 @@ mod tests {
             })
         );
         assert_eq!(parse("eq"), Some(Command::Equipment));
+    }
+
+    // ── Get / drop ──────────────────────────────────────────────────
+    #[test]
+    fn test_get_and_drop_need_targets() {
+        assert_eq!(
+            parse("get lantern"),
+            Some(Command::Get {
+                target: "lantern".into()
+            })
+        );
+        assert_eq!(
+            parse("drop lantern"),
+            Some(Command::Drop {
+                target: "lantern".into()
+            })
+        );
+        assert_eq!(parse("get"), None);
+        assert_eq!(parse("drop"), None);
+    }
+
+    #[test]
+    fn test_ge_still_reaches_gecho_and_g_reaches_goto() {
+        // `get` registers before the admin verbs, so the `ge` prefix keeps
+        // resolving to `gecho` (later registrations win prefix ties).
+        assert_eq!(
+            parse("gecho hello"),
+            Some(Command::Gecho {
+                text: "hello".into()
+            })
+        );
+        assert_eq!(
+            parse("ge hello"),
+            Some(Command::Gecho {
+                text: "hello".into()
+            })
+        );
+        assert_eq!(
+            parse("g square"),
+            Some(Command::Goto {
+                target: "square".into()
+            })
+        );
     }
 
     // ── Quit ──────────────────────────────────────────────────────

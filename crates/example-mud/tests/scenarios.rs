@@ -150,6 +150,53 @@ fn movement_walks_between_seeded_rooms() {
 }
 
 #[test]
+fn objects_can_be_picked_up_listed_and_dropped() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+
+    // Empty hands report nothing carried.
+    mud.send(alice, "inventory")
+        .assert_contains("You are carrying nothing.");
+
+    // The seeded lantern lists under the room description.
+    let room = mud.send(alice, "look");
+    let body = room.text();
+    let grimmok = body
+        .find("Grimmok Ironhand stands here, hammering metal.")
+        .expect("creature line");
+    let lantern = body
+        .find("A brass lantern rests here, its glass dusty but intact.")
+        .expect("object line");
+    assert!(grimmok < lantern, "objects list under creatures");
+
+    // Pickup: actor sees first-party, the room sees third-party.
+    mud.send(alice, "get lantern")
+        .assert_contains("You pick up brass lantern");
+    mud.recv(bob)
+        .assert_contains("Alice picks up brass lantern");
+
+    // Carried now: inventory lists the short, the room no longer shows it.
+    mud.send(alice, "inventory")
+        .assert_contains("You are carrying:")
+        .assert_contains("brass lantern");
+    mud.send(alice, "look")
+        .assert_excludes("brass lantern rests here");
+    // A second pickup misses: it is in Alice's hands, not the room.
+    mud.send(alice, "get lantern")
+        .assert_contains("You don't see that here.");
+
+    // Drop reverses the words for both sides, and the lantern is back.
+    mud.send(alice, "drop lantern")
+        .assert_contains("You drop brass lantern");
+    mud.recv(bob).assert_contains("Alice drops brass lantern");
+    mud.send(alice, "look")
+        .assert_contains("A brass lantern rests here, its glass dusty but intact.");
+    mud.send(alice, "drop lantern")
+        .assert_contains("You aren't carrying that.");
+}
+
+#[test]
 fn speech_is_heard_by_others_in_the_room() {
     let mut mud = Mud::new();
     let alice = create_char(&mut mud, "alice@example.com", "Alice");

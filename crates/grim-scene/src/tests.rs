@@ -12,6 +12,7 @@ use grim_channel::{Channel, ChannelMessage, ChannelPlugin};
 use grim_core::components::Name as GrimName;
 use grim_core::components::*;
 use grim_core::events::*;
+use grim_object::{CarriedBy, Object};
 // Explicit named import shadows the glob'd `bevy::prelude::Command` trait.
 use grim_core::events::Command;
 use grim_core::GrimId;
@@ -748,6 +749,77 @@ mod output_format {
         assert!(
             goblin_at < grimmok_at,
             "creatures sort by name; got:\n{text}"
+        );
+    }
+
+    // ── look_room presence lines: objects below creatures, no blank line ──
+    #[test]
+    fn look_room_lists_objects_below_creatures() {
+        use grim_actor::Creature;
+
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let viewer = spawn_ingame(&mut app, conn, make_character(Vec::new()));
+        app.world_mut().entity_mut(viewer).insert(InRoom { room });
+        app.world_mut().spawn((
+            GrimName("Grimmok Ironhand".into()),
+            Creature,
+            RoomDescription("Grimmok Ironhand stands here, hammering metal.".into()),
+            InRoom { room },
+        ));
+        app.world_mut().spawn((
+            Object,
+            GrimName("brass lantern".into()),
+            RoomDescription("A brass lantern rests here.".into()),
+            InRoom { room },
+        ));
+        // Carried objects never list, even held by someone in the room.
+        app.world_mut().spawn((
+            Object,
+            GrimName("coin".into()),
+            RoomDescription("A coin glints.".into()),
+            CarriedBy { carrier: viewer },
+        ));
+
+        app.world_mut().write_message(LookRoom {
+            target: viewer,
+            room,
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let text: String = cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn)
+            .map(|o| o.text.clone())
+            .collect();
+        let creature_at = text
+            .find("Grimmok Ironhand stands here, hammering metal.")
+            .expect("creature line");
+        let object_at = text
+            .find("A brass lantern rests here.")
+            .expect("object line");
+        assert!(
+            creature_at < object_at,
+            "objects list under creatures; got:\n{text}"
+        );
+        assert!(
+            text.contains("hammering metal.\nA brass lantern rests here."),
+            "no blank line between creatures and objects; got:\n{text}"
+        );
+        assert!(
+            !text.contains("coin"),
+            "carried objects never list; got:\n{text}"
         );
     }
 

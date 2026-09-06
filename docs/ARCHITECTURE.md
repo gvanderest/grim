@@ -136,6 +136,7 @@ plugin registering five scenes. That is correct and not a violation.
 | `grim-world` | `WorldPlugin` (+ `ShutdownPlugin`) | rooms, areas, exits, room-address lookups, `RoomLocation` (being-free) |
 | `grim-actor` | `ActorPlugin` | the beings — `Actor` base + PC `Character` + `Creature` mob marker + `Player`/`InRoom`/… and the `StoredCharacter` disk DTO — plus the being-reading verbs (`look`/`move`/`goto`/`quit`/`title`/`shutdown`) |
 | `grim-channel` | `ChannelPlugin` | channel registry, audience, eligibility (§7) |
+| `grim-object` | `ObjectPlugin` | things — `Object` marker + `CarriedBy` carrier link and the carrying verbs (`get`/`drop`/`inventory`); sits above `grim-actor`, never the reverse |
 | `grim-persistence` | `PersistencePlugin` | account/character save and load, player aliases, channel toggles |
 | `grim` | — | facade: re-exports and the D&D default plugin group (`GrimDefaultPlugins`) |
 | `example-mud` | *binary* | composition and world seed |
@@ -164,6 +165,10 @@ pre-game phase layered on the session core and dispatches no in-game commands.
 owns the room topology, not who stands in it — so the actor layer depends on it
 while `grim-channel`, `grim-persistence`, `grim-networking-telnet`, and
 `grim-scene` in turn depend on `grim-actor` for the being types.
+
+`grim-object` (things + carrying verbs) sits **above** `grim-actor`:
+`grim-object ──> grim-actor`, never the reverse — and `grim-scene` depends on
+it for the `Object` room-listing marker and `ItemEvent` rendering.
 
 ---
 

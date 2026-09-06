@@ -82,8 +82,13 @@ pub(crate) fn handle_ingame(
                     )
                 });
             }
-            Command::Inventory | Command::Equipment => {
-                answer_dummy(&cmd, conn, outputs);
+            // `equipment` stays a dummy (no worn-items system yet); `inventory`
+            // is a real engine verb now and falls into the queue arm below.
+            Command::Equipment => {
+                outputs.write(ConnectionOutput {
+                    echo: None,
+                    ..ConnectionOutput::new(conn, tr!("equipment.empty"))
+                });
             }
             Command::Commands => {
                 outputs.write(ConnectionOutput {
@@ -151,20 +156,6 @@ pub(crate) fn handle_ingame(
         });
     }
 }
-/// Dummy `inventory` / `equipment`: no item system exists yet, so always
-/// report empty. Kept out of `handle_ingame` to hold its line count down.
-fn answer_dummy(cmd: &Command, conn: Entity, outputs: &mut MessageWriter<ConnectionOutput>) {
-    let key = if matches!(cmd, Command::Inventory) {
-        "inventory.empty"
-    } else {
-        "equipment.empty"
-    };
-    outputs.write(ConnectionOutput {
-        echo: None,
-        ..ConnectionOutput::new(conn, tr!(key))
-    });
-}
-
 /// The WHO ordering keys for one online character.
 struct WhoKey {
     is_admin: bool,

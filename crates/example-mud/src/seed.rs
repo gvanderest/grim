@@ -24,7 +24,7 @@ use bevy::log::{error, warn};
 use bevy::prelude::*;
 use grim::prelude::{
     Actor, Area, Cardinal, Creature, Description, Exits, Gender, GrimId, InRoom, Keywords,
-    Name as GrimName, Room, RoomDescription, StartingRoom,
+    Name as GrimName, Object, Room, RoomDescription, StartingRoom,
 };
 use serde::Deserialize;
 
@@ -71,6 +71,8 @@ struct RoomBlueprint {
     exits: HashMap<String, GrimId>,
     #[serde(default)]
     npcs: Vec<NpcBlueprint>,
+    #[serde(default)]
+    objects: Vec<ObjectBlueprint>,
 }
 
 /// A non-player character placed in a room.
@@ -84,6 +86,22 @@ struct NpcBlueprint {
     keywords: Vec<String>,
     /// Room-listing line shown under the room description. Empty falls back
     /// to `"<name> is here."`.
+    #[serde(default)]
+    room_description: String,
+}
+
+/// A pickable object placed in a room.
+#[derive(Deserialize)]
+struct ObjectBlueprint {
+    /// Short name: inventory rows, pickup lines, `get`/`drop` name matching.
+    name: String,
+    /// Look paragraphs (`look <name>` shows them newline-joined).
+    description: Vec<String>,
+    /// Extra `get <keyword>` words (matched case-insensitively).
+    #[serde(default)]
+    keywords: Vec<String>,
+    /// Long room-listing line shown under the creatures. Empty falls back to
+    /// the short name.
     #[serde(default)]
     room_description: String,
 }
@@ -244,6 +262,16 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
                 InRoom { room: from },
             ));
         }
+        for obj in &r.objects {
+            commands.spawn((
+                Object,
+                GrimName(obj.name.clone()),
+                Description(obj.description.clone()),
+                Keywords(obj.keywords.clone()),
+                RoomDescription(obj.room_description.clone()),
+                InRoom { room: from },
+            ));
+        }
     }
 
     bp.starting_room
@@ -253,6 +281,7 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use grim::prelude::CarriedBy;
 
     /// The repo's committed area blueprints, resolved from this crate's manifest
     /// dir so the test works regardless of the process working directory.
@@ -345,6 +374,43 @@ mod tests {
             lines.iter(app.world()).next().unwrap().0,
             "Grimmok Ironhand stands here, hammering metal."
         );
+    }
+
+    #[test]
+    fn seed_spawns_blueprint_objects_in_their_room() {
+        let mut app = App::new();
+        app.insert_resource(AreaBlueprintDir(areas_dir()));
+        app.add_systems(Startup, seed_world);
+        app.update();
+
+        // The tavern's brass lantern: short name, keywords, long room line,
+        // placed in the tavern with no carrier.
+        let mut objects = app.world_mut().query::<(
+            Entity,
+            &Object,
+            &GrimName,
+            &Keywords,
+            &RoomDescription,
+            &InRoom,
+        )>();
+        let found: Vec<(String, Vec<String>, String, Entity)> = objects
+            .iter(app.world())
+            .map(|(_, _, nm, kw, line, ir)| (nm.0.clone(), kw.0.clone(), line.0.clone(), ir.room))
+            .collect();
+        assert_eq!(found.len(), 1);
+        let (name, keywords, line, room) = &found[0];
+        assert_eq!(name, "brass lantern");
+        assert!(keywords.contains(&"lantern".to_string()));
+        assert_eq!(
+            line,
+            "A brass lantern rests here, its glass dusty but intact."
+        );
+        assert_eq!(
+            app.world().get::<Room>(*room).unwrap().friendly_id,
+            "tavern"
+        );
+        let mut carried = app.world_mut().query::<&CarriedBy>();
+        assert!(carried.iter(app.world()).next().is_none());
     }
 
     #[test]

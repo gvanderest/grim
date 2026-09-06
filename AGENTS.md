@@ -32,6 +32,7 @@ deferred (ARCHITECTURE.md §8). See CONTEXT.md.
 | `grim-world` | Being-free world topology (rooms/areas/exits + room-address lookups + `RoomLocation`); `WorldPlugin` (world-event vocabulary) + `ShutdownPlugin` (SIGTERM signal + countdown machinery). Also owns race/class registries |
 | `grim-actor` | The "beings": `Actor` base (race/level/gender, on every being) + PC-only `Character` (account/roles/class/title/restrings/last_room) + `Creature` mob marker + `Player`/`InRoom`/`Linkdead`/`OutputHistory`/`Role`, plus the `StoredCharacter` flat disk DTO. Names live in the `Name` component. Being-reading verbs (`look`/`move`/`goto`/`quit`/`title` + admin `shutdown` gate). `ActorPlugin`. Depends on `grim-world`, never the reverse |
 | `grim-channel` | `ChannelPlugin`: say/yell/ooc handlers |
+| `grim-object` | Things: `Object` marker + `CarriedBy` carrier link (ground = `InRoom`, carried = `CarriedBy`, never both) + carrying verbs (`get`/`drop`/`inventory`, `ItemEvent` fact rendered per-recipient by `grim-scene`). `ObjectPlugin`. Depends on `grim-actor`, never the reverse |
 | `grim-persistence` | `PersistencePlugin`: account/character load + save-on-disconnect |
 | `grim` | Facade: depends on and re-exports every subsystem; `GrimDefaultPlugins` group. No code of its own |
 | `example-mud` | Binary (`crates/example-mud`): `GrimDefaultPlugins` + world seed |

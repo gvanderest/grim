@@ -90,6 +90,10 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // grim-scene for output formatting and per-recipient broadcast. grim-scene reads
     // ChannelMessage to determine audience and format messages using channel config.
     ("grim-scene", "grim-channel"),
+    // NOTE (objects): the session renders things — room listings read the
+    // `Object` marker and `format_item_events` renders `ItemEvent`. grim-object
+    // does not depend on grim-scene, so no cycle.
+    ("grim-scene", "grim-object"),
     // ── Pre-game / auth ─────────────────────────────────────────────────────────
     // NOTE (Phase 2b): grim-auth owns the login / account-creation /
     // character-select / MOTD flow extracted from grim-scene. It is the pre-game
@@ -143,6 +147,13 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // depends on grim-world. grim-world does not depend on grim-channel, so this
     // adds no cycle.
     ("grim-channel", "grim-world"),
+    // NOTE (objects): grim-object owns things (Object/CarriedBy + get/drop/
+    // inventory). It reads being placement (grim-actor's InRoom) and renders
+    // through the catalog (grim-text) plus the god-types node. grim-actor does
+    // not depend on grim-object, so no cycle.
+    ("grim-object", "grim-core"),
+    ("grim-object", "grim-actor"),
+    ("grim-object", "grim-text"),
     // `grim-persistence` loads/saves accounts + characters (→ god-types) and reacts
     // to connection lifecycle events (→ grim-networking).
     ("grim-persistence", "grim-core"),
@@ -168,6 +179,9 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // NOTE (Phase 2b): the facade re-exports grim-auth (AuthPlugin +
     // ReservedNamePrefixes) and adds AuthPlugin to the default plugin groups.
     ("grim", "grim-auth"),
+    // NOTE (objects): the facade re-exports Object/CarriedBy/ObjectPlugin and
+    // adds ObjectPlugin to the default plugin groups.
+    ("grim", "grim-object"),
     ("grim", "grim-world"),
     // NOTE (Placement Phase 2a step 2): the facade re-exports the actor beings +
     // ActorPlugin and adds ActorPlugin to GrimDefaultPlugins.
@@ -194,6 +208,9 @@ const ALLOWED_DEV: &[Edge] = &[
     // to exercise the full login → in-game loop (mirrors grim-scene's harness).
     // DEV-only; a normal edge here would be a coupling regression.
     ("grim-auth", "grim-channel"),
+    // NOTE (objects): grim-object's plugin test composes WorldPlugin (message
+    // home of the verbs it emits). DEV-only.
+    ("grim-object", "grim-world"),
 ];
 
 /// Read the workspace graph and return internal edges split by kind: `(normal, dev)`.

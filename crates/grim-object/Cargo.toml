@@ -1,0 +1,13 @@
+[package]
+name = "grim-object"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+grim-core = { path = "../grim-core" }
+grim-actor = { path = "../grim-actor" }
+grim-text = { path = "../grim-text" }
+bevy = { workspace = true, default-features = false }
+
+[dev-dependencies]
+grim-world = { path = "../grim-world" }
