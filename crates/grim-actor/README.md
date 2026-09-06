@@ -39,7 +39,8 @@ creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the
 | System | Schedule | File | Purpose |
 |---|---|---|---|
 | `look::handle_look` | `Update` | `src/commands/look.rs` | Reads `Command::Look`; emits `LookRoom` (no target) or `LookEntity`, else a "not here" `InfoMessage`. Ranking: `self`, exact name, exact keyword, shortest prefix name. |
-| `desc::handle_desc` | `Update` | `src/commands/desc.rs` | Reads `Command::Desc`; views/edits the actor's own `Description` paragraphs (`Show` reuses `LookEntity` on self). |
+| `desc::handle_desc` | `Update` | `src/commands/desc.rs` | Reads `Command::Desc`; views/edits the actor's own `Description` paragraphs (`Show` reuses `LookEntity` on self; `Edit` emits `OpenEditor` preloaded). |
+| `desc::handle_editor_done` | `Update` | `src/commands/desc.rs` | Reads `EditorDone` for `EditorKind::Description`; replaces the actor's paragraphs on `@save`, confirms the discard on `@exit`. |
 | `movement::handle_move` | `Update` | `src/commands/movement.rs` | Reads `Command::Move`; walks an exit, refreshes `last_room`, emits `MoveEvent` + auto-look. |
 | `movement::handle_goto` | `Update` | `src/commands/movement.rs` | Admin teleport to a room by address (entity/grim id/slug, `area:room`). |
 | `quit::handle_quit` | `Update` | `src/commands/quit.rs` | Reads `Command::Quit`; emits `DisconnectRequest` for the player's connection. |
@@ -52,7 +53,7 @@ Player-facing verbs and where to find their handlers.
 | Command | Handler | Summary |
 |---|---|---|
 | `look [target]` | `src/commands/look.rs` | Describe the current room, or a named entity within it (`self` = you; exact name beats prefix, shortest prefix name wins). |
-| `desc [clear\|+\|-]` | `src/commands/desc.rs` | View or edit your description paragraphs (`clear` empties, `+ <line>` appends, `-` drops the last). |
+| `desc [clear\|+\|-\|edit]` | `src/commands/desc.rs` | View or edit your description paragraphs (`clear` empties, `+ <line>` appends, `-` drops the last, `edit` opens the line editor). |
 | `move` — `n`/`e`/`s`/`w`/`u`/`d` (+ `north`…) | `src/commands/movement.rs` | Walk through an exit; emits `MoveEvent`. Direction aliases parsed in `grim-scene`. |
 | `goto <address>` | `src/commands/movement.rs` | Admin teleport to a room by address. |
 | `quit` | `src/commands/quit.rs` | Request a clean disconnect (save + despawn happen in `grim-scene`). |
@@ -67,6 +68,7 @@ Player-facing verbs and where to find their handlers.
 | `InfoMessage` | Message (output, from `grim-core`) | `look`/`desc`/`movement`/`title`/`shutdown` |
 | `LookRoom` / `LookEntity` / `MoveEvent` | Message (world-happening events, **registered by `grim_world::WorldPlugin`**) | emitted by `look`/`movement`/`desc` (`Show`) |
 | `DisconnectRequest` | Message (from `grim-networking`) | `src/commands/quit.rs` |
+| `OpenEditor` / `EditorDone` | Message (output/input, from `grim-core`) | `desc` (`Edit` opens preloaded; `handle_editor_done` applies `@save`) |
 | `ServerBroadcast` | Message (**registered by `grim_world::ShutdownPlugin`**) | `src/commands/shutdown.rs` |
 
 ## Types

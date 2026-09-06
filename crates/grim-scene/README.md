@@ -18,6 +18,7 @@ by `grim-auth`.
 | `InGameScene` | `src/scene_stack.rs` | Marker on the scene entity topping an in-world session. Missing/empty stack reads as not-in-game (fail closed). |
 | `Client` | (`grim-core::components`) | Per-connection session state; consumed here, defined upstream. |
 | `ClientState` | (`grim-core::components`) | Login/creation/in-game state machine; the in-game arm drives this crate, the pre-game arms drive `grim-auth`. Still the pre-game driver — the stack mirrors only world entry until ADR-0003 lands fully. |
+| `EditorSession` | `src/editor.rs` | Modal line-editor state on a session (character, kind, buffer). Present exactly while editing; input routes here instead of the parser. |
 
 ## Systems
 
@@ -28,12 +29,13 @@ by `grim-auth`.
 | `format_output` | `Update` | `src/output.rs` | Renders domain events per-recipient into `ConnectionOutput`. |
 | `format_server_broadcast` | `Update` | `src/output.rs` | Renders `ServerBroadcast` (e.g. shutdown warnings) to all sessions. |
 | `capture_output` | `Update` | `src/output.rs` | Collects output for flushing to connections. |
+| `open_editor` | `Update` | `src/editor.rs` | Attaches `EditorSession` on `OpenEditor` and shows the numbered entry view. |
 
 ## Commands
 Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **session-locally** in `src/command.rs` (they never reach the engine queue).
 
 | Command | Handler | Summary |
-|---|---|---|
+| `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last, `edit` opens the line editor). |
 | `who` | `handle_ingame` → `format_who` (`src/command.rs`) | List online characters (admins first, then level/connect/name). |
 | `finger <name>` | `handle_ingame` → `finger::format` (`src/finger.rs`) | Character sheet (name/level/gender/race/class + description), online or off-disk. |
 | `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last). |
@@ -61,6 +63,7 @@ Other verbs (`look`, `move`, `say`, `shutdown`, …) are parsed here then routed
 | `EngineCommand` | Message (emitted to engine) | `src/command.rs` |
 | `ConnectionOutput` | Message (emitted; from `grim-networking`) | `src/output.rs` |
 | `ItemEvent` / `TransferEvent` | Message (consumed → rendered per-recipient) | `src/item_output.rs` (`format_item_events`, `format_transfer_events`, `format_look_pack`) |
+| `OpenEditor` / `EditorDone` | Message (consumed/emitted; the editor callback) | `src/editor.rs` (`open_editor`, `handle_editor_line`) |
 | `LookRoom` / `LookEntity` / `MoveEvent` | Message (consumed → rendered) | `src/output.rs` |
 | `SayEvent` / `YellEvent` / `OocEvent` / `GlobalEcho` | Message (consumed → rendered) | `src/output.rs` |
 | `LoginAnnounce` / `LogoutAnnounce` / `LinkdeadAnnounce` | Message (session announces) | `src/output.rs`, `src/command.rs` |

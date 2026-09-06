@@ -299,7 +299,7 @@ pub fn format_commands() -> String {
         "look [target]       — Look at the room or a specific target",
         "l [target]          — Shortcut for look",
         "finger <name>       — Show a character's sheet, online or off",
-        "desc [clear|+/-]    — View or edit your description paragraphs",
+        "desc [clear|+/-/edit] — View or edit your description paragraphs",
         "inventory / inv       — List what you are carrying",
         "equipment           — List what you are wearing",
         "get <keyword>        — Pick up an object in the room",
