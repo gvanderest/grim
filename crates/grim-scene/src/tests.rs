@@ -12,6 +12,7 @@ use grim_channel::{Channel, ChannelMessage, ChannelPlugin};
 use grim_core::components::Name as GrimName;
 use grim_core::components::*;
 use grim_core::events::*;
+use grim_object::{CarriedBy, Object};
 // Explicit named import shadows the glob'd `bevy::prelude::Command` trait.
 use grim_core::events::Command;
 use grim_core::GrimId;
@@ -111,6 +112,7 @@ fn make_character(roles: Vec<Role>) -> StoredCharacter {
         level: 1,
         title: None,
         restrings: std::collections::HashMap::new(),
+        inventory: Vec::new(),
     }
 }
 
@@ -301,6 +303,7 @@ mod output_format {
                 level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
+                inventory: Vec::new(),
             }
             .into_components();
             (
@@ -328,6 +331,7 @@ mod output_format {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
         }
         .into_components();
         let _normal = app.world_mut().spawn((
@@ -679,6 +683,168 @@ mod output_format {
         );
     }
 
+    // ── transfer events: mover / other / room all see named lines ──
+    #[test]
+    fn format_transfer_events_echoes_all_parties() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let mk_conn = |app: &mut App, id: usize| {
+            app.world_mut()
+                .spawn(Connection {
+                    id,
+                    addr: "127.0.0.1:12345".parse().unwrap(),
+                    echo_hidden: false,
+                })
+                .id()
+        };
+        let mover_conn = mk_conn(&mut app, 1);
+        let other_conn = mk_conn(&mut app, 2);
+        let watcher_conn = mk_conn(&mut app, 3);
+        let mover = app
+            .world_mut()
+            .spawn((
+                GrimName("Alice".into()),
+                InRoom { room },
+                Player {
+                    connection: mover_conn,
+                },
+            ))
+            .id();
+        let (_bob_name, bob_actor, bob_char) = make_character(Vec::new()).into_components();
+        let other = app
+            .world_mut()
+            .spawn((
+                GrimName("Bob".into()),
+                bob_actor,
+                bob_char,
+                InRoom { room },
+                Player {
+                    connection: other_conn,
+                },
+            ))
+            .id();
+        app.world_mut().spawn((
+            GrimName("Cara".into()),
+            InRoom { room },
+            Player {
+                connection: watcher_conn,
+            },
+        ));
+
+        for kind in [TransferKind::Give, TransferKind::Steal] {
+            app.world_mut().write_message(TransferEvent {
+                mover,
+                mover_name: "Alice".into(),
+                other,
+                other_name: "Bob".into(),
+                room,
+                short: "brass lantern".into(),
+                kind,
+            });
+        }
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let mut by_conn: std::collections::HashMap<Entity, String> =
+            std::collections::HashMap::new();
+        for o in cursor.read(msgs) {
+            by_conn.entry(o.connection).or_default().push_str(&o.text);
+        }
+        let mover_text = &by_conn[&mover_conn];
+        assert!(
+            mover_text.contains("You give brass lantern to Bob"),
+            "mover give line; got:\n{mover_text}"
+        );
+        assert!(
+            mover_text.contains("You steal brass lantern from Bob"),
+            "mover steal line; got:\n{mover_text}"
+        );
+        let other_text = &by_conn[&other_conn];
+        assert!(
+            other_text.contains("Alice gives you brass lantern"),
+            "recipient line; got:\n{other_text}"
+        );
+        assert!(
+            other_text.contains("Alice steals your brass lantern"),
+            "victim line; got:\n{other_text}"
+        );
+        let watcher_text = &by_conn[&watcher_conn];
+        assert!(
+            watcher_text.contains("Alice gives brass lantern to Bob"),
+            "room give line; got:\n{watcher_text}"
+        );
+        assert!(
+            watcher_text.contains("Alice steals brass lantern from Bob"),
+            "room steal line; got:\n{watcher_text}"
+        );
+    }
+
+    // ── look pack: beings show inventory below the description ──
+    #[test]
+    fn look_shows_subject_pack_below_description() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let viewer = spawn_ingame(&mut app, conn, make_character(Vec::new()));
+        app.world_mut().entity_mut(viewer).insert(InRoom { room });
+        let mut bob = make_character(Vec::new());
+        bob.name = "Bob".into();
+        let (bob_name, bob_actor, bob_char) = bob.into_components();
+        let bob_entity = app
+            .world_mut()
+            .spawn((
+                bob_name,
+                bob_actor,
+                bob_char,
+                Description(vec!["A sturdy warrior.".into()]),
+                InRoom { room },
+            ))
+            .id();
+        app.world_mut().spawn((
+            Object,
+            GrimName("brass lantern".into()),
+            CarriedBy {
+                carrier: bob_entity,
+            },
+        ));
+
+        app.world_mut().write_message(LookEntity {
+            target: viewer,
+            subject: bob_entity,
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let mine: Vec<(bool, String)> = cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn)
+            .map(|o| (o.prepend_newline, o.text.clone()))
+            .collect();
+        assert_eq!(mine.len(), 2, "description plus pack; got:\n{mine:?}");
+        assert!(
+            mine[0].1.contains("A sturdy warrior."),
+            "description first; got:\n{mine:?}"
+        );
+        // `prepend_newline` renders as the blank line on the wire (see
+        // `render_output`): the pack block lands below the description.
+        assert!(mine[1].0, "pack block is wire-separated; got:\n{mine:?}");
+        assert!(
+            mine[1].1.contains("Bob is carrying:\n  brass lantern"),
+            "pack listing; got:\n{mine:?}"
+        );
+    }
+
     // ── look_room presence lines: players above creatures, sorted ──
     #[test]
     fn look_room_lists_players_above_creatures() {
@@ -748,6 +914,77 @@ mod output_format {
         assert!(
             goblin_at < grimmok_at,
             "creatures sort by name; got:\n{text}"
+        );
+    }
+
+    // ── look_room presence lines: objects below creatures, no blank line ──
+    #[test]
+    fn look_room_lists_objects_below_creatures() {
+        use grim_actor::Creature;
+
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let viewer = spawn_ingame(&mut app, conn, make_character(Vec::new()));
+        app.world_mut().entity_mut(viewer).insert(InRoom { room });
+        app.world_mut().spawn((
+            GrimName("Grimmok Ironhand".into()),
+            Creature,
+            RoomDescription("Grimmok Ironhand stands here, hammering metal.".into()),
+            InRoom { room },
+        ));
+        app.world_mut().spawn((
+            Object,
+            GrimName("brass lantern".into()),
+            RoomDescription("A brass lantern rests here.".into()),
+            InRoom { room },
+        ));
+        // Carried objects never list, even held by someone in the room.
+        app.world_mut().spawn((
+            Object,
+            GrimName("coin".into()),
+            RoomDescription("A coin glints.".into()),
+            CarriedBy { carrier: viewer },
+        ));
+
+        app.world_mut().write_message(LookRoom {
+            target: viewer,
+            room,
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let text: String = cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn)
+            .map(|o| o.text.clone())
+            .collect();
+        let creature_at = text
+            .find("Grimmok Ironhand stands here, hammering metal.")
+            .expect("creature line");
+        let object_at = text
+            .find("A brass lantern rests here.")
+            .expect("object line");
+        assert!(
+            creature_at < object_at,
+            "objects list under creatures; got:\n{text}"
+        );
+        assert!(
+            text.contains("hammering metal.\nA brass lantern rests here."),
+            "no blank line between creatures and objects; got:\n{text}"
+        );
+        assert!(
+            !text.contains("coin"),
+            "carried objects never list; got:\n{text}"
         );
     }
 

@@ -85,7 +85,7 @@ fn find_subject(
 /// Rank one in-room name against `want`: exact name (0), exact keyword (1),
 /// or prefix (2, shortest name then alphabetical). `None` when neither the
 /// name nor any keyword touches `want`.
-fn rank_target(name: &str, kw: Option<&Keywords>, want: &str) -> Option<(u8, usize, String)> {
+pub fn rank_target(name: &str, kw: Option<&Keywords>, want: &str) -> Option<(u8, usize, String)> {
     let lower = name.to_lowercase();
     if lower == want {
         return Some((0, 0, String::new()));

@@ -45,6 +45,17 @@ fn parse_tell(rest: &str) -> Option<Command> {
     })
 }
 
+/// Split `<item> <target>` for `give`/`steal`: the item is the first word,
+/// the being everything after it. Both parts required.
+fn split_transfer(rest: &str) -> Option<(String, String)> {
+    let (item, target) = rest.split_once(' ')?;
+    let (item, target) = (item.trim(), target.trim());
+    if item.is_empty() || target.is_empty() {
+        return None;
+    }
+    Some((item.to_string(), target.to_string()))
+}
+
 #[allow(clippy::too_many_lines)] // reason: flat command-registration list
 fn build_registry() -> CommandRegistry<Command> {
     let mut r = CommandRegistry::new();
@@ -172,6 +183,8 @@ fn build_registry() -> CommandRegistry<Command> {
     });
     r.register("inventory", |_| Some(Command::Inventory));
     r.register("equipment", |_| Some(Command::Equipment));
+    r.register("inv", |_| Some(Command::Inventory));
+    r.register("eq", |_| Some(Command::Equipment));
     r.register("areas", |_| Some(Command::Areas));
     r.register("commands", |_| Some(Command::Commands));
     r.register("help", |_| Some(Command::Commands));
@@ -184,6 +197,32 @@ fn build_registry() -> CommandRegistry<Command> {
     });
     r.register("quit", |_| Some(Command::Quit));
     r.register("exit", |_| Some(Command::Quit));
+    // `get <keyword>` / `drop <keyword>` — need a target, so a bare `get` or
+    // `drop` is unknown. Registered before the admin verbs so the `ge` prefix
+    // still resolves to `gecho` (later registrations win prefix ties).
+    r.register("get", |rest| {
+        let target = rest.trim();
+        (!target.is_empty()).then(|| Command::Get {
+            target: target.to_string(),
+        })
+    });
+    r.register("drop", |rest| {
+        let target = rest.trim();
+        (!target.is_empty()).then(|| Command::Drop {
+            target: target.to_string(),
+        })
+    });
+    // `give <item> <target>` / `steal <item> <target>` — item is the first
+    // word, the being the rest; both parts required. Alongside get/drop so
+    // the `ge` prefix still reaches `gecho`.
+    r.register("give", |rest| {
+        let (item, target) = split_transfer(rest)?;
+        Some(Command::Give { item, target })
+    });
+    r.register("steal", |rest| {
+        let (item, target) = split_transfer(rest)?;
+        Some(Command::Steal { item, target })
+    });
 
     // ── Admin ────────────────────────────────────────────────────
     // `shutdown [seconds]` — defaults to 30s when no/invalid count given.
@@ -621,7 +660,9 @@ mod tests {
     #[test]
     fn test_inventory_and_equipment() {
         assert_eq!(parse("inventory"), Some(Command::Inventory));
+        assert_eq!(parse("inv"), Some(Command::Inventory));
         assert_eq!(parse("equipment"), Some(Command::Equipment));
+        assert_eq!(parse("eq"), Some(Command::Equipment));
         // Single `e` still moves east; `eq` reaches equipment unambiguously.
         assert_eq!(
             parse("e"),
@@ -630,6 +671,73 @@ mod tests {
             })
         );
         assert_eq!(parse("eq"), Some(Command::Equipment));
+    }
+
+    // ── Get / drop ──────────────────────────────────────────────────
+    #[test]
+    fn test_get_and_drop_need_targets() {
+        assert_eq!(
+            parse("get lantern"),
+            Some(Command::Get {
+                target: "lantern".into()
+            })
+        );
+        assert_eq!(
+            parse("drop lantern"),
+            Some(Command::Drop {
+                target: "lantern".into()
+            })
+        );
+        assert_eq!(parse("get"), None);
+        assert_eq!(parse("drop"), None);
+    }
+
+    #[test]
+    fn test_ge_still_reaches_gecho_and_g_reaches_goto() {
+        // `get` registers before the admin verbs, so the `ge` prefix keeps
+        // resolving to `gecho` (later registrations win prefix ties).
+        assert_eq!(
+            parse("gecho hello"),
+            Some(Command::Gecho {
+                text: "hello".into()
+            })
+        );
+        assert_eq!(
+            parse("ge hello"),
+            Some(Command::Gecho {
+                text: "hello".into()
+            })
+        );
+        assert_eq!(
+            parse("g square"),
+            Some(Command::Goto {
+                target: "square".into()
+            })
+        );
+    }
+
+    // ── Give / steal ────────────────────────────────────────────────
+    #[test]
+    fn test_give_and_steal_split_item_and_target() {
+        assert_eq!(
+            parse("give lantern bob"),
+            Some(Command::Give {
+                item: "lantern".into(),
+                target: "bob".into()
+            })
+        );
+        assert_eq!(
+            parse("steal coin grimmok"),
+            Some(Command::Steal {
+                item: "coin".into(),
+                target: "grimmok".into()
+            })
+        );
+        // Either half missing is unknown.
+        assert_eq!(parse("give"), None);
+        assert_eq!(parse("give lantern"), None);
+        assert_eq!(parse("steal"), None);
+        assert_eq!(parse("steal coin"), None);
     }
 
     // ── Quit ──────────────────────────────────────────────────────

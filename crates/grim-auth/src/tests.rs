@@ -149,6 +149,7 @@ mod reconnect {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
         };
         let (name, actor, character) = stored.into_components();
         let char_entity = app
@@ -295,6 +296,7 @@ mod reconnect {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
         };
         let (name, actor, character) = stored.into_components();
         let char_entity = app
@@ -428,6 +430,7 @@ mod reconnect {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
         };
 
         // Entity A: stale — loaded from disk, no Linkdead
@@ -545,6 +548,7 @@ mod reconnect {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
         };
 
         // Entity A: stale (no Linkdead)
@@ -651,6 +655,7 @@ mod reconnect {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
         };
         write_disk_char(&dir, &ch);
         let (name, actor, character) = ch.into_components();
@@ -1211,6 +1216,7 @@ mod character_select {
                 level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
+                inventory: Vec::new(),
             }
             .into_components();
             app.world_mut().spawn((
@@ -1301,6 +1307,7 @@ mod character_select {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
         }
         .into_components();
         app.world_mut().spawn((
@@ -1374,6 +1381,7 @@ mod character_select {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
         }
         .into_components();
         app.world_mut().spawn((
@@ -1567,6 +1575,7 @@ mod disk_lifecycle {
                 level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
+                inventory: Vec::new(),
             },
         );
 
@@ -1639,6 +1648,7 @@ mod disk_lifecycle {
                 level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
+                inventory: Vec::new(),
             },
         );
 
@@ -1725,6 +1735,7 @@ mod disk_lifecycle {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
         }
         .into_components();
         let char_entity = app
@@ -1949,6 +1960,7 @@ mod character_creation {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
         };
         std::fs::create_dir_all(dir.join("characters")).unwrap();
         std::fs::write(
@@ -2048,6 +2060,7 @@ mod legacy_backfill {
                 level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
+                inventory: Vec::new(),
             },
         );
 
@@ -2157,6 +2170,7 @@ mod legacy_backfill {
                 level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
+                inventory: Vec::new(),
             },
         );
 
@@ -2207,6 +2221,7 @@ mod legacy_backfill {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
         };
         write_disk_char(&dir, &legacy);
         let (name, actor, character) = legacy.into_components();
@@ -2289,6 +2304,7 @@ mod transition_guard {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
         };
         let (name, actor, character) = stored.into_components();
         let char_entity = app

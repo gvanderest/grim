@@ -149,6 +149,180 @@ fn movement_walks_between_seeded_rooms() {
     mud.send(alice, "south").assert_contains("The Rusted Anvil");
 }
 
+/// Log an existing account's first character back in (after quit or reboot):
+/// email → password → character menu → select → MOTD → room.
+fn login_again(mud: &mut Mud, email: &str) -> Session {
+    let (s, _) = mud.connect();
+    mud.send(s, email).assert_contains("Password");
+    let _ = mud.send(s, PW); // → character menu
+    let _ = mud.send(s, "1"); // select → MOTD
+    mud.send(s, "").assert_contains("The Rusted Anvil");
+    s
+}
+
+/// Count non-overlapping occurrences of `needle` in output.
+fn count_in(output: &harness::Output, needle: &str) -> usize {
+    output.text().matches(needle).count()
+}
+
+#[test]
+fn pack_survives_quit_and_relogin() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    mud.send(alice, "get lantern")
+        .assert_contains("You pick up brass lantern");
+    let _ = mud.send(alice, "quit");
+    mud.disconnect(alice);
+
+    // Back in with the lantern still in hand, and none on the ground.
+    let alice = login_again(&mut mud, "alice@example.com");
+    mud.send(alice, "inventory")
+        .assert_contains("You are carrying:")
+        .assert_contains("brass lantern");
+    mud.send(alice, "look")
+        .assert_excludes("brass lantern rests here");
+}
+
+#[test]
+fn reboot_regrows_seed_while_pack_restores() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    mud.send(alice, "get lantern")
+        .assert_contains("You pick up brass lantern");
+    let _ = mud.send(alice, "quit");
+    mud.disconnect(alice);
+
+    // Reboot: the seed regrows one lantern AND the pack restores one — two
+    // instances is correct state.
+    mud.reboot();
+    let alice = login_again(&mut mud, "alice@example.com");
+    mud.send(alice, "inventory")
+        .assert_contains("brass lantern");
+    mud.send(alice, "look")
+        .assert_contains("A brass lantern rests here, its glass dusty but intact.");
+
+    // Dropping the carried copy leaves two on the ground — also correct.
+    mud.send(alice, "drop lantern")
+        .assert_contains("You drop brass lantern");
+    let room = mud.send(alice, "look");
+    assert_eq!(
+        count_in(&room, "brass lantern rests here"),
+        2,
+        "two ground copies; got:\n{}",
+        room.text()
+    );
+
+    // Another reboot wipes ground extras: one blueprint copy remains, and the
+    // pack (saved empty at quit) restores empty.
+    let _ = mud.send(alice, "quit");
+    mud.disconnect(alice);
+    mud.reboot();
+    let alice = login_again(&mut mud, "alice@example.com");
+    let room = mud.send(alice, "look");
+    assert_eq!(
+        count_in(&room, "brass lantern rests here"),
+        1,
+        "single regrown copy; got:\n{}",
+        room.text()
+    );
+    mud.send(alice, "inventory")
+        .assert_contains("You are carrying nothing.");
+}
+
+#[test]
+fn give_steal_and_look_pack_echo_all_parties() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+    let cara = create_char(&mut mud, "cara@example.com", "Cara");
+
+    mud.send(alice, "get lantern")
+        .assert_contains("You pick up brass lantern");
+
+    // Give: giver, recipient, and watcher each see a named line.
+    mud.send(alice, "give lantern bob")
+        .assert_contains("You give brass lantern to Bob");
+    mud.recv(bob)
+        .assert_contains("Alice gives you brass lantern");
+    mud.recv(cara)
+        .assert_contains("Alice gives brass lantern to Bob");
+    mud.send(bob, "inventory").assert_contains("brass lantern");
+
+    // Looking at Bob shows his pack below his description.
+    mud.send(alice, "look bob")
+        .assert_contains("Bob is carrying:")
+        .assert_contains("brass lantern");
+
+    // Creatures refuse gifts.
+    mud.send(bob, "give lantern grimmok")
+        .assert_contains("They don't want that item.");
+
+    // Steal: thief, victim, and watcher each see a named line.
+    mud.send(cara, "steal lantern bob")
+        .assert_contains("You steal brass lantern from Bob");
+    mud.recv(bob)
+        .assert_contains("Cara steals your brass lantern");
+    mud.recv(alice)
+        .assert_contains("Cara steals brass lantern from Bob");
+    mud.send(cara, "inventory").assert_contains("brass lantern");
+    mud.send(bob, "inventory")
+        .assert_contains("You are carrying nothing.");
+
+    // Stealing what they don't hold, or from thin air, explains itself.
+    mud.send(cara, "steal lantern bob")
+        .assert_contains("They aren't carrying that.");
+    mud.send(cara, "steal lantern nobody")
+        .assert_contains("They aren't here.");
+}
+
+#[test]
+fn objects_can_be_picked_up_listed_and_dropped() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+
+    // Empty hands report nothing carried.
+    mud.send(alice, "inventory")
+        .assert_contains("You are carrying nothing.");
+
+    // The seeded lantern lists under the room description.
+    let room = mud.send(alice, "look");
+    let body = room.text();
+    let grimmok = body
+        .find("Grimmok Ironhand stands here, hammering metal.")
+        .expect("creature line");
+    let lantern = body
+        .find("A brass lantern rests here, its glass dusty but intact.")
+        .expect("object line");
+    assert!(grimmok < lantern, "objects list under creatures");
+
+    // Pickup: actor sees first-party, the room sees third-party.
+    mud.send(alice, "get lantern")
+        .assert_contains("You pick up brass lantern");
+    mud.recv(bob)
+        .assert_contains("Alice picks up brass lantern");
+
+    // Carried now: inventory lists the short, the room no longer shows it.
+    mud.send(alice, "inventory")
+        .assert_contains("You are carrying:")
+        .assert_contains("brass lantern");
+    mud.send(alice, "look")
+        .assert_excludes("brass lantern rests here");
+    // A second pickup misses: it is in Alice's hands, not the room.
+    mud.send(alice, "get lantern")
+        .assert_contains("You don't see that here.");
+
+    // Drop reverses the words for both sides, and the lantern is back.
+    mud.send(alice, "drop lantern")
+        .assert_contains("You drop brass lantern");
+    mud.recv(bob).assert_contains("Alice drops brass lantern");
+    mud.send(alice, "look")
+        .assert_contains("A brass lantern rests here, its glass dusty but intact.");
+    mud.send(alice, "drop lantern")
+        .assert_contains("You aren't carrying that.");
+}
+
 #[test]
 fn speech_is_heard_by_others_in_the_room() {
     let mut mud = Mud::new();

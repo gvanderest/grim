@@ -39,8 +39,12 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last). |
 | `sockets` | `handle_ingame` → `format_sockets` (`src/sockets.rs`) | List live connections by id (admin-only; masked as unknown for others). |
 | `where` | `handle_ingame` → `format_where` (`src/command.rs`) | Show where players are located. |
-| `inventory` | `handle_ingame` → `tr!("inventory.empty")` (`src/command.rs`) | Dummy: always "You are carrying nothing." (no item system yet). |
+| `inventory` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/inventory.rs`) | List carried objects' short names (sorted), or the empty line. |
 | `equipment` | `handle_ingame` → `tr!("equipment.empty")` (`src/command.rs`) | Dummy: always "You are wearing nothing." (no item system yet). |
+| `get <keyword>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Pick up the best-matching ground object; room sees "<name> picks up <short>". |
+| `drop <keyword>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Drop the best-matching carried object; room sees "<name> drops <short>". |
+| `give <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/give.rs`) | Hand a carried object to a PC here (creatures refuse); mover/other/room each see a named line (`format_transfer_events`). |
+| `steal <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/steal.rs`) | Take a carried object from a being here; same three-way echo. Existence checks only. |
 | `areas` | `handle_ingame` → `format_areas` (`src/command.rs`) | List known areas. |
 | `commands` | `handle_ingame` → `format_commands` (`src/formatter.rs`) | Show the command list. |
 | `help` | `handle_ingame` → `format_commands` (`src/command.rs`) | Alias for `commands` (parser maps `help` → `Command::Commands`). |
@@ -56,7 +60,7 @@ Other verbs (`look`, `move`, `say`, `shutdown`, …) are parsed here then routed
 | `CommandRegistry<Command>` | Resource (built by `command_registry()`) | `src/parser.rs` |
 | `EngineCommand` | Message (emitted to engine) | `src/command.rs` |
 | `ConnectionOutput` | Message (emitted; from `grim-networking`) | `src/output.rs` |
-| `InfoMessage` | Message (consumed → rendered) | `src/output.rs` |
+| `ItemEvent` / `TransferEvent` | Message (consumed → rendered per-recipient) | `src/item_output.rs` (`format_item_events`, `format_transfer_events`, `format_look_pack`) |
 | `LookRoom` / `LookEntity` / `MoveEvent` | Message (consumed → rendered) | `src/output.rs` |
 | `SayEvent` / `YellEvent` / `OocEvent` / `GlobalEcho` | Message (consumed → rendered) | `src/output.rs` |
 | `LoginAnnounce` / `LogoutAnnounce` / `LinkdeadAnnounce` | Message (session announces) | `src/output.rs`, `src/command.rs` |

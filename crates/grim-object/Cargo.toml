@@ -1,17 +1,14 @@
 [package]
-name = "grim-persistence"
+name = "grim-object"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 grim-core = { path = "../grim-core" }
-grim-world = { path = "../grim-world" }
 grim-actor = { path = "../grim-actor" }
-grim-networking = { path = "../grim-networking" }
-grim-object = { path = "../grim-object" }
+grim-text = { path = "../grim-text" }
 bevy = { workspace = true, default-features = false }
-serde_json = { workspace = true }
-chrono = { workspace = true }
 
 [dev-dependencies]
+grim-world = { path = "../grim-world" }
 chrono = { workspace = true }

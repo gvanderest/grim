@@ -945,6 +945,7 @@ dependencies = [
  "grim-core",
  "grim-networking",
  "grim-networking-telnet",
+ "grim-object",
  "grim-persistence",
  "grim-scene",
  "grim-text",
@@ -977,6 +978,7 @@ dependencies = [
  "grim-color",
  "grim-core",
  "grim-networking",
+ "grim-object",
  "grim-persistence",
  "grim-scene",
  "grim-text",
@@ -1055,6 +1057,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "grim-object"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "chrono",
+ "grim-actor",
+ "grim-core",
+ "grim-text",
+ "grim-world",
+]
+
+[[package]]
 name = "grim-persistence"
 version = "0.1.0"
 dependencies = [
@@ -1063,6 +1077,7 @@ dependencies = [
  "grim-actor",
  "grim-core",
  "grim-networking",
+ "grim-object",
  "grim-world",
  "serde_json",
 ]
@@ -1079,6 +1094,7 @@ dependencies = [
  "grim-command",
  "grim-core",
  "grim-networking",
+ "grim-object",
  "grim-persistence",
  "grim-text",
  "grim-world",

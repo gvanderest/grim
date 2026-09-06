@@ -63,8 +63,34 @@ pub struct StoredCharacter {
     /// Per-character display overrides. `#[serde(default)]` keeps old JSON loading.
     #[serde(default)]
     pub restrings: HashMap<String, String>,
+    /// Full snapshot of every carried object instance, taken at save and
+    /// re-spawned on login. `#[serde(default)]` keeps pre-inventory JSON
+    /// loading with an empty pack. Ground objects are never stored here —
+    /// they respawn from area blueprints — so a reboot restores the pack
+    /// while the room listing regenerates from seed.
+    #[serde(default)]
+    pub inventory: Vec<StoredObject>,
 }
 
+/// The full on-disk snapshot of one carried object instance. Every instance
+/// is stored whole (never by reference): a reboot re-spawns the seed copy
+/// from its blueprint *and* restores this one into the pack, so duplicates
+/// after pickup-then-reboot are correct state, not corruption.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct StoredObject {
+    /// Short name: inventory rows, pickup lines, get/drop/give matching.
+    #[serde(default)]
+    pub name: String,
+    /// Look paragraphs.
+    #[serde(default)]
+    pub description: Vec<String>,
+    /// Get/drop/give keywords.
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    /// Long room-listing line.
+    #[serde(default)]
+    pub room_description: String,
+}
 impl StoredCharacter {
     /// Split the DTO into the three components a live PC carries.
     pub fn into_components(self) -> (Name, Actor, Character) {
@@ -102,6 +128,9 @@ impl StoredCharacter {
             level: actor.level,
             title: character.title.clone(),
             restrings: character.restrings.clone(),
+            // Built from live components, which never carry a pack — saves
+            // attach the snapshot afterwards (see `grim-object::persist`).
+            inventory: Vec::new(),
         }
     }
 }

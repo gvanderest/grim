@@ -18,6 +18,14 @@
           "keywords": ["grimmok", "ironhand", "dwarf", "smith"],
           "room_description": "Grimmok Ironhand stands here, hammering metal."
         }
+      ],
+      "objects": [
+        {
+          "name": "brass lantern",
+          "description": ["A sturdy brass lantern, its glass dusty but intact."],
+          "keywords": ["lantern", "brass"],
+          "room_description": "A brass lantern rests here, its glass dusty but intact."
+        }
       ]
     },
     {

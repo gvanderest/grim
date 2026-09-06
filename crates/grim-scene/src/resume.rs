@@ -131,6 +131,9 @@ fn resolve_resumed(
         };
         let last = loaded.last_room.clone();
         let r = rooms.placement(last.as_ref(), starting_room);
+        // Copyover rebuilds the world from scratch: re-spawn the pack snapshot
+        // alongside the character, same as a fresh login.
+        let inventory = loaded.inventory.clone();
         let (name, actor, character) = loaded.into_components();
         let char_entity = commands
             .spawn((
@@ -143,6 +146,7 @@ fn resolve_resumed(
                 InRoom { room: r },
             ))
             .id();
+        grim_object::persist::restore(commands, char_entity, &inventory);
         Some((acct, char_entity, r))
     }
 }

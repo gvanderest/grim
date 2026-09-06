@@ -214,6 +214,37 @@ impl Mud {
         self.pump();
     }
 
+    /// Reboot the world in place: rebuild the app on the SAME data directory
+    /// and re-run the seed, as a server restart would. Disk state (accounts,
+    /// characters, packs) survives; live entities do not. Old sessions are
+    /// dead — reconnect afterwards.
+    pub fn reboot(&mut self) {
+        let data_dir = self.data_dir.clone();
+        let mut app = App::new();
+        app.insert_resource(PersistenceConfig {
+            dir: data_dir.clone(),
+        });
+        app.init_resource::<Time>();
+        app.add_plugins(GrimHeadlessPlugins);
+        app.insert_resource(example_mud::seed::AreaBlueprintDir(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/areas"),
+        ));
+        app.add_systems(Startup, example_mud::seed::seed_world);
+        app.update();
+        self.app = app;
+        self.next_conn = 1;
+        // Entity ids recycle in the fresh world: drop every recorded buffer,
+        // or a new connection could read a dead one's transcript.
+        self.buffers.clear();
+        self.read_offsets.clear();
+        let cursor = self
+            .app
+            .world()
+            .resource::<Messages<ConnectionOutput>>()
+            .get_cursor();
+        self.cursor = cursor;
+    }
+
     /// Names of player characters currently in the world (for assertions about
     /// state). Filtered to entities with a `Character`, so seeded rooms and NPCs
     /// (which also carry a name) are excluded.

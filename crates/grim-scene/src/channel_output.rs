@@ -41,10 +41,10 @@ pub fn emit_channel(
     match channel.scope {
         Scope::Room => {
             // Message goes to everyone in the actor's room
-            if let Ok((_, ir, _, _, _)) = room_occupants.get(ev.actor) {
+            if let Ok((_, ir, _, _, _, _)) = room_occupants.get(ev.actor) {
                 let actor_room = ir.room;
                 // Find all entities in the same room
-                for (entity, ir, _, _, _) in room_occupants.iter() {
+                for (entity, ir, _, _, _, _) in room_occupants.iter() {
                     if ir.room == actor_room {
                         audience.push(entity);
                     }
@@ -53,11 +53,11 @@ pub fn emit_channel(
         }
         Scope::Area => {
             // Message goes to everyone in the actor's area
-            if let Ok((_, ir, _, _, _)) = room_occupants.get(ev.actor) {
+            if let Ok((_, ir, _, _, _, _)) = room_occupants.get(ev.actor) {
                 if let Ok((_, room, _)) = rooms.get(ir.room) {
                     let actor_area = room.area;
                     // Find all entities in rooms in this area
-                    for (entity, ir, _, _, _) in room_occupants.iter() {
+                    for (entity, ir, _, _, _, _) in room_occupants.iter() {
                         if let Ok((_, room, _)) = rooms.get(ir.room) {
                             if room.area == actor_area {
                                 audience.push(entity);
@@ -69,7 +69,7 @@ pub fn emit_channel(
         }
         Scope::Global => {
             // Message goes to all connected players
-            for (entity, _, _, _, _) in room_occupants.iter() {
+            for (entity, _, _, _, _, _) in room_occupants.iter() {
                 audience.push(entity);
             }
         }
@@ -82,7 +82,7 @@ pub fn emit_channel(
         }
 
         // Check if entity is in the world (has Player or Linkdead)
-        if let Ok((_, _ir, player, _, _)) = room_occupants.get(entity) {
+        if let Ok((_, _ir, player, _, _, _)) = room_occupants.get(entity) {
             // Check listen eligibility
             if !check_listen_eligibility(&channel.listen, entity, &player, _ir, characters) {
                 continue;

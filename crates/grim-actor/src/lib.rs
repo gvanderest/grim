@@ -31,4 +31,4 @@ pub use character::{Character, Role};
 pub use placement::InRoom;
 pub use player::{Linkdead, OutputHistory, Player};
 pub use plugin::ActorPlugin;
-pub use stored::StoredCharacter;
+pub use stored::{StoredCharacter, StoredObject};

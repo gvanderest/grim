@@ -51,10 +51,20 @@ pub enum Command {
     /// (id, address, session state, character, account). Masked as unknown
     /// for non-admins, like the other admin verbs.
     Sockets,
-    /// `inventory` — dummy: always reports empty (no item system yet).
+    /// `inventory` — list the short names of carried objects.
     Inventory,
     /// `equipment` — dummy: always reports empty (no item system yet).
     Equipment,
+    /// `get <keyword>` — pick up an object in the room (matched by name or
+    /// keyword, same ranking as `look`).
+    Get { target: String },
+    /// `drop <keyword>` — drop a carried object into the room.
+    Drop { target: String },
+    /// `give <item> <target>` — hand a carried object to a being in the room.
+    Give { item: String, target: String },
+    /// `steal <item> <target>` — take an object from a being's inventory in
+    /// the room. Existence checks only; no skill checks (example workflow).
+    Steal { item: String, target: String },
     /// `commands` — list all registered commands
     Commands,
     /// `areas` — list every area in the world by its slug.
@@ -69,6 +79,51 @@ pub enum Command {
     /// `shutdown <seconds>` — admin-only. Schedules a graceful server shutdown
     /// after a countdown, broadcasting warnings to all connected players.
     Shutdown { seconds: u64 },
+}
+
+/// An object changed hands: picked up from a room or dropped into one.
+/// Rendered per-recipient — the actor sees the first-party line ("You pick
+/// up …"), everyone else in the room the third-party line ("<name> picks
+/// up …"). `actor_name` and `short` are precomputed so renderers need no
+/// lookups.
+#[derive(Message, Debug, Clone, PartialEq)]
+pub struct ItemEvent {
+    pub actor: Entity,
+    pub room: Entity,
+    pub actor_name: String,
+    pub short: String,
+    pub kind: ItemKind,
+}
+
+/// Which way an [`ItemEvent`] moved the object.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ItemKind {
+    Pickup,
+    Drop,
+}
+
+/// An object moved between two packs in a room: handed over (`give`) or taken
+/// (`steal`). Rendered per-recipient with all three wordings — the mover sees
+/// the first-party line ("You give …"), the other party the second-party line
+/// ("… gives you …" / "… steals your …"), and the rest of the room the
+/// third-party line ("… gives … to …"). Names and the short are precomputed
+/// so renderers need no lookups.
+#[derive(Message, Debug, Clone, PartialEq)]
+pub struct TransferEvent {
+    pub mover: Entity,
+    pub mover_name: String,
+    pub other: Entity,
+    pub other_name: String,
+    pub room: Entity,
+    pub short: String,
+    pub kind: TransferKind,
+}
+
+/// Which way a [`TransferEvent`] moved the object.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferKind {
+    Give,
+    Steal,
 }
 
 /// The `desc` sub-operation: which self-description edit to apply.

@@ -17,6 +17,7 @@ grim-world = { path = "../grim-world" }
 # Beings (Character/Player/InRoom/Linkdead/OutputHistory) the session reads.
 grim-actor = { path = "../grim-actor" }
 grim-channel = { path = "../grim-channel" }
+grim-object = { path = "../grim-object" }
 bevy = { workspace = true, default-features = false }
 chrono = { workspace = true }
 serde_json = { workspace = true }
