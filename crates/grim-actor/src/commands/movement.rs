@@ -11,6 +11,7 @@ use grim_world::{
 
 use crate::character::Character;
 use crate::placement::InRoom;
+use crate::transition::{AttemptEnter, AttemptLeave, Enter, Leave};
 
 /// Build a room's persisted [`RoomLocation`] from its `Room` + `Area` records.
 /// `handle_move` reaches this shape via `grim_world::room_location` (which holds
@@ -64,6 +65,10 @@ pub(crate) fn handle_move(
     mut move_ev: MessageWriter<MoveEvent>,
     mut look_room: MessageWriter<LookRoom>,
     mut info: MessageWriter<InfoMessage>,
+    mut attempt_leave: MessageWriter<AttemptLeave>,
+    mut attempt_enter: MessageWriter<AttemptEnter>,
+    mut leave: MessageWriter<Leave>,
+    mut enter: MessageWriter<Enter>,
 ) {
     for cmd in engine.read() {
         let Command::Move { direction } = cmd.command else {
@@ -77,6 +82,10 @@ pub(crate) fn handle_move(
         match exits.get(from) {
             Ok(room_exits) => match room_exits.exits.get(&direction).copied() {
                 Some(to) => {
+                    // Attempts fire before placement (observe-only: they deny
+                    // nothing), facts after the committed `MoveEvent`.
+                    attempt_leave.write(AttemptLeave { actor, room: from });
+                    attempt_enter.write(AttemptEnter { actor, room: to });
                     // Keep the persisted location current on every step so an
                     // unexpected restart or copyover resumes the character in the
                     // room they actually walked to, not a stale one.
@@ -88,6 +97,8 @@ pub(crate) fn handle_move(
                         to,
                         direction,
                     });
+                    leave.write(Leave { actor, room: from });
+                    enter.write(Enter { actor, room: to });
                     look_room.write(LookRoom {
                         target: actor,
                         room: to,
@@ -127,6 +138,10 @@ pub(crate) fn handle_goto(
     mut characters: Query<&mut Character>,
     mut look_room: MessageWriter<LookRoom>,
     mut info: MessageWriter<InfoMessage>,
+    mut attempt_leave: MessageWriter<AttemptLeave>,
+    mut attempt_enter: MessageWriter<AttemptEnter>,
+    mut leave: MessageWriter<Leave>,
+    mut enter: MessageWriter<Enter>,
 ) {
     for cmd in engine.read() {
         let Command::Goto { target } = &cmd.command else {
@@ -139,13 +154,22 @@ pub(crate) fn handle_goto(
         }
         match resolve_room_address(target, &rooms, &areas) {
             RoomLookup::Found(to) => {
+                let from = inroom.get(actor).map(|ir| ir.room).ok();
                 let loc = rooms.get(to).ok().and_then(|(_, r)| {
                     areas
                         .get(r.area)
                         .ok()
                         .map(|(_, a)| persisted_location(r, a))
                 });
+                if let Some(from) = from.filter(|from| *from != to) {
+                    attempt_leave.write(AttemptLeave { actor, room: from });
+                    attempt_enter.write(AttemptEnter { actor, room: to });
+                }
                 place_actor(actor, to, loc, &mut inroom, &mut characters);
+                if let Some(from) = from.filter(|from| *from != to) {
+                    leave.write(Leave { actor, room: from });
+                    enter.write(Enter { actor, room: to });
+                }
                 look_room.write(LookRoom {
                     target: actor,
                     room: to,
@@ -192,11 +216,16 @@ fn room_ident_line(entity: Entity, room: &Room) -> String {
 }
 
 /// Wire the `move` and `goto` handlers and the input/delivery messages they
-/// own. The world-happening events they emit (`MoveEvent`/`LookRoom`) are
-/// registered by `grim_world::WorldPlugin`.
+/// own, plus the room-transition events they emit (`AttemptLeave`/
+/// `AttemptEnter`/`Leave`/`Enter`). The world-happening events they emit
+/// (`MoveEvent`/`LookRoom`) are registered by `grim_world::WorldPlugin`.
 pub(crate) fn register(app: &mut App) {
     app.add_message::<EngineCommand>()
         .add_message::<InfoMessage>()
+        .add_message::<AttemptLeave>()
+        .add_message::<AttemptEnter>()
+        .add_message::<Leave>()
+        .add_message::<Enter>()
         .add_systems(Update, (handle_move, handle_goto));
 }
 
@@ -327,6 +356,61 @@ mod tests {
                 assert!(iter.next().is_none(), "expected exactly one MoveEvent");
             }
             assert_eq!(look_room_count(&app), 1);
+        }
+
+        pub(super) fn transition_events(app: &App) -> (usize, usize, usize, usize) {
+            fn count<M: Message>(app: &App) -> usize {
+                let messages = app.world().resource::<Messages<M>>();
+                let mut cursor = messages.get_cursor();
+                cursor.read(messages).count()
+            }
+            (
+                count::<AttemptLeave>(app),
+                count::<AttemptEnter>(app),
+                count::<Leave>(app),
+                count::<Enter>(app),
+            )
+        }
+
+        #[test]
+        fn move_valid_exit_emits_attempts_then_facts() {
+            let mut app = test_app();
+            let room2 = app.world_mut().spawn(()).id();
+            let mut exits = Exits::default();
+            exits.exits.insert(Cardinal::North, room2);
+            let room1 = app.world_mut().spawn(exits).id();
+            let actor = app.world_mut().spawn(InRoom { room: room1 }).id();
+            app.world_mut().write_message(EngineCommand {
+                client: actor,
+                command: Command::Move {
+                    direction: Cardinal::North,
+                },
+            });
+            app.update();
+            assert_eq!(transition_events(&app), (1, 1, 1, 1));
+            let messages = app.world().resource::<Messages<AttemptLeave>>();
+            let mut cursor = messages.get_cursor();
+            let attempt = cursor.read(messages).next().unwrap();
+            assert_eq!((attempt.actor, attempt.room), (actor, room1));
+            let messages = app.world().resource::<Messages<Enter>>();
+            let mut cursor = messages.get_cursor();
+            let entered = cursor.read(messages).next().unwrap();
+            assert_eq!((entered.actor, entered.room), (actor, room2));
+        }
+
+        #[test]
+        fn move_no_exit_emits_no_transitions() {
+            let mut app = test_app();
+            let room1 = app.world_mut().spawn(Exits::default()).id();
+            let actor = app.world_mut().spawn(InRoom { room: room1 }).id();
+            app.world_mut().write_message(EngineCommand {
+                client: actor,
+                command: Command::Move {
+                    direction: Cardinal::North,
+                },
+            });
+            app.update();
+            assert_eq!(transition_events(&app), (0, 0, 0, 0));
         }
 
         #[test]
@@ -482,6 +566,42 @@ mod tests {
                 .clone()
                 .expect("goto should refresh last_room");
             assert_eq!((loc.area.as_str(), loc.room.as_str()), ("town", "market"));
+        }
+
+        #[test]
+        fn goto_emits_transitions_between_rooms() {
+            let mut app = test_app();
+            let dest = spawn_room(&mut app, "town", "market", Exits::default());
+            let start = spawn_room(&mut app, "town", "square", Exits::default());
+            let actor = spawn_actor_in(&mut app, start, true);
+            send_goto(&mut app, actor, "market");
+            assert_eq!(room_of(&app, actor), dest);
+            let messages = app.world().resource::<Messages<AttemptLeave>>();
+            let mut cursor = messages.get_cursor();
+            let ev = cursor.read(messages).next().expect("AttemptLeave");
+            assert_eq!((ev.actor, ev.room), (actor, start));
+            let messages = app.world().resource::<Messages<AttemptEnter>>();
+            let mut cursor = messages.get_cursor();
+            let ev = cursor.read(messages).next().expect("AttemptEnter");
+            assert_eq!((ev.actor, ev.room), (actor, dest));
+            let messages = app.world().resource::<Messages<Leave>>();
+            let mut cursor = messages.get_cursor();
+            let ev = cursor.read(messages).next().expect("Leave");
+            assert_eq!((ev.actor, ev.room), (actor, start));
+            let messages = app.world().resource::<Messages<Enter>>();
+            let mut cursor = messages.get_cursor();
+            let ev = cursor.read(messages).next().expect("Enter");
+            assert_eq!((ev.actor, ev.room), (actor, dest));
+        }
+
+        #[test]
+        fn goto_same_room_emits_no_transitions() {
+            let mut app = test_app();
+            let start = spawn_room(&mut app, "town", "square", Exits::default());
+            let actor = spawn_actor_in(&mut app, start, true);
+            send_goto(&mut app, actor, "square");
+            assert_eq!(room_of(&app, actor), start);
+            assert_eq!(super::walking::transition_events(&app), (0, 0, 0, 0));
         }
 
         #[test]

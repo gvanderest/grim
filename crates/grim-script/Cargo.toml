@@ -1,0 +1,18 @@
+[package]
+name = "grim-script"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+grim-actor = { path = "../grim-actor" }
+grim-channel = { path = "../grim-channel" }
+grim-core = { path = "../grim-core" }
+grim-text = { path = "../grim-text" }
+bevy = { workspace = true, default-features = false }
+serde = { workspace = true }
+mlua = { version = "0.12", features = ["lua54", "vendored"] }
+rand = "0.10"
+
+[dev-dependencies]
+chrono = { workspace = true }
+serde_json = { workspace = true }

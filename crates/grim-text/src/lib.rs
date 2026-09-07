@@ -52,6 +52,15 @@ mod tests {
     }
 
     #[test]
+    fn script_failure_names_mob_and_moment() {
+        let out = tr(
+            "script.trigger.failed",
+            &[("name", "Grimmok"), ("trigger", "enter"), ("error", "boom")],
+        );
+        assert_eq!(out, "Script error in Grimmok (enter): boom\n");
+    }
+
+    #[test]
     fn say_first_party_interpolates() {
         let out = tr("social.say.first_party", &[("text", "hello")]);
         assert_eq!(out, "@xf0fYou say @r'@x909hello@r'\n");

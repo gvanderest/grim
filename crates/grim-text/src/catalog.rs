@@ -109,6 +109,7 @@ fn default_string(key: &str) -> String {
         "ban.removed" => "Ban removed: %{scope} %{pattern}\n",
         "ban.not_found" => "No such ban.\n",
         "ban.save_failed" => "Ban could not be saved; nothing changed.\n",
+        "script.trigger.failed" => "Script error in %{name} (%{trigger}): %{error}\n",
         "ban.invalid_pattern" => "Invalid pattern for %{scope} ban.\n",
         other => return other.to_string(),
     }

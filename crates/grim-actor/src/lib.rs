@@ -25,6 +25,7 @@ pub mod placement;
 pub mod player;
 pub mod plugin;
 pub mod stored;
+pub mod transition;
 
 pub use actor::{Actor, Creature};
 pub use character::{Character, Role};
@@ -32,3 +33,4 @@ pub use placement::InRoom;
 pub use player::{Linkdead, OutputHistory, Player};
 pub use plugin::ActorPlugin;
 pub use stored::{StoredCharacter, StoredObject};
+pub use transition::{AttemptEnter, AttemptLeave, Enter, Leave};
