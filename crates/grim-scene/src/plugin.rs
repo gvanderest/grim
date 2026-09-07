@@ -35,6 +35,7 @@ pub enum SceneSystems {
 pub struct ScenePlugin;
 impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
+        crate::ban::register(app);
         app.insert_resource(parser::command_registry());
         // Scene writes character JSON on `quit` and reads it on copyover resume,
         // so it needs the persistence directory. init_resource so ScenePlugin

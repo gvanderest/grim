@@ -8,8 +8,8 @@ use chrono::Utc;
 use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player};
 use grim_core::components::{Account, Client, ClientState, Description, Name as GrimName};
 use grim_core::events::LookRoom;
-use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
-use grim_persistence::{load_character_by_name, PersistenceConfig};
+use grim_networking::{Connection, ConnectionOutput, ConnectionResumed, DisconnectRequest};
+use grim_persistence::{load_character_by_name, BanList, PersistenceConfig};
 use grim_text::tr;
 use grim_world::StartingRoom;
 
@@ -27,12 +27,28 @@ pub(crate) fn handle_connection_resumed(
     rooms: RoomResolver,
     starting: Res<StartingRoom>,
     persistence: Res<PersistenceConfig>,
+    bans: Res<BanList>,
+    connections: Query<&Connection>,
     mut outputs: MessageWriter<ConnectionOutput>,
     mut look_room: MessageWriter<LookRoom>,
     mut disconnect: MessageWriter<DisconnectRequest>,
 ) {
     for ev in resumed.read() {
         let conn = ev.connection;
+        // Banned identities never reach placement: refuse before
+        // `resolve_resumed` spawns or attaches anything.
+        if refuse_banned(
+            ev,
+            &bans,
+            &connections,
+            &characters,
+            &accounts,
+            &persistence,
+            &mut outputs,
+            &mut disconnect,
+        ) {
+            continue;
+        }
         // Resolve (and place) the character; a failed resolve fails closed by
         // dropping the socket inside `resolve_resumed`.
         let Some((account_entity, char_entity, room)) = resolve_resumed(
@@ -59,6 +75,52 @@ pub(crate) fn handle_connection_resumed(
             &mut look_room,
         );
     }
+}
+
+/// Refuse a resumed socket whose IP, character, or owning account is banned.
+/// Runs before [`resolve_resumed`] so a refused socket spawns and attaches
+/// nothing; the account resolves off the resident entity or disk without side
+/// effects. Returns true when the socket was refused.
+#[allow(clippy::too_many_arguments)]
+fn refuse_banned(
+    ev: &ConnectionResumed,
+    bans: &BanList,
+    connections: &Query<&Connection>,
+    characters: &Query<(Entity, &Character, &GrimName)>,
+    accounts: &Query<(Entity, &Account)>,
+    persistence: &PersistenceConfig,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+    disconnect: &mut MessageWriter<DisconnectRequest>,
+) -> bool {
+    let conn = ev.connection;
+    let mut refuse = |text: String| {
+        outputs.write(ConnectionOutput::new(conn, text));
+        disconnect.write(DisconnectRequest { connection: conn });
+    };
+    if connections
+        .get(conn)
+        .is_ok_and(|c| bans.is_ip_banned(&c.addr.ip()))
+    {
+        refuse(tr!("ban.banned.ip"));
+        return true;
+    }
+    if bans.is_character_banned(&ev.character) {
+        refuse(tr!("ban.banned.character"));
+        return true;
+    }
+    let account_id = characters
+        .iter()
+        .find(|(_, _, n)| n.0 == ev.character)
+        .map(|(_, c, _)| c.account_id)
+        .or_else(|| load_character_by_name(persistence, &ev.character).map(|c| c.account_id));
+    if account_id
+        .and_then(|id| accounts.iter().find(|(_, a)| a.id == id))
+        .is_some_and(|(_, a)| bans.is_account_banned(a))
+    {
+        refuse(tr!("ban.banned.account"));
+        return true;
+    }
+    false
 }
 
 /// Resolve the resumed character to `(account, character, room)`, placing it in

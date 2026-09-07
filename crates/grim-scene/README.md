@@ -24,8 +24,8 @@ by `grim-auth`.
 
 | System | Schedule | File | Purpose |
 | `handle_ingame_input` | `Update` (`SceneSystems::InGameInput`) | `src/input.rs` | Routes a line whose session stack tops at `InGameScene` into an in-game command; skips stackless sessions (auth's job) and the line that just entered the world (`JustEnteredWorld`). |
-| `handle_connection_resumed` | `Update` | `src/resume.rs` | Re-attaches a session after copyover / reconnect (skips login). |
-| `process_command_queue` | `Update` | `src/command.rs` | Drains queued `Command`s under cooldown; emits `EngineCommand`; handles `quit` (save+despawn). |
+| `handle_connection_resumed` | `Update` | `src/resume.rs` | Re-attaches a session after copyover / reconnect (skips login). Refuses banned IPs/characters/accounts first (`refuse_banned`), before spawning or attaching anything. |
+| `handle_ban_command` | `Update` | `src/ban.rs` | Admin `ban list`/`add`/`remove` off the engine queue (defense-in-depth admin re-check): lists, persists to `bans.json`, and kicks every matching live session on `add`. |
 | `format_output` | `Update` | `src/output.rs` | Renders domain events per-recipient into `ConnectionOutput`. |
 | `format_server_broadcast` | `Update` | `src/output.rs` | Renders `ServerBroadcast` (e.g. shutdown warnings) to all sessions. |
 | `capture_output` | `Update` | `src/output.rs` | Collects output for flushing to connections. |
@@ -36,22 +36,23 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 
 | Command | Handler | Summary |
 | `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last, `edit` opens the line editor). |
-| `who` | `handle_ingame` → `format_who` (`src/command.rs`) | List online characters (admins first, then level/connect/name). |
+| `who` | `handle_ingame` → `format_who` (`src/who.rs`) | List online characters (admins first, then level/connect/name). |
 | `finger <name>` | `handle_ingame` → `finger::format` (`src/finger.rs`) | Character sheet (name/level/gender/race/class + description), online or off-disk. |
 | `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last). |
 | `sockets` | `handle_ingame` → `format_sockets` (`src/sockets.rs`) | List live connections by id (admin-only; masked as unknown for others). |
-| `where` | `handle_ingame` → `format_where` (`src/command.rs`) | Show where players are located. |
+| `ban list [type]` / `ban add <type> <pattern>` / `ban remove <type> <pattern>` | parser → engine queue (`src/parser.rs`, `src/ban.rs`) | Blocklist admin verbs (types `ip`/`account`/`character`; IP patterns `*`-wildcarded per octet). Admin-only + masked; an `add` persists and kicks every matching session. |
+| `where` | `handle_ingame` → `format_where` (`src/who.rs`) | Show where players are located. |
 | `inventory` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/inventory.rs`) | List carried objects' short names (sorted), or the empty line. |
 | `equipment` | `handle_ingame` → `tr!("equipment.empty")` (`src/command.rs`) | Dummy: always "You are wearing nothing." (no item system yet). |
 | `get <target>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Pick up matches from the ground (`grim-target` selectors: `2.coin`, `3*coin`, `all [words]`); room sees "<name> picks up <short>" per item. |
 | `drop <target>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Drop matches from the pack (same selectors); room sees "<name> drops <short>" per item. |
 | `give <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/give.rs`) | Hand matches to a PC here (creatures refuse); quote-aware split (`give "brass lantern" bob`; `all`-headed items run to the last word). Mover/other/room each see a named line (`format_transfer_events`). |
 | `steal <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/steal.rs`) | Take matches from a being here (same split/selectors); same three-way echo. Existence checks only. |
-| `areas` | `handle_ingame` → `format_areas` (`src/command.rs`) | List known areas. |
+| `areas` | `handle_ingame` → `format_areas` (`src/who.rs`) | List known areas. |
 | `commands` | `handle_ingame` → `format_commands` (`src/formatter.rs`) | Show the command list. |
 | `help` | `handle_ingame` → `format_commands` (`src/command.rs`) | Alias for `commands` (parser maps `help` → `Command::Commands`). |
 
-Other verbs (`look`, `move`, `say`, `shutdown`, …) are parsed here then routed: most enqueue via `process_command_queue`; engine-queued admin verbs (`shutdown`/`goto`/`gecho`) go through `dispatch_admin_gated` (masked as unknown for non-admins). `sockets` is also admin-gated + masked, but answered session-locally from a per-tick `ClientSnapshot` (a second `Client` query would conflict with the dispatcher's `&mut` borrow).
+Other verbs (`look`, `move`, `say`, `shutdown`, …) are parsed here then routed: most enqueue via `process_command_queue`; engine-queued admin verbs (`shutdown`/`goto`/`gecho`/`ban`) go through `dispatch_admin_gated` (masked as unknown for non-admins). `sockets` is also admin-gated + masked, but answered session-locally from a per-tick `ClientSnapshot` (a second `Client` query would conflict with the dispatcher's `&mut` borrow).
 
 ## Resources & Events
 
@@ -59,8 +60,8 @@ Other verbs (`look`, `move`, `say`, `shutdown`, …) are parsed here then routed
 |---|---|---|
 | `JustEnteredWorld` | Resource (routing-split guard; pub) | `src/session.rs` |
 | `SceneSystems` | `SystemSet` (pub; orders the pre-game system before in-game input) | `src/plugin.rs` |
-| `CommandRegistry<Command>` | Resource (built by `command_registry()`) | `src/parser.rs` |
 | `EngineCommand` | Message (emitted to engine) | `src/command.rs` |
+| `BanList` | Resource (consumed for `ban` + resume refusal; owned by `grim-persistence`, `bans.json`-backed) | `src/ban.rs`, `src/resume.rs` |
 | `ConnectionOutput` | Message (emitted; from `grim-networking`) | `src/output.rs` |
 | `ItemEvent` / `TransferEvent` | Message (consumed → rendered per-recipient) | `src/item_output.rs` (`format_item_events`, `format_transfer_events`, `format_look_pack`) |
 | `OpenEditor` / `EditorDone` | Message (consumed/emitted; the editor callback) | `src/editor.rs` (`open_editor`, `handle_editor_line`) |
