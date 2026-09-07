@@ -29,7 +29,7 @@ Player-facing verbs and where to find their handlers.
 | `get <target>` | `get::handle_get` | Pick up matches from the ground (`2.coin` 2nd, `3*coin` three, `all [words]` all; one `ItemEvent` each). |
 | `drop <target>` | `get::handle_drop` | Drop matches from the pack into the room (same selectors; one `ItemEvent` each). |
 | `inventory` / `inv` | `inventory::handle_inventory` | List carried short names. |
-| `give <item> <who>` | `give::handle_give` | Hand matches to a PC here (creatures refuse; one `TransferEvent` each). `all`/quantity on the item side; quoted phrases stay together. |
+| `give <item> <who>` | `give::handle_give` | Hand matches to a PC here (creatures refuse; one `TransferEvent` each). Item selectors: `2.coin` (2nd), `3*coin` (three), `all [words]` (all); quoted phrases stay together. |
 | `steal <item> <who>` | `steal::handle_steal` | Take matches from a being here (same selectors on the item side). |
 
 ## Resources & Events
