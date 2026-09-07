@@ -430,6 +430,24 @@ Three properties follow:
 - **Attempts are mutable, not merely vetoable.** A drunk effect garbles text, a shield
   reduces a number. The fact carries the final values.
 
+### The three moments: Pre / Mid / Post
+
+A vetoable action crosses three moments, not two:
+
+| Moment | Shape | Movement example | Properties |
+|---|---|---|---|
+| **Pre** — `AttemptX` | synchronous trigger event | `AttemptLeave` / `AttemptEnter` | blockable; every observer runs before anything moves; denial latches |
+| **Mid** — `Xing` | the transition the game acts on | `MoveEvent` | placement and render notices happen here; veto already resolved |
+| **Post** — `X` | post-state facts | `Leave` / `Enter` | observed after the commit; never in the blocking path |
+
+Pre and Post are trigger events (observers, immediate); Mid stays the message
+vocabulary the render pipeline already consumes. Render follows causality:
+speech and direct output process before room descriptions, so attempt-phase
+words (a farewell spoken before leaving) precede the arrival they precede —
+never dangle after it. First adopter: movement (`grim-actor` orchestrates,
+`grim-script` observes); speech and damage keep their fact-only events until
+they need denial.
+
 ### Cancellation carries a Catalog key, not a string
 
 ```rust
@@ -585,7 +603,6 @@ redesigns were deliberately deferred rather than done blind — see
   - **Contested prefixes are reported.** `contested_prefixes()` lists every
     abbreviation more than one command answers to; `init_registry` logs each at
     startup, so a plugin silently shadowing `n` surfaces instead of confusing a
-    player.
 
   `CommandRegistry` derives `Resource` and is ready to be inserted, but is still
   held in the `OnceLock` for now: its only caller, `handle_client_input`, sits at
@@ -602,7 +619,7 @@ redesigns were deliberately deferred rather than done blind — see
 | `grim-core` is a god-types crate (confirmed: dissolves over time) | colour (step 1), `tr` (step 2), command registry (step 3), and wire events + `Connection` (step 4) are out. Remaining move per-type: `Name`→actor, game events→owners, validation→owners, `Command` dies with typed dispatch |
 | ~~`grim` owns three plugins~~ | Fixed in step 7 (+8). World/shutdown → `grim-world`, Persistence → `grim-persistence`, Social → `grim-channel`; `grim` is a facade |
 | `ChannelPlugin` holds `say`/`yell`/`ooc` as code | still three coded handlers; `add_channel` data model (§7) is deferred with typed-event dispatch |
-| No attempt/fact split | `SayEvent`/`MoveEvent` are facts with no cancellable phase, so nothing can veto (§6) |
+| No attempt/fact split for speech/combat | `SayEvent`/damage are facts with no cancellable phase; movement implements the Pre/Mid/Post pair (§6) |
 | System ordering is a single `.after()` chain | `ClientPlugin` chains five systems; split across crates this needs explicit `SystemSet`s, or each dispatch hop costs a frame |
 | ~~Dependencies point the wrong way~~ | Fixed in step 9. `grim` depends on the subsystems and re-exports them (`GrimDefaultPlugins`); nothing depends back on the facade |
 | ~~`CommandRegistry` is held in a `OnceLock`~~ | Fixed in step 6. It is a Bevy resource, threaded into `handle_client_input` via a `SessionRes` `SystemParam` that keeps the signature within the 16-parameter limit |

@@ -41,8 +41,8 @@ creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the
 | `look::handle_look` | `Update` | `src/commands/look.rs` | Reads `Command::Look`; emits `LookRoom` (no target) or `LookEntity`, else a "not here" `InfoMessage`. Targets resolve via `grim-target` (`BEING` spec: best rank, or Nth with `2.goblin`). |
 | `desc::handle_desc` | `Update` | `src/commands/desc.rs` | Reads `Command::Desc`; views/edits the actor's own `Description` paragraphs (`Show` reuses `LookEntity` on self; `Edit` emits `OpenEditor` preloaded). |
 | `desc::handle_editor_done` | `Update` | `src/commands/desc.rs` | Reads `EditorDone` for `EditorKind::Description`; replaces the actor's paragraphs on `@save`, confirms the discard on `@exit`. |
-| `movement::handle_move` | `Update` | `src/commands/movement.rs` | Reads `Command::Move`; walks an exit, refreshes `last_room`, emits `MoveEvent` + auto-look, plus `AttemptLeave`/`AttemptEnter` before placement and `Leave`/`Enter` facts after. |
-| `movement::handle_goto` | `Update` | `src/commands/movement.rs` | Admin teleport to a room by address (entity/grim id/slug, `area:room`); emits the same transition pair (skipped when source == destination). |
+| `movement::handle_move` | `Update` | `src/commands/movement.rs` | Reads `Command::Move`; validates the exit, then runs the phased pipeline in a queued closure: sync vetoable `AttemptWalk`/`AttemptLeave`/`AttemptEnter` triggers, then placement, `MoveEvent`, auto-look. `Leave`/`Enter` facts queue into `PendingFacts` and fire next tick via `fire_pending_facts` (chained). Refreshes `last_room`. |
+| `movement::handle_goto` | `Update` | `src/commands/movement.rs` | Admin teleport to a room by address (entity/grim id/slug, `area:room`); fires attempt triggers deferred (denial ignored — admin override) and queues facts the same way. Skipped when source == destination. |
 | `quit::handle_quit` | `Update` | `src/commands/quit.rs` | Reads `Command::Quit`; emits `DisconnectRequest` for the player's connection. |
 | `title::handle_title` | `Update` | `src/commands/title.rs` | Reads `Command::Title`; sets/clears the actor's title (≤60 chars). |
 | `shutdown::handle_shutdown_command` | `Update` (`grim_world::ShutdownSet::Command`) | `src/commands/shutdown.rs` | Reads `Command::Shutdown`; admin-gates the graceful countdown (state/tick stay in `grim-world`). |
@@ -67,7 +67,7 @@ Player-facing verbs and where to find their handlers.
 | `EngineCommand` | Message (input, from `grim-core`) | each `src/commands/*.rs` |
 | `InfoMessage` | Message (output, from `grim-core`) | `look`/`desc`/`movement`/`title`/`shutdown` |
 | `LookRoom` / `LookEntity` / `MoveEvent` | Message (world-happening events, **registered by `grim_world::WorldPlugin`**) | emitted by `look`/`movement`/`desc` (`Show`) |
-| `AttemptLeave` / `AttemptEnter` / `Leave` / `Enter` | Message (room-transition events, **registered by `movement::register`**) | `src/transition.rs`; emitted by `movement`/`goto`. Attempts are observe-only (no veto yet); facts are committed. Consumed by `grim-script`. |
+| `AttemptLeave` / `AttemptEnter` / `Leave` / `Enter` | Trigger events (**no registration**) | `src/transition.rs`; phased movement vocabulary (Pre attempts, Post facts). Attempts carry a denial latch; consumed by `grim-script` observers. |
 | `DisconnectRequest` | Message (from `grim-networking`) | `src/commands/quit.rs` |
 | `OpenEditor` / `EditorDone` | Message (output/input, from `grim-core`) | `desc` (`Edit` opens preloaded; `handle_editor_done` applies `@save`) |
 | `ServerBroadcast` | Message (**registered by `grim_world::ShutdownPlugin`**) | `src/commands/shutdown.rs` |

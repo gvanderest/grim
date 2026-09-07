@@ -150,27 +150,34 @@ fn movement_walks_between_seeded_rooms() {
 }
 
 #[test]
-fn grimmok_greets_every_arrival() {
+fn grimmok_greets_after_the_room_loads() {
     let mut mud = Mud::new();
     let alice = create_char(&mut mud, "alice@example.com", "Alice");
 
-    // Leave Grimmok's room, then come back: the enter trigger fires and the
-    // arrival-room broadcast reaches the mover.
+    // Leave Grimmok's room, then come back: the enter trigger is post-state,
+    // so the arrival description renders before the hello reacts to it.
     mud.send(alice, "north").assert_contains("Town Square");
-    mud.send(alice, "south")
-        .assert_contains("Hello there adventurer");
+    let back = mud.send(alice, "south");
+    let text = back.text();
+    let room = text.find("The Rusted Anvil").expect("arrival description");
+    let hello = text.find("Hello there adventurer").expect("enter greeting");
+    assert!(room < hello, "room loads before the hello:\n{text}");
 }
 
 #[test]
-fn grimmok_farewell_reaches_those_who_stay() {
+fn grimmok_farewell_precedes_departure() {
     let mut mud = Mud::new();
     let alice = create_char(&mut mud, "alice@example.com", "Alice");
     let bob = create_char(&mut mud, "bob@example.com", "Bob");
 
-    // Alice leaves the tavern: the attempt-leave trigger fires while she is
-    // still inside, so Grimmok's farewell goes to the room — heard by Bob,
-    // who stays — and straight to Alice, who is mid-transition.
-    mud.send(alice, "north").assert_contains("See you later");
+    // The attempt-leave trigger is pre-state: the farewell renders before
+    // the arrival it precedes — for Alice, who is mid-transition, and for
+    // Bob, who stays and hears the room broadcast.
+    let out = mud.send(alice, "north");
+    let text = out.text();
+    let bye = text.find("See you later").expect("farewell");
+    let square = text.find("Town Square").expect("arrival description");
+    assert!(bye < square, "farewell precedes the arrival:\n{text}");
     mud.send(bob, "look").assert_contains("See you later");
 }
 

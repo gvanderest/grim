@@ -8,12 +8,11 @@
 | Component | File | Purpose |
 |---|---|---|
 | `ScriptTriggers` | `src/trigger.rs` | Every script trigger on one creature, in blueprint order (`CompiledTrigger { on, bytecode }`). |
-| `TriggerDef` | `src/trigger.rs` | Blueprint shape (`{on, script}` with inline Lua); compiled at spawn. |
-
 ## Systems
 | System | Schedule | File | Purpose |
 |---|---|---|---|
-| `watch_transitions` | `Update` | `src/watch.rs` | Reads `AttemptEnter`/`AttemptLeave`/`Enter`/`Leave`; fires matching triggers on scripted creatures in the affected room (mover excluded); routes speech + failure pages. |
+| `on_attempt_leave` / `on_attempt_enter` | Observer (sync, in the movement pipeline) | `src/watch.rs` | Run departure/arrival-room scripts before placement; a `deny()` latches onto the attempt. |
+| `on_leave` / `on_enter` | Observer (post-placement) | `src/watch.rs` | Run departure/arrival-room scripts on the committed facts. |
 
 ## Commands
 Player-facing verbs and where to find their handlers.
@@ -26,13 +25,12 @@ Player-facing verbs and where to find their handlers.
 |---|---|---|
 | `TriggerKind` | serde enum (`enter`/`leave`/`attempt_enter`/`attempt_leave`) | `src/trigger.rs` |
 | `ChannelMessage` | Message (output, from `grim-channel`) | `src/watch.rs` (mob speech on the `say` channel) |
-| `InfoMessage` | Message (output, from `grim-core`) | `src/watch.rs` (failure pages to online admins) |
-
 ## Notes
 - **Sandbox:** fresh Lua state per firing; stdlib is `math`/`string`/`table`/`utf8` only, and `load`/`os`/`io`/`require`/`print`/etc. are explicitly nilled (`STRIPPED_GLOBALS`, pinned by tests). 256 KiB memory cap + 100k-instruction budget turn runaways into errors.
+- **Facts fire a tick after placement:** `Leave`/`Enter` queue into the movement `PendingFacts` buffer, so their greetings land in a later flush than the arrival they react to. Attempt-time speech is immediate.
 - **Errors never disable:** a failing trigger logs + pages every online admin (`script.trigger.failed`) and fires again next transition.
-- **Attempts are observe-only:** `Attempt*` carries no veto power yet; it lets scripts greet intent (`attempt_leave`) separately from arrival (`enter`).
-- **One plugin:** `ScriptPlugin` (`src/plugin.rs`) only adds the watcher. Compose after `ActorPlugin` (emits the transition events) + `ChannelPlugin` (owns the `say` channel).
+- **Attempts are blockable:** a script calls `deny()` to latch a denial (after `say`ing its refusal — echo belongs to the denier); a denied move never places. Facts only observe.
+- **One plugin:** `ScriptPlugin` (`src/plugin.rs`) adds the four observers plus the `PendingSpeech` flush. Compose after `ActorPlugin` (fires the transition events) + `ChannelPlugin` (owns the `say` channel).
 - Precompile-at-spawn: `compile()` validates syntax when the blueprint stamps, so typos break at startup, not on a player's move.
 
 ---
