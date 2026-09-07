@@ -25,7 +25,7 @@ world.
 
 | System | Schedule | File | Purpose |
 |---|---|---|---|
-| `handle_connection_established` | `Update` | `src/greeter.rs` | Spawns a `Client`, prints the login banner + first prompt — the entry to the flow. |
+| `handle_connection_established` | `Update` | `src/greeter.rs` | Spawns a `Client`, prints the login banner + first prompt — the entry to the flow. Refuses banned IPs first: the ban message + sever, no session. |
 | `validate_registries` | `Startup` | `src/plugin.rs` | Panics on a mis-seeded world (empty race registry / no tier-1 class) so creation can't trap a player. |
 | `handle_pregame_input` | `Update` (`.after` the greeter, `.before(SceneSystems::InGameInput)`) | `src/input.rs` | Routes a line by pre-game `ClientState`; skips `InGame` (scene's job); records connections it advances into the world in `JustEnteredWorld`. |
 
@@ -48,6 +48,15 @@ is `enter_world_by_name` in `src/world_entry.rs`, shared by the login-by-name,
 character-select, and legacy-backfill (class-pick) paths. Completing a new build
 is `finalize_character` / `backfill_and_enter` in `src/finalize.rs`.
 
+Ban enforcement is one gate function per identity (`BanList::is_ip_banned` /
+`is_account_banned` / `is_character_banned`), called at three points: IP at the
+greeter (no session is spawned), account in `authenticate` after a correct
+password (message + sever, never the menu), character in `character_select`
+(message + menu re-show) and in `enter_world_by_name` (covers login-by-name;
+refuse back to the login prompt). A mid-play `ban add` kicks live sessions from
+the scene side (`grim-scene/src/ban.rs`); copyover resume re-checks all three
+before placing (`refuse_banned` in `grim-scene/src/resume.rs`).
+
 ## Resources & Events
 
 | Name | Kind (Resource/Message) | File |
@@ -55,6 +64,7 @@ is `finalize_character` / `backfill_and_enter` in `src/finalize.rs`.
 | `ReservedNamePrefixes` | Resource (character-name prefix blocklist; author-overridable) | `src/validation.rs` |
 | `RaceRegistry` / `ClassRegistry` | Resource (read for the creation menus; `init_resource`, from `grim-world`) | `src/plugin.rs` |
 | `PersistenceConfig` | Resource (account/character JSON dir; `init_resource`, from `grim-persistence`) | `src/plugin.rs` |
+| `BanList` | Resource (read at every login gate; owned by `grim-persistence`) | `src/greeter.rs`, `src/login.rs`, `src/character_select.rs`, `src/world_entry.rs` |
 | `LoginAnnounce` / `LinkdeadAnnounce` | Message (emitted on world entry) | `src/character_select.rs`, `src/world_entry.rs` |
 | `LookRoom` | Message (emitted at MOTD to auto-look) | `src/character_select.rs` |
 | `ConnectionOutput` / `DisconnectRequest` | Message (from `grim-networking`) | throughout |

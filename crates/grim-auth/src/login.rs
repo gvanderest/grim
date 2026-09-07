@@ -327,6 +327,12 @@ fn authenticate(
                 .map(|(_, a)| verify_password(text.trim(), &a.password_hash))
                 .unwrap_or(false);
             if ok {
+                // Banned accounts are refused before any game state loads.
+                if world_entry::refuse_banned_account(
+                    accounts, identifier, &res.bans, conn, outputs, disconnect,
+                ) {
+                    return;
+                }
                 client.account = Some(account_entity);
                 if let Some(name) = auto_select {
                     // A legacy character (no race/class yet) is routed through the
@@ -354,6 +360,7 @@ fn authenticate(
                             rooms,
                             res.starting.0,
                             &res.persistence,
+                            &res.bans,
                             outputs,
                             announce_linkdead,
                             disconnect,

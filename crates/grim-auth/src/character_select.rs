@@ -8,6 +8,7 @@ use grim_core::events::{LinkdeadAnnounce, LoginAnnounce, LookRoom};
 use grim_core::GrimId;
 use grim_networking::{ConnectionOutput, DisconnectRequest};
 use grim_persistence::{load_account_characters, PersistenceConfig};
+use grim_text::tr;
 use std::collections::VecDeque;
 
 use crate::creation;
@@ -169,7 +170,22 @@ pub(crate) fn character_select(
         return;
     };
     let name = entry.name.clone();
-
+    // Banned characters never enter the world: refuse with the ban message
+    // and re-show the menu so the account's other characters stay playable.
+    if res.bans.is_character_banned(&name) {
+        outputs.write(ConnectionOutput::new(conn, tr!("ban.banned.character")));
+        show_character_menu(
+            client_entity,
+            client,
+            characters,
+            accounts,
+            outputs,
+            linkdead,
+            players,
+            &res.persistence,
+        );
+        return;
+    }
     // Legacy character: created before races/classes existed, so both slugs are
     // empty on disk. Route it through the gender → race → class picker ONCE
     // (the `select_class` backfill path then persists the build and enters the
@@ -192,6 +208,7 @@ pub(crate) fn character_select(
         rooms,
         res.starting.0,
         &res.persistence,
+        &res.bans,
         outputs,
         announce_linkdead,
         disconnect,

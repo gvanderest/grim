@@ -15,7 +15,7 @@ use grim_core::GrimId;
 use grim_networking::{
     Connection, ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest,
 };
-use grim_persistence::{PersistenceConfig, PersistencePlugin};
+use grim_persistence::{BanList, PersistenceConfig, PersistencePlugin};
 use grim_world::{ClassRegistry, RaceRegistry, Room, StartingRoom, WorldPlugin};
 use std::net::SocketAddr;
 
@@ -2342,6 +2342,257 @@ mod transition_guard {
                 .any(|o| o.connection == conn && o.text.contains("Unknown command")),
             "the in-game command sharing a tick with the MOTD transition must be \
              dispatched (unknown-command error), not dropped by the guard"
+        );
+    }
+}
+
+// ─── Ban enforcement at the login boundary ──────
+mod bans {
+    use super::*;
+    use grim_core::events::BanKind;
+
+    fn conn_text(app: &App, conn: Entity) -> String {
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn)
+            .map(|o| o.text.clone())
+            .collect()
+    }
+
+    fn disconnects(app: &App) -> Vec<Entity> {
+        let msgs = app.world().resource::<Messages<DisconnectRequest>>();
+        let mut cursor = msgs.get_cursor();
+        cursor.read(msgs).map(|m| m.connection).collect()
+    }
+
+    fn client_state(app: &mut App, conn: Entity) -> Option<ClientState> {
+        app.world_mut()
+            .query::<&Client>()
+            .iter(app.world())
+            .find(|c| c.connection == conn)
+            .map(|c| c.state.clone())
+    }
+
+    fn login(app: &mut App, conn: Entity, line: &str) {
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: line.into(),
+        });
+        app.update();
+    }
+
+    /// A banned IP never gets a session: no `Client`, the ban message, and a
+    /// disconnect — before the login banner.
+    #[test]
+    fn ip_ban_refuses_connection_before_client_spawn() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        app.update();
+        app.world_mut()
+            .resource_mut::<BanList>()
+            .add(BanKind::Ip, "127.*", "Root");
+
+        let conn = spawn_conn(&mut app, 1);
+        let addr: SocketAddr = "127.0.0.1:10001".parse().unwrap();
+        app.world_mut().write_message(ConnectionEstablished {
+            connection: conn,
+            addr,
+        });
+        app.update();
+
+        assert!(
+            client_state(&mut app, conn).is_none(),
+            "banned IP spawns no Client"
+        );
+        assert!(
+            conn_text(&app, conn).contains("Your IP address has been banned"),
+            "banned IP sees the ban message"
+        );
+        assert_eq!(disconnects(&app), vec![conn]);
+    }
+
+    /// A banned account is refused after a correct password, before any game
+    /// state loads: the ban message and a disconnect, never the menu.
+    #[test]
+    fn account_ban_refuses_after_password() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = spawn_conn(&mut app, 1);
+        app.world_mut().spawn(Client::new(conn));
+        app.world_mut().spawn(Account {
+            id: GrimId::new(),
+            identifier: "doomed@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![],
+            created_at: Utc::now(),
+        });
+        app.update();
+        app.world_mut().resource_mut::<BanList>().add(
+            BanKind::Account,
+            "doomed@example.com",
+            "Root",
+        );
+
+        login(&mut app, conn, "doomed@example.com");
+        assert!(matches!(
+            client_state(&mut app, conn),
+            Some(ClientState::PasswordPrompt { .. })
+        ));
+        login(&mut app, conn, "password");
+        assert!(
+            conn_text(&app, conn).contains("Your account has been banned"),
+            "banned account sees the ban message"
+        );
+        assert_eq!(disconnects(&app), vec![conn]);
+        assert!(
+            !matches!(
+                client_state(&mut app, conn),
+                Some(ClientState::CharacterSelect)
+            ),
+            "banned account never reaches the menu"
+        );
+    }
+
+    /// A banned character selected from the menu is refused with the ban
+    /// message and the menu re-shown; the character never enters the world.
+    #[test]
+    fn character_ban_returns_menu() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let account_id = GrimId::new();
+        let acct_e = app
+            .world_mut()
+            .spawn(Account {
+                id: account_id,
+                identifier: "player@example.com".into(),
+                password_hash: hash_password("password"),
+                characters: vec![],
+                created_at: Utc::now(),
+            })
+            .id();
+        let stored = StoredCharacter {
+            id: GrimId::new(),
+            name: "Doomed".into(),
+            account_id,
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: "human".into(),
+            class: "warrior".into(),
+            level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
+        };
+        let char_id = stored.id;
+        let (name, actor, character) = stored.into_components();
+        app.world_mut()
+            .spawn((name, actor, character, InRoom { room }));
+        let menu_conn = spawn_conn(&mut app, 1);
+        app.world_mut().spawn(Client {
+            account: Some(acct_e),
+            state: ClientState::CharacterSelect,
+            ..Client::new(menu_conn)
+        });
+        // The menu lists the account's characters: link the id.
+        app.world_mut()
+            .entity_mut(acct_e)
+            .get_mut::<Account>()
+            .unwrap()
+            .characters
+            .push(char_id);
+        app.update();
+        app.world_mut()
+            .resource_mut::<BanList>()
+            .add(BanKind::Character, "doomed", "Root");
+
+        let mut clients = app.world_mut().query::<&Client>();
+        let conn = clients
+            .iter(app.world())
+            .find(|c| c.account == Some(acct_e))
+            .unwrap()
+            .connection;
+        login(&mut app, conn, "1");
+        assert_eq!(
+            client_state(&mut app, conn),
+            Some(ClientState::CharacterSelect),
+            "banned pick returns to the menu"
+        );
+        let text = conn_text(&app, conn);
+        assert!(
+            text.contains("Your character has been banned"),
+            "banned pick shows the ban message; got: {text:?}"
+        );
+        let mut players = app.world_mut().query::<&Player>();
+        assert!(
+            players.iter(app.world()).next().is_none(),
+            "banned character never enters the world"
+        );
+    }
+
+    /// Login-by-name at a banned character refuses back to the login prompt
+    /// (the shared world-entry gate), never reconnecting or taking over.
+    #[test]
+    fn character_ban_blocks_login_by_name() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = spawn_conn(&mut app, 1);
+        app.world_mut().spawn(Client::new(conn));
+        let account_id = GrimId::new();
+        app.world_mut().spawn(Account {
+            id: account_id,
+            identifier: "player@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![],
+            created_at: Utc::now(),
+        });
+        let stored = StoredCharacter {
+            id: GrimId::new(),
+            name: "Doomed".into(),
+            account_id,
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: "human".into(),
+            class: "warrior".into(),
+            level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
+            inventory: Vec::new(),
+        };
+        let (name, actor, character) = stored.into_components();
+        app.world_mut()
+            .spawn((name, actor, character, InRoom { room }));
+        app.update();
+        app.world_mut()
+            .resource_mut::<BanList>()
+            .add(BanKind::Character, "DOOMED", "Root");
+
+        login(&mut app, conn, "Doomed");
+        assert!(matches!(
+            client_state(&mut app, conn),
+            Some(ClientState::PasswordPrompt { .. })
+        ));
+        login(&mut app, conn, "password");
+        assert_eq!(
+            client_state(&mut app, conn),
+            Some(ClientState::LoginPrompt),
+            "banned login-by-name refuses to the login prompt"
+        );
+        assert!(
+            conn_text(&app, conn).contains("Your character has been banned"),
+            "banned login-by-name shows the ban message"
         );
     }
 }

@@ -44,6 +44,7 @@ pub(crate) type PlayerChars<'w, 's> = Query<
 pub(crate) struct SessionRes<'w> {
     pub(crate) starting: Res<'w, StartingRoom>,
     pub(crate) persistence: Res<'w, grim_persistence::PersistenceConfig>,
+    pub(crate) bans: Res<'w, grim_persistence::BanList>,
     pub(crate) reserved: Res<'w, ReservedNamePrefixes>,
     pub(crate) races: Res<'w, RaceRegistry>,
     pub(crate) classes: Res<'w, ClassRegistry>,

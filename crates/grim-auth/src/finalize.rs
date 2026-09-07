@@ -113,6 +113,7 @@ pub(crate) fn backfill_and_enter(
         &world.rooms,
         res.starting.0,
         &res.persistence,
+        &res.bans,
         outputs,
         &mut world.announce_linkdead,
         &mut world.disconnect,

@@ -5,11 +5,11 @@
 use bevy::prelude::*;
 use chrono::Utc;
 use grim_actor::{Actor, Character, InRoom, Linkdead, OutputHistory, Player, StoredCharacter};
-use grim_core::components::{Client, ClientState, Description, Name as GrimName};
+use grim_core::components::{Account, Client, ClientState, Description, Name as GrimName};
 use grim_core::events::LinkdeadAnnounce;
 use grim_core::GrimId;
 use grim_networking::{ConnectionOutput, DisconnectRequest};
-use grim_persistence::{load_character_by_name, PersistenceConfig};
+use grim_persistence::{load_character_by_name, BanList, PersistenceConfig};
 use grim_text::tr;
 
 use crate::params::RoomResolver;
@@ -40,6 +40,7 @@ pub(crate) fn enter_world_by_name(
     rooms: &RoomResolver,
     starting: Entity,
     persistence: &PersistenceConfig,
+    bans: &BanList,
     outputs: &mut MessageWriter<ConnectionOutput>,
     announce_linkdead: &mut MessageWriter<LinkdeadAnnounce>,
     disconnect: &mut MessageWriter<DisconnectRequest>,
@@ -51,7 +52,12 @@ pub(crate) fn enter_world_by_name(
             ..ConnectionOutput::new(conn, format!("{msg}\n{}", tr!("login.prompt")))
         });
     };
-
+    // Banned characters never enter the world, whichever path led here
+    // (menu selection or login-by-name): refuse back to the login prompt.
+    if bans.is_character_banned(name) {
+        refuse(client, outputs, tr!("ban.banned.character").trim_end());
+        return;
+    }
     // Prefer a resident entity for this name (linkdead beats online).
     let resident = characters
         .iter()
@@ -109,6 +115,28 @@ pub(crate) fn enter_world_by_name(
         ),
         None => refuse(client, outputs, "That character could not be found."),
     }
+}
+
+/// Refuse a banned account before any game state loads: the ban message, then
+/// sever the socket. Returns true when refused. Called from `authenticate`
+/// after a correct password, so a banned account never reaches the menu.
+pub(crate) fn refuse_banned_account(
+    accounts: &Query<(Entity, &mut Account)>,
+    identifier: &str,
+    bans: &BanList,
+    conn: Entity,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+    disconnect: &mut MessageWriter<DisconnectRequest>,
+) -> bool {
+    let banned = accounts
+        .iter()
+        .find(|(_, a)| a.identifier == identifier)
+        .is_some_and(|(_, a)| bans.is_account_banned(a));
+    if banned {
+        outputs.write(ConnectionOutput::new(conn, tr!("ban.banned.account")));
+        disconnect.write(DisconnectRequest { connection: conn });
+    }
+    banned
 }
 
 /// Reconnect a linkdead character on a new connection: clear `Linkdead`, adopt

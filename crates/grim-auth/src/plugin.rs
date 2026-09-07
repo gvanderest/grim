@@ -4,6 +4,7 @@
 
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::prelude::*;
+use grim_networking::DisconnectRequest;
 use grim_scene::{JustEnteredWorld, SceneSystems};
 use grim_world::{ClassRegistry, RaceRegistry};
 
@@ -40,6 +41,10 @@ impl Plugin for AuthPlugin {
         // registry before adding this plugin (mirrors ReservedNamePrefixes).
         app.init_resource::<RaceRegistry>();
         app.init_resource::<ClassRegistry>();
+        // The greeter severs banned-IP sockets itself; register the request
+        // here so AuthPlugin stands alone (a no-op when ScenePlugin, which
+        // owns the message, is also present).
+        app.add_message::<DisconnectRequest>();
         app.add_systems(Startup, validate_registries);
         app.add_systems(
             Update,
