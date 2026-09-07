@@ -23,8 +23,9 @@ use std::path::PathBuf;
 use bevy::log::{error, warn};
 use bevy::prelude::*;
 use grim::prelude::{
-    Actor, Area, Cardinal, Creature, Description, Exits, Gender, GrimId, InRoom, Keywords,
-    Name as GrimName, Object, Room, RoomDescription, StartingRoom,
+    compile, Actor, Area, Cardinal, CompiledTrigger, Creature, Description, Exits, Gender, GrimId,
+    InRoom, Keywords, Name as GrimName, Object, Room, RoomDescription, ScriptTriggers,
+    StartingRoom, TriggerDef,
 };
 use serde::Deserialize;
 
@@ -88,6 +89,10 @@ struct NpcBlueprint {
     /// to `"<name> is here."`.
     #[serde(default)]
     room_description: String,
+    /// Scripted reactions (`{on, script}` with inline Lua). A script that
+    /// fails to compile is logged and skipped — the mob still spawns.
+    #[serde(default)]
+    triggers: Vec<TriggerDef>,
 }
 
 /// A pickable object placed in a room.
@@ -245,22 +250,7 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
         commands.entity(from).insert(Exits { exits });
 
         for npc in &r.npcs {
-            commands.spawn((
-                Creature,
-                // Seeded mobs carry the shared `Actor` base with sensible
-                // defaults (no race/build data in blueprints yet): empty race,
-                // level 1, neutral gender.
-                Actor {
-                    race: String::new(),
-                    level: 1,
-                    gender: Gender::Neutral,
-                },
-                GrimName(npc.name.clone()),
-                Description(npc.description.clone()),
-                Keywords(npc.keywords.clone()),
-                RoomDescription(npc.room_description.clone()),
-                InRoom { room: from },
-            ));
+            spawn_npc(commands, &bp.slug, npc, from);
         }
         for obj in &r.objects {
             commands.spawn((
@@ -276,6 +266,46 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
 
     bp.starting_room
         .and_then(|gid| room_ents.get(&gid).copied())
+}
+
+/// Stamp one NPC blueprint into `room`: the being bundle plus its compiled
+/// script triggers. A trigger that fails to compile is logged and skipped —
+/// the mob still spawns, triggerless for that moment.
+fn spawn_npc(commands: &mut Commands, area_slug: &str, npc: &NpcBlueprint, room: Entity) {
+    // Compile each trigger once now: a typo fails loudly at startup (logged,
+    // trigger skipped) instead of on a player's move.
+    let mut compiled = Vec::with_capacity(npc.triggers.len());
+    for def in &npc.triggers {
+        match compile(&def.script) {
+            Ok(bytecode) => compiled.push(CompiledTrigger {
+                on: def.on,
+                bytecode,
+            }),
+            Err(error) => error!(
+                "area '{area_slug}' npc '{}': skipping trigger that does not compile: {error}",
+                npc.name
+            ),
+        }
+    }
+    let mut mob = commands.spawn((
+        Creature,
+        // Seeded mobs carry the shared `Actor` base with sensible
+        // defaults (no race/build data in blueprints yet): empty race,
+        // level 1, neutral gender.
+        Actor {
+            race: String::new(),
+            level: 1,
+            gender: Gender::Neutral,
+        },
+        GrimName(npc.name.clone()),
+        Description(npc.description.clone()),
+        Keywords(npc.keywords.clone()),
+        RoomDescription(npc.room_description.clone()),
+        InRoom { room },
+    ));
+    if !compiled.is_empty() {
+        mob.insert(ScriptTriggers(compiled));
+    }
 }
 
 #[cfg(test)]
