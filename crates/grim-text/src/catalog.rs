@@ -98,6 +98,18 @@ fn default_string(key: &str) -> String {
         "sockets.state.race" => "Race",
         "sockets.state.class" => "Class",
         "sockets.state.motd" => "MOTD",
+        "ban.banned.ip" => "Your IP address has been banned from connecting to the server.\n",
+        "ban.banned.account" => "Your account has been banned from connecting to the server.\n",
+        "ban.banned.character" => "Your character has been banned from connecting to the server.\n",
+        "ban.list.empty" => "No bans.\n",
+        "ban.list.header" => "Bans (%{total}):\n",
+        "ban.list.row" => "  %{scope} %{pattern} (banned %{date} by %{author})\n",
+        "ban.added" => "Ban added: %{scope} %{pattern}\n",
+        "ban.exists" => "That ban already exists.\n",
+        "ban.removed" => "Ban removed: %{scope} %{pattern}\n",
+        "ban.not_found" => "No such ban.\n",
+        "ban.save_failed" => "Ban could not be saved; nothing changed.\n",
+        "ban.invalid_pattern" => "Invalid pattern for %{scope} ban.\n",
         other => return other.to_string(),
     }
     .to_string()

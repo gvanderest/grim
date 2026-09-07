@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::cardinal::Cardinal;
 
@@ -84,8 +85,91 @@ pub enum Command {
     /// `shutdown <seconds>` — admin-only. Schedules a graceful server shutdown
     /// after a countdown, broadcasting warnings to all connected players.
     Shutdown { seconds: u64 },
+    /// `ban list [type]` — admin-only. List bans, optionally filtered by
+    /// `ip` / `account` / `character`.
+    /// `ban add <type> <pattern>` — admin-only. Block an IP (exact or
+    /// `*`-wildcard prefix like `127.0.*`), an account (identifier or id), or
+    /// a character (name; case-insensitive). Kicks every matching session.
+    /// `ban remove <type> <pattern>` — admin-only. Lift a ban.
+    Ban { op: BanOp },
 }
 
+/// Which identity a ban blocks: an IP, an account, or a character. Account and
+/// character patterns match exactly and case-insensitively; IP patterns match
+/// per-octet where `*` skips one octet (`127.*` bans `127.0.0.0/8`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BanKind {
+    Ip,
+    Account,
+    Character,
+}
+
+impl BanKind {
+    /// Parse `ip` / `account` / `character` (case-insensitive). Anything else
+    /// is `None`, so the command parser reports the line unknown.
+    pub fn parse(s: &str) -> Option<Self> {
+        if s.eq_ignore_ascii_case("ip") {
+            Some(Self::Ip)
+        } else if s.eq_ignore_ascii_case("account") {
+            Some(Self::Account)
+        } else if s.eq_ignore_ascii_case("character") {
+            Some(Self::Character)
+        } else {
+            None
+        }
+    }
+
+    /// Canonical lowercase name, as stored and displayed.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ip => "ip",
+            Self::Account => "account",
+            Self::Character => "character",
+        }
+    }
+}
+
+impl std::fmt::Display for BanKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// The `ban` sub-operation: which blocklist edit or query to apply.
+#[derive(Debug, Clone, PartialEq)]
+pub enum BanOp {
+    /// `ban list [type]` — every ban, or only one kind.
+    List { filter: Option<BanKind> },
+    /// `ban add <type> <pattern>` — block and kick matches.
+    Add { kind: BanKind, pattern: String },
+    /// `ban remove <type> <pattern>` — lift.
+    Remove { kind: BanKind, pattern: String },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ban_kind_parses_case_insensitively() {
+        assert_eq!(BanKind::parse("ip"), Some(BanKind::Ip));
+        assert_eq!(BanKind::parse("ACCOUNT"), Some(BanKind::Account));
+        assert_eq!(BanKind::parse("Character"), Some(BanKind::Character));
+        assert_eq!(BanKind::parse("email"), None);
+        assert_eq!(BanKind::parse(""), None);
+    }
+
+    #[test]
+    fn ban_kind_round_trips_display_and_serde() {
+        for kind in [BanKind::Ip, BanKind::Account, BanKind::Character] {
+            assert_eq!(BanKind::parse(&kind.to_string()), Some(kind));
+            let json = serde_json::to_string(&kind).unwrap();
+            assert_eq!(json, format!("\"{}\"", kind.as_str()));
+            assert_eq!(serde_json::from_str::<BanKind>(&json).unwrap(), kind);
+        }
+    }
+}
 /// An object changed hands: picked up from a room or dropped into one.
 /// Rendered per-recipient — the actor sees the first-party line ("You pick
 /// up …"), everyone else in the room the third-party line ("<name> picks

@@ -343,7 +343,11 @@ fn build_registry() -> CommandRegistry<Command> {
             text: text.to_string(),
         })
     });
-
+    // `ban list [type]` / `ban add <type> <pattern>` /
+    // `ban remove <type> <pattern>` — admin-gated + masked at dispatch (see
+    // `handle_ingame`). Anything else (bare `ban`, unknown type, missing or
+    // extra args) is unknown, like the other admin verbs.
+    r.register("ban", crate::ban::parse_ban);
     // ── Cardinal directions (last = highest priority for single-char) ─
     r.register("north", |_| {
         Some(Command::Move {
@@ -385,13 +389,12 @@ fn build_registry() -> CommandRegistry<Command> {
 
     r
 }
-
 #[cfg(test)]
 mod tests {
     use grim_command::CommandRegistry;
     use grim_core::cardinal::Cardinal;
     use grim_core::events::Command;
-    use grim_core::events::DescOp;
+    use grim_core::events::{BanKind, BanOp, DescOp};
 
     use super::{command_registry, parse_command};
 
@@ -748,6 +751,65 @@ mod tests {
     fn test_gecho_without_text_is_none() {
         assert_eq!(parse("gecho"), None);
         assert_eq!(parse("gecho   "), None);
+    }
+    #[test]
+    fn test_ban_list() {
+        assert_eq!(
+            parse("ban list"),
+            Some(Command::Ban {
+                op: BanOp::List { filter: None }
+            })
+        );
+        assert_eq!(
+            parse("ban list IP"),
+            Some(Command::Ban {
+                op: BanOp::List {
+                    filter: Some(BanKind::Ip)
+                }
+            })
+        );
+        assert_eq!(
+            parse("ban list account"),
+            Some(Command::Ban {
+                op: BanOp::List {
+                    filter: Some(BanKind::Account)
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn test_ban_add_remove() {
+        assert_eq!(
+            parse("ban add ip 127.0.*"),
+            Some(Command::Ban {
+                op: BanOp::Add {
+                    kind: BanKind::Ip,
+                    pattern: "127.0.*".to_string()
+                }
+            })
+        );
+        assert_eq!(
+            parse("BAN REMOVE Character Villain"),
+            Some(Command::Ban {
+                op: BanOp::Remove {
+                    kind: BanKind::Character,
+                    pattern: "Villain".to_string()
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn test_ban_malformed_is_none() {
+        assert_eq!(parse("ban"), None);
+        assert_eq!(parse("ban frobnicate"), None);
+        assert_eq!(parse("ban list email"), None);
+        assert_eq!(parse("ban list ip extra"), None);
+        assert_eq!(parse("ban add ip"), None);
+        assert_eq!(parse("ban add email x@y.z"), None);
+        assert_eq!(parse("ban add ip 1.2.3.4 extra"), None);
+        assert_eq!(parse("ban remove character"), None);
     }
 
     #[test]

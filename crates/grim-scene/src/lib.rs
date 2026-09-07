@@ -6,6 +6,7 @@
 //! by the pre-game auth crate. Cohesive concerns live in sibling modules; this file is a
 //! shell that wires them together and re-exports the public surface.
 
+mod ban;
 mod channel_output;
 mod command;
 mod editor;
@@ -20,6 +21,7 @@ mod resume;
 mod scene_stack;
 mod session;
 mod sockets;
+mod who;
 
 // Shared render helpers (MOTD text, selection menus) the pre-game auth
 // flow reads. Auth → scene is allowed; scene never depends on auth.

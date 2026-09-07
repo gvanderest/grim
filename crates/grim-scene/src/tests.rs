@@ -16,8 +16,10 @@ use grim_object::{CarriedBy, Object};
 // Explicit named import shadows the glob'd `bevy::prelude::Command` trait.
 use grim_core::events::Command;
 use grim_core::GrimId;
-use grim_networking::{Connection, ConnectionEstablished, ConnectionInput, ConnectionOutput};
-use grim_persistence::{PersistenceConfig, PersistencePlugin};
+use grim_networking::{
+    Connection, ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest,
+};
+use grim_persistence::{BanList, PersistenceConfig, PersistencePlugin};
 use grim_world::{Room, StartingRoom, WorldPlugin};
 use std::net::SocketAddr;
 
@@ -176,6 +178,207 @@ mod reconnect {
             app.world().get::<Linkdead>(char_entity).is_none(),
             "resume must clear Linkdead — not both online and linkdead"
         );
+    }
+
+    // ─── Banned resume ─────────────────────
+    mod ban_resume {
+        use super::*;
+        use grim_networking::ConnectionResumed;
+        /// A banned character never resumes: no `Player`, no `Client`, the socket
+        /// refused with the ban message and a disconnect.
+        #[test]
+        fn resume_refuses_banned_character() {
+            let mut app = test_app();
+            let room = spawn_room(&mut app);
+            app.world_mut().insert_resource(StartingRoom(room));
+
+            let account = Account {
+                id: GrimId::new(),
+                identifier: "banned-resume@example.com".into(),
+                password_hash: String::new(),
+                characters: vec![],
+                created_at: Utc::now(),
+            };
+            let account_id = account.id;
+            app.world_mut().spawn(account);
+
+            let mut stored = make_character(Vec::new());
+            stored.name = "Doomed".into();
+            stored.account_id = account_id;
+            let (name, actor, character) = stored.into_components();
+            let char_entity = app
+                .world_mut()
+                .spawn((name, actor, character, InRoom { room }, Linkdead))
+                .id();
+            // Run Startup so `PersistencePlugin` loads the (empty) `BanList`.
+            app.update();
+            app.world_mut()
+                .resource_mut::<BanList>()
+                .add(BanKind::Character, "doomed", "Root");
+
+            let conn = app
+                .world_mut()
+                .spawn(Connection {
+                    id: 8,
+                    addr: "127.0.0.1:12378".parse::<SocketAddr>().unwrap(),
+                    echo_hidden: false,
+                })
+                .id();
+            app.world_mut().write_message(ConnectionResumed {
+                connection: conn,
+                character: "Doomed".into(),
+            });
+            app.update();
+
+            assert!(
+                app.world().get::<Player>(char_entity).is_none(),
+                "banned resume attaches no Player"
+            );
+            let mut clients = app.world_mut().query::<&Client>();
+            assert!(
+                clients
+                    .iter(app.world())
+                    .find(|c| c.connection == conn)
+                    .is_none(),
+                "banned resume spawns no Client"
+            );
+            let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+            let mut cursor = msgs.get_cursor();
+            assert!(
+                cursor
+                    .read(msgs)
+                    .any(|o| o.connection == conn
+                        && o.text.contains("Your character has been banned")),
+                "banned resume shows the ban message"
+            );
+            let dus = app.world().resource::<Messages<DisconnectRequest>>();
+            let mut dc = dus.get_cursor();
+            assert!(
+                dc.read(dus).any(|d| d.connection == conn),
+                "banned resume severs the socket"
+            );
+        }
+
+        /// A banned account never resumes, even for an unbanned character name.
+        #[test]
+        fn resume_refuses_banned_account() {
+            let mut app = test_app();
+            let room = spawn_room(&mut app);
+            app.world_mut().insert_resource(StartingRoom(room));
+
+            let account = Account {
+                id: GrimId::new(),
+                identifier: "doomed-acct@example.com".into(),
+                password_hash: String::new(),
+                characters: vec![],
+                created_at: Utc::now(),
+            };
+            let account_id = account.id;
+            app.world_mut().spawn(account);
+
+            let mut stored = make_character(Vec::new());
+            stored.name = "Clean".into();
+            stored.account_id = account_id;
+            let (name, actor, character) = stored.into_components();
+            let char_entity = app
+                .world_mut()
+                .spawn((name, actor, character, InRoom { room }, Linkdead))
+                .id();
+            // Run Startup so `PersistencePlugin` loads the (empty) `BanList`.
+            app.update();
+            app.world_mut().resource_mut::<BanList>().add(
+                BanKind::Account,
+                "doomed-acct@example.com",
+                "Root",
+            );
+
+            let conn = app
+                .world_mut()
+                .spawn(Connection {
+                    id: 9,
+                    addr: "127.0.0.1:12379".parse::<SocketAddr>().unwrap(),
+                    echo_hidden: false,
+                })
+                .id();
+            app.world_mut().write_message(ConnectionResumed {
+                connection: conn,
+                character: "Clean".into(),
+            });
+            app.update();
+
+            assert!(
+                app.world().get::<Player>(char_entity).is_none(),
+                "banned-account resume attaches no Player"
+            );
+            let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+            let mut cursor = msgs.get_cursor();
+            assert!(
+                cursor.read(msgs).any(
+                    |o| o.connection == conn && o.text.contains("Your account has been banned")
+                ),
+                "banned-account resume shows the ban message"
+            );
+        }
+
+        /// A banned IP never resumes, even for an otherwise clean identity.
+        #[test]
+        fn resume_refuses_banned_ip() {
+            let mut app = test_app();
+            let room = spawn_room(&mut app);
+            app.world_mut().insert_resource(StartingRoom(room));
+
+            let account = Account {
+                id: GrimId::new(),
+                identifier: "clean-resume@example.com".into(),
+                password_hash: String::new(),
+                characters: vec![],
+                created_at: Utc::now(),
+            };
+            let account_id = account.id;
+            app.world_mut().spawn(account);
+
+            let mut stored = make_character(Vec::new());
+            stored.name = "Clean".into();
+            stored.account_id = account_id;
+            let (name, actor, character) = stored.into_components();
+            let char_entity = app
+                .world_mut()
+                .spawn((name, actor, character, InRoom { room }, Linkdead))
+                .id();
+            // Run Startup so `PersistencePlugin` loads the (empty) `BanList`.
+            app.update();
+            app.world_mut()
+                .resource_mut::<BanList>()
+                .add(BanKind::Ip, "10.*", "Root");
+
+            let conn = app
+                .world_mut()
+                .spawn(Connection {
+                    id: 10,
+                    addr: "10.9.9.9:12380".parse::<SocketAddr>().unwrap(),
+                    echo_hidden: false,
+                })
+                .id();
+            app.world_mut().write_message(ConnectionResumed {
+                connection: conn,
+                character: "Clean".into(),
+            });
+            app.update();
+
+            assert!(
+                app.world().get::<Player>(char_entity).is_none(),
+                "banned-IP resume attaches no Player"
+            );
+            let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+            let mut cursor = msgs.get_cursor();
+            assert!(
+                cursor
+                    .read(msgs)
+                    .any(|o| o.connection == conn
+                        && o.text.contains("Your IP address has been banned")),
+                "banned-IP resume shows the ban message"
+            );
+        }
     }
 }
 

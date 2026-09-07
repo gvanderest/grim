@@ -35,12 +35,18 @@ pub enum SceneSystems {
 pub struct ScenePlugin;
 impl Plugin for ScenePlugin {
     fn build(&self, app: &mut App) {
+        crate::ban::register(app);
         app.insert_resource(parser::command_registry());
         // Scene writes character JSON on `quit` and reads it on copyover resume,
         // so it needs the persistence directory. init_resource so ScenePlugin
         // stands alone; if PersistencePlugin is also present its identical
         // default is a no-op.
         app.init_resource::<grim_persistence::PersistenceConfig>();
+        // The `ban` command and the resume refusal read the blocklist.
+        // init_resource so ScenePlugin stands alone; when PersistencePlugin is
+        // also present its Startup load replaces this empty default with the
+        // `bans.json` contents.
+        app.init_resource::<grim_persistence::BanList>();
         // Playable races/classes: the WHO list reads their abbreviations. The
         // character-creation flow (auth crate) also reads them and validates the
         // effective set is non-empty; both plugins init_resource idempotently.

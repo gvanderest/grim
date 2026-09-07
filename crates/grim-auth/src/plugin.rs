@@ -4,6 +4,7 @@
 
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::prelude::*;
+use grim_networking::DisconnectRequest;
 use grim_scene::{JustEnteredWorld, SceneSystems};
 use grim_world::{ClassRegistry, RaceRegistry};
 
@@ -35,11 +36,19 @@ impl Plugin for AuthPlugin {
         // PersistencePlugin (or ScenePlugin) is also present, the identical
         // default is a no-op.
         app.init_resource::<grim_persistence::PersistenceConfig>();
+        // Every login gate reads the blocklist. init_resource so AuthPlugin
+        // stands alone; when PersistencePlugin is also present its Startup
+        // load replaces this empty default with the `bans.json` contents.
+        app.init_resource::<grim_persistence::BanList>();
         // Playable races/classes offered at character creation. init_resource so
         // the engine ships a full seed; an author overrides by inserting a custom
         // registry before adding this plugin (mirrors ReservedNamePrefixes).
         app.init_resource::<RaceRegistry>();
         app.init_resource::<ClassRegistry>();
+        // The greeter severs banned-IP sockets itself; register the request
+        // here so AuthPlugin stands alone (a no-op when ScenePlugin, which
+        // owns the message, is also present).
+        app.add_message::<DisconnectRequest>();
         app.add_systems(Startup, validate_registries);
         app.add_systems(
             Update,
