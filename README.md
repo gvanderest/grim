@@ -65,7 +65,7 @@ Everything is a Bevy plugin unless noted. GRIM core is light on purpose: types, 
 | [`grim-world`](./crates/grim-world) | `WorldPlugin` (areas/rooms/exits topology + race/class registries) and `ShutdownPlugin` (countdown + SIGTERM). The being-free *stage*. |
 | [`grim-actor`](./crates/grim-actor) | `ActorPlugin`: the beings (`Character`/`Player`/`InRoom`/…) and the verbs that read them (`look`/`move`/`goto`/`quit`/`title`/`shutdown`). Depends on `grim-world`, never the reverse. |
 | [`grim-channel`](./crates/grim-channel) | `ChannelPlugin`: social channels — say (room), yell (area), ooc (global). |
-| [`grim-object`](./crates/grim-object) | `ObjectPlugin`: things (`Object`/`CarriedBy`) and the verbs that move them (`get`/`drop`/`inventory`). Depends on `grim-actor`, never the reverse. |
+| [`grim-script`](./crates/grim-script) | `ScriptPlugin`: sandboxed Lua triggers — scripted mob reactions on room entry/exit. Layers on `grim-actor` + `grim-channel`. |
 
 ### Persistence & composition
 

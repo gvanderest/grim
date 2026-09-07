@@ -139,6 +139,7 @@ plugin registering five scenes. That is correct and not a violation.
 | `grim-channel` | `ChannelPlugin` | channel registry, audience, eligibility (§7) |
 | `grim-object` | `ObjectPlugin` | things — `Object` marker + `CarriedBy` carrier link and the carrying verbs (`get`/`drop`/`inventory`/`give`/`steal`, all resolved through `grim-target`); sits above `grim-actor`, never the reverse |
 | `grim-persistence` | `PersistencePlugin` | account/character save and load, player aliases, channel toggles |
+| `grim-script` | `ScriptPlugin` | sandboxed Lua triggers: scripted mob reactions on room entry/exit; layers on `grim-actor` (transition events) + `grim-channel` (mob speech), never the reverse |
 | `grim` | — | facade: re-exports and the D&D default plugin group (`GrimDefaultPlugins`) |
 | `example-mud` | *binary* | composition and world seed |
 
@@ -170,6 +171,10 @@ while `grim-channel`, `grim-persistence`, `grim-networking-telnet`, and
 `grim-object` (things + carrying verbs) sits **above** `grim-actor`:
 `grim-object ──> grim-actor`, never the reverse — and `grim-scene` depends on
 it for the `Object` room-listing marker and `ItemEvent` rendering.
+
+`grim-script` (mob triggers) sits **above** `grim-actor` and `grim-channel`:
+`grim-script ──> grim-actor, grim-channel`, never the reverse — it reads room
+transitions and speaks through the `say` channel, adding no vocabulary below it.
 
 ---
 
