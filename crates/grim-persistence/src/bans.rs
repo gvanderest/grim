@@ -46,7 +46,7 @@ impl BanList {
 
     /// Whether `pattern` is bannable for `kind`: a non-empty exact value for
     /// account/character, or 1–4 dot parts each `*` or 0–255 (with at least
-    /// one numeric octet) — or any exact IP literal, including IPv6.
+    /// one numeric octet). IPv6 is out of scope: only IPv4 is matched.
     pub fn valid_pattern(kind: BanKind, pattern: &str) -> bool {
         let trimmed = pattern.trim();
         if trimmed.is_empty() {
@@ -55,9 +55,6 @@ impl BanList {
         match kind {
             BanKind::Account | BanKind::Character => true,
             BanKind::Ip => {
-                if trimmed.parse::<IpAddr>().is_ok() {
-                    return true;
-                }
                 let mut numeric = false;
                 let parts: Vec<&str> = trimmed.split('.').collect();
                 if parts.len() > 4 {
@@ -78,12 +75,12 @@ impl BanList {
         }
     }
 
-    /// Whether an IP pattern matches an address: per-octet, where `*` (or a
-    /// missing trailing part) skips the octet. Non-IPv4 addresses match only
-    /// an exact literal. An invalid pattern matches nothing (fail closed).
+    /// Whether an IPv4 pattern matches an address: per-octet, where `*` (or a
+    /// missing trailing part) skips the octet. Anything else — including any
+    /// IPv6 address — matches nothing (fail closed).
     pub fn matches_ip(pattern: &str, ip: &IpAddr) -> bool {
         let IpAddr::V4(v4) = ip else {
-            return pattern == ip.to_string();
+            return false;
         };
         let mut parts = pattern.split('.');
         for octet in v4.octets() {
@@ -230,6 +227,10 @@ mod tests {
         assert!(!BanList::matches_ip("127.0.0.2", &ip));
         assert!(!BanList::matches_ip("128.*", &ip));
         assert!(!BanList::matches_ip("127.0.0.*", &v4("127.0.1.1")));
+        // IPv6 is out of scope: nothing matches it, not even an exact literal.
+        let v6: IpAddr = "::1".parse().unwrap();
+        assert!(!BanList::matches_ip("::1", &v6));
+        assert!(!BanList::matches_ip("*", &v6));
     }
 
     #[test]
@@ -250,7 +251,7 @@ mod tests {
 
     #[test]
     fn ip_pattern_validation() {
-        for good in ["1.2.3.4", "10.*", "10.0.*", "10.0.0.*", "::1"] {
+        for good in ["1.2.3.4", "10.*", "10.0.*", "10.0.0.*"] {
             assert!(BanList::valid_pattern(BanKind::Ip, good), "{good} valid");
         }
         assert!(!BanList::valid_pattern(BanKind::Ip, ""));
@@ -258,6 +259,9 @@ mod tests {
         // A bare `*` would ban every address including the admin's own: refuse
         // it rather than guessing intent.
         assert!(!BanList::valid_pattern(BanKind::Ip, "*"));
+        // IPv6 is out of scope: literals are rejected and never match.
+        assert!(!BanList::valid_pattern(BanKind::Ip, "::1"));
+        assert!(!BanList::valid_pattern(BanKind::Ip, "2001:db8::1"));
         // Exact-match kinds accept any non-empty value.
         assert!(BanList::valid_pattern(BanKind::Account, "a@b.c"));
         assert!(BanList::valid_pattern(BanKind::Character, "Bob"));

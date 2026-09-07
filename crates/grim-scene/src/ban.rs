@@ -12,7 +12,7 @@ use grim_actor::{Actor, Character};
 use grim_core::components::{Account, Client, Name as GrimName};
 use grim_core::events::{BanKind, BanOp, Command, EngineCommand, InfoMessage};
 use grim_networking::{Connection, ConnectionOutput, DisconnectRequest};
-use grim_persistence::{BanList, PersistenceConfig};
+use grim_persistence::{BanEntry, BanList, PersistenceConfig};
 use grim_text::tr;
 
 /// Parse `ban list [type]` / `ban add <type> <pattern>` /
@@ -89,26 +89,9 @@ pub(crate) fn handle_ban_command(
         match op {
             BanOp::List { filter } => {
                 let entries = bans.list(*filter);
-                let text = if entries.is_empty() {
-                    tr!("ban.list.empty")
-                } else {
-                    let total = entries.len().to_string();
-                    let mut out = tr!("ban.list.header", total = total);
-                    for e in entries {
-                        let date = e.created_at.format("%Y-%m-%d").to_string();
-                        out.push_str(&tr!(
-                            "ban.list.row",
-                            scope = e.kind.as_str(),
-                            pattern = e.pattern,
-                            date = date,
-                            author = e.created_by
-                        ));
-                    }
-                    out
-                };
                 info.write(InfoMessage {
                     target: actor,
-                    text,
+                    text: format_ban_list(&entries),
                 });
             }
             BanOp::Add { kind, pattern } => {
@@ -119,16 +102,27 @@ pub(crate) fn handle_ban_command(
                     });
                     continue;
                 }
-                if !bans.add(*kind, pattern, &admin_name) {
+                // Mutate a candidate and persist it first: the live list, the
+                // confirmation, and the kicks all land only when the save
+                // succeeds, so a failed write can never desync memory from
+                // `bans.json` (which would revert on the next boot).
+                let mut candidate = bans.clone();
+                if !candidate.add(*kind, pattern, &admin_name) {
                     info.write(InfoMessage {
                         target: actor,
                         text: tr!("ban.exists"),
                     });
                     continue;
                 }
-                if let Err(e) = bans.save(&persistence.dir) {
+                if let Err(e) = candidate.save(&persistence.dir) {
                     warn!("ban: failed to save blocklist: {e}");
+                    info.write(InfoMessage {
+                        target: actor,
+                        text: tr!("ban.save_failed"),
+                    });
+                    continue;
                 }
+                *bans = candidate;
                 let stored = BanList::normalize(*kind, pattern);
                 info.write(InfoMessage {
                     target: actor,
@@ -146,16 +140,25 @@ pub(crate) fn handle_ban_command(
                 );
             }
             BanOp::Remove { kind, pattern } => {
-                if !bans.remove(*kind, pattern) {
+                // Same candidate discipline as `add`: the live list changes
+                // only once the removal is durable.
+                let mut candidate = bans.clone();
+                if !candidate.remove(*kind, pattern) {
                     info.write(InfoMessage {
                         target: actor,
                         text: tr!("ban.not_found"),
                     });
                     continue;
                 }
-                if let Err(e) = bans.save(&persistence.dir) {
+                if let Err(e) = candidate.save(&persistence.dir) {
                     warn!("ban: failed to save blocklist: {e}");
+                    info.write(InfoMessage {
+                        target: actor,
+                        text: tr!("ban.save_failed"),
+                    });
+                    continue;
                 }
+                *bans = candidate;
                 let stored = BanList::normalize(*kind, pattern);
                 info.write(InfoMessage {
                     target: actor,
@@ -164,6 +167,27 @@ pub(crate) fn handle_ban_command(
             }
         }
     }
+}
+
+/// Render the `ban list` reply: the catalog empty line, or one header plus a
+/// row per entry (kind, pattern, ban date, creating admin).
+fn format_ban_list(entries: &[&BanEntry]) -> String {
+    if entries.is_empty() {
+        return tr!("ban.list.empty");
+    }
+    let total = entries.len().to_string();
+    let mut out = tr!("ban.list.header", total = total);
+    for e in entries {
+        let date = e.created_at.format("%Y-%m-%d").to_string();
+        out.push_str(&tr!(
+            "ban.list.row",
+            scope = e.kind.as_str(),
+            pattern = e.pattern,
+            date = date,
+            author = e.created_by
+        ));
+    }
+    out
 }
 
 /// Sever every live session the new ban matches: the per-kind banned message
@@ -222,7 +246,6 @@ mod tests {
     use chrono::Utc;
     use grim_core::components::Account;
     use grim_core::GrimId;
-    use grim_persistence::BanEntry;
     use std::net::SocketAddr;
 
     fn test_app(dir: &std::path::Path) -> App {
@@ -432,6 +455,39 @@ mod tests {
             },
         );
         assert_eq!(infos(&app)[4], "Ban removed: ip 10.*\n");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn failed_save_changes_nothing_and_kicks_nobody() {
+        let dir = unique_dir("savefail");
+        let mut app = test_app(&dir);
+        // Point the persistence dir at a FILE, so `bans.json` can never be
+        // written: every save fails.
+        let blocker = dir.join("blocker");
+        std::fs::write(&blocker, b"nope").unwrap();
+        app.world_mut().resource_mut::<PersistenceConfig>().dir = blocker;
+        let admin_conn = spawn_conn(&mut app, 1, "127.0.0.1:4001");
+        let admin = spawn_admin(&mut app, "Root", admin_conn);
+        let victim_conn = spawn_conn(&mut app, 2, "10.1.2.3:5000");
+        let _victim = spawn_admin(&mut app, "Victim", victim_conn);
+        send(
+            &mut app,
+            admin,
+            BanOp::Add {
+                kind: BanKind::Ip,
+                pattern: "10.*".into(),
+            },
+        );
+        assert_eq!(
+            infos(&app),
+            vec!["Ban could not be saved; nothing changed.\n"]
+        );
+        assert!(
+            app.world().resource::<BanList>().list(None).is_empty(),
+            "failed save leaves the live list untouched"
+        );
+        assert!(disconnects(&app).is_empty(), "failed save kicks nobody");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

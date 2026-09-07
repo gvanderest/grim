@@ -108,6 +108,7 @@ fn default_string(key: &str) -> String {
         "ban.exists" => "That ban already exists.\n",
         "ban.removed" => "Ban removed: %{scope} %{pattern}\n",
         "ban.not_found" => "No such ban.\n",
+        "ban.save_failed" => "Ban could not be saved; nothing changed.\n",
         "ban.invalid_pattern" => "Invalid pattern for %{scope} ban.\n",
         other => return other.to_string(),
     }

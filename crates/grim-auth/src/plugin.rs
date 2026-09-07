@@ -36,6 +36,10 @@ impl Plugin for AuthPlugin {
         // PersistencePlugin (or ScenePlugin) is also present, the identical
         // default is a no-op.
         app.init_resource::<grim_persistence::PersistenceConfig>();
+        // Every login gate reads the blocklist. init_resource so AuthPlugin
+        // stands alone; when PersistencePlugin is also present its Startup
+        // load replaces this empty default with the `bans.json` contents.
+        app.init_resource::<grim_persistence::BanList>();
         // Playable races/classes offered at character creation. init_resource so
         // the engine ships a full seed; an author overrides by inserting a custom
         // registry before adding this plugin (mirrors ReservedNamePrefixes).
