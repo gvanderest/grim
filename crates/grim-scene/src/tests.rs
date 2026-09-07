@@ -1089,6 +1089,130 @@ mod ingame_commands {
         );
     }
 
+    /// Same-tick open: `desc edit` followed by a text line in one update must
+    /// append the line, not dispatch it as a command. (A deferred open — e.g.
+    /// via a component inserted by `Commands` — would miss the second line,
+    /// which would execute as an ordinary command instead.)
+    #[test]
+    fn ingame_editor_open_is_visible_to_next_line_same_tick() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let char_entity = spawn_ingame(&mut app, conn, make_character(Vec::new()));
+        app.world_mut()
+            .entity_mut(char_entity)
+            .insert(InRoom { room })
+            .insert(Description(vec!["Seed line.".into()]));
+
+        // Both lines land before a single update: open, then a line that
+        // would otherwise dispatch (and move!) as a command.
+        for text in ["desc edit", "north"] {
+            app.world_mut().write_message(ConnectionInput {
+                connection: conn,
+                text: text.into(),
+            });
+        }
+        app.update();
+
+        // The editor opened with the seed line preloaded, and "north"
+        // appended to the buffer instead of walking anywhere.
+        let mut clients = app.world_mut().query::<&Client>();
+        let editor = clients
+            .iter(app.world())
+            .find(|c| c.character == Some(char_entity))
+            .and_then(|c| c.editor.clone())
+            .expect("editor open");
+        assert_eq!(
+            editor.buffer,
+            vec!["Seed line.".to_string(), "north".into()]
+        );
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        assert!(
+            cursor
+                .read(msgs)
+                .all(|o| !o.text.contains("Unknown command")),
+            "second line must not dispatch as a command"
+        );
+        let mut inroom = app.world_mut().query::<&InRoom>();
+        assert_eq!(
+            inroom.get(app.world(), char_entity).unwrap().room,
+            room,
+            "no movement happened"
+        );
+    }
+
+    /// Same-tick close: `@save` followed by `look` in one update must
+    /// dispatch the look (queued for cooldown) rather than swallow it as
+    /// editor text. (A deferred close would still find the session and eat it.)
+    #[test]
+    fn ingame_editor_close_is_visible_to_next_line_same_tick() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let char_entity = spawn_ingame(&mut app, conn, make_character(Vec::new()));
+        app.world_mut()
+            .entity_mut(char_entity)
+            .insert(InRoom { room });
+
+        // Force the session into the editor with a preloaded line.
+        {
+            let mut clients = app.world_mut().query::<&mut Client>();
+            let mut client = clients
+                .iter_mut(app.world_mut())
+                .find(|c| c.character == Some(char_entity))
+                .expect("session");
+            client.editor = Some(grim_core::components::EditorSession {
+                character: char_entity,
+                kind: grim_core::events::EditorKind::Description,
+                buffer: vec!["Saved line.".into()],
+            });
+        }
+        for text in ["@save", "look"] {
+            app.world_mut().write_message(ConnectionInput {
+                connection: conn,
+                text: text.into(),
+            });
+        }
+        app.update();
+
+        // Closed synchronously: the save carried only the preloaded line, and
+        // `look` queued as a command for the cooldown drain.
+        let dones = app.world().resource::<Messages<EditorDone>>();
+        let mut cursor = dones.get_cursor();
+        let done = cursor.read(dones).next().expect("EditorDone");
+        assert_eq!(done.lines, Some(vec!["Saved line.".to_string()]));
+        let mut clients = app.world_mut().query::<&Client>();
+        let client = clients
+            .iter(app.world())
+            .find(|c| c.character == Some(char_entity))
+            .expect("session");
+        assert!(client.editor.is_none(), "closed");
+        assert!(
+            client
+                .input_queue
+                .iter()
+                .any(|c| matches!(c, Command::Look { .. })),
+            "look queued as a command, not editor text"
+        );
+    }
+
     /// A non-admin `shutdown` is indistinguishable from an unknown command:
     /// same text, and the same framing (direct output, no prepended newline).
     #[test]

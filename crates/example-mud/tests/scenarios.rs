@@ -277,6 +277,55 @@ fn give_steal_and_look_pack_echo_all_parties() {
 }
 
 #[test]
+fn desc_edit_types_saves_and_shows() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    // Entry shows the help footer; typing appends silently.
+    mud.send(alice, "desc edit")
+        .assert_contains("Editing description.")
+        .assert_contains("1. A new adventurer.")
+        .assert_contains("@save");
+    let _ = mud.send(alice, "A tall traveler cloaked in dust.");
+    let _ = mud.send(alice, "Eyes like chipped flint.");
+    // Commands still parse as editor input, not verbs: no movement happens.
+    let _ = mud.send(alice, "north");
+    mud.send(alice, "@save")
+        .assert_contains("Your description has been saved.");
+
+    // Saved paragraphs (seed line included — it was preloaded, not replaced
+    // by typing) show on self-look, and the stray "north" never moved her.
+    mud.send(alice, "look self")
+        .assert_contains("A tall traveler cloaked in dust.")
+        .assert_contains("Eyes like chipped flint.")
+        .assert_contains("A new adventurer.");
+    mud.send(alice, "look").assert_contains("The Rusted Anvil");
+}
+
+#[test]
+fn desc_edit_exit_discards_and_clear_empties() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    mud.send(alice, "desc edit")
+        .assert_contains("Editing description.");
+    let _ = mud.send(alice, "Some junk never saved.");
+    mud.send(alice, "@exit")
+        .assert_contains("Edit cancelled, description unchanged.");
+    mud.send(alice, "look self")
+        .assert_excludes("Some junk never saved.");
+
+    // @clear empties the buffer, then @save stores the empty description.
+    mud.send(alice, "desc edit")
+        .assert_contains("Editing description.");
+    mud.send(alice, "@clear").assert_contains("Buffer cleared.");
+    mud.send(alice, "@save")
+        .assert_contains("Your description has been saved.");
+    mud.send(alice, "look self")
+        .assert_excludes("A new adventurer.");
+}
+
+#[test]
 fn objects_can_be_picked_up_listed_and_dropped() {
     let mut mud = Mud::new();
     let alice = create_char(&mut mud, "alice@example.com", "Alice");

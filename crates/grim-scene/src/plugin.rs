@@ -50,6 +50,7 @@ impl Plugin for ScenePlugin {
         // in-game input system consults it to avoid re-dispatching the line that
         // triggered the transition (see input.rs).
         app.init_resource::<JustEnteredWorld>();
+        crate::editor::register(app);
         app.add_message::<ConnectionOutput>()
             .add_message::<ConnectionResumed>()
             .add_message::<DisconnectRequest>()

@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::events::Command;
+use crate::events::{Command, EditorKind};
 use crate::id::GrimId;
 
 // Re-export `Gender` so `components::*` (and, through it, the crate prelude)
@@ -29,6 +29,20 @@ pub struct Client {
     pub command_cooldown: Timer,
     /// The last raw input text (for "!" repeat support), excluding the "!" itself.
     pub last_input: Option<String>,
+    /// Line-editor modal state. `Some` exactly while the session is inside the
+    /// editor: input routes to the buffer instead of the command parser. A
+    /// plain field (not a component) so opening/closing is visible to later
+    /// lines in the same tick — deferred `Commands` could never do that.
+    pub editor: Option<EditorSession>,
+}
+
+/// Modal line-editor state: what is edited and the lines so far. Lives on
+/// [`Client::editor`]; the open/close events carry the rest.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EditorSession {
+    pub character: Entity,
+    pub kind: EditorKind,
+    pub buffer: Vec<String>,
 }
 
 impl Client {
@@ -41,6 +55,7 @@ impl Client {
             input_queue: VecDeque::new(),
             command_cooldown: Timer::from_seconds(0.5, TimerMode::Once),
             last_input: None,
+            editor: None,
         }
     }
 }

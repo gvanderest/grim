@@ -8,7 +8,7 @@ use bevy::prelude::*;
 use chrono::{DateTime, Utc};
 use grim_actor::{Actor, Character, Linkdead, StoredCharacter};
 use grim_core::components::{Account, Client, ClientState, Description, Gender, Name as GrimName};
-use grim_core::events::{Command, EngineCommand, LogoutAnnounce};
+use grim_core::events::{Command, DescOp, EngineCommand, LogoutAnnounce};
 use grim_networking::{Connection, ConnectionOutput, DisconnectRequest};
 use grim_persistence::PersistenceConfig;
 use grim_text::tr;
@@ -19,6 +19,14 @@ use crate::params::{PlayerChars, RoomResolver, SessionRes};
 use crate::parser;
 use crate::sockets::{format_sockets, ClientSnapshot};
 
+/// `equipment` stays a dummy (no worn-items system yet). Factored out of
+/// [`handle_ingame`] to hold that dispatch table under the line budget.
+fn answer_equipment(conn: Entity, outputs: &mut MessageWriter<ConnectionOutput>) {
+    outputs.write(ConnectionOutput {
+        echo: None,
+        ..ConnectionOutput::new(conn, tr!("equipment.empty"))
+    });
+}
 /// InGame: parse the line (honouring `!` repeat), answer session-local commands
 /// directly, admin-gate shutdown/goto, and queue everything else for cooldown.
 #[allow(clippy::too_many_arguments)]
@@ -82,14 +90,10 @@ pub(crate) fn handle_ingame(
                     )
                 });
             }
-            // `equipment` stays a dummy (no worn-items system yet); `inventory`
-            // is a real engine verb now and falls into the queue arm below.
-            Command::Equipment => {
-                outputs.write(ConnectionOutput {
-                    echo: None,
-                    ..ConnectionOutput::new(conn, tr!("equipment.empty"))
-                });
+            Command::Desc { op: DescOp::Edit } => {
+                crate::editor::open_desc_edit(client, conn, char_entity, descriptions, outputs);
             }
+            Command::Equipment => answer_equipment(conn, outputs),
             Command::Commands => {
                 outputs.write(ConnectionOutput {
                     echo: None,

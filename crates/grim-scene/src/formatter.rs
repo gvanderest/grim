@@ -295,11 +295,11 @@ pub fn format_sockets_list(rows: &[SocketRow]) -> String {
 #[allow(dead_code)]
 /// Format the command list.
 pub fn format_commands() -> String {
-    let cmds = [
+    // Mostly static English, except the catalog-owned `desc` usage below.
+    let mut cmds: Vec<String> = [
         "look [target]       — Look at the room or a specific target",
         "l [target]          — Shortcut for look",
         "finger <name>       — Show a character's sheet, online or off",
-        "desc [clear|+/-]    — View or edit your description paragraphs",
         "inventory / inv       — List what you are carrying",
         "equipment           — List what you are wearing",
         "get <keyword>        — Pick up an object in the room",
@@ -323,7 +323,12 @@ pub fn format_commands() -> String {
         "areas               — List all areas in the world",
         "commands / help     — Show this list",
         "quit / exit         — Disconnect from the game",
-    ];
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    // Third row, after `finger`: the catalog-owned `desc` usage.
+    cmds.insert(3, tr!("commands.desc"));
     let mut out = "Available commands:\n".to_string();
     for cmd in &cmds {
         out.push_str(&format!("  {}\n", cmd));

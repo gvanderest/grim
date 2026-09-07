@@ -72,6 +72,19 @@ fn default_string(key: &str) -> String {
         "item.steal.self" => "You can't steal from yourself.\n",
         "look.pack.header" => "%{name} is carrying:\n",
         "look.pack.empty" => "%{name} is carrying nothing.\n",
+        "editor.enter.header" => {
+            "Editing description. Type lines to add them; commands start with @.\n"
+        }
+        "editor.enter.row" => "  %{num}. %{line}\n",
+        "editor.enter.empty" => "  (empty)\n",
+        "editor.enter.help" => {
+            "  @save — save and exit | @exit — discard and exit | @clear — empty the buffer\n"
+        }
+        "editor.cleared" => "Buffer cleared.\n",
+        "editor.unknown" => "Unknown editor command. Use @save, @exit, or @clear.\n",
+        "desc.saved" => "Your description has been saved.\n",
+        "desc.edit_cancelled" => "Edit cancelled, description unchanged.\n",
+        "commands.desc" => "desc [clear|+/-|edit] — View or edit your description paragraphs",
         "sockets.empty" => "No connections.\n",
         "sockets.header" => "Sockets connected (%{total}):\n",
         "sockets.row" => "  [%{id}] %{addr} %{state} %{name} (%{account})\n",

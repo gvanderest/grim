@@ -155,14 +155,16 @@ fn build_registry() -> CommandRegistry<Command> {
         }
     });
     // `desc` views your paragraphs; `desc clear` empties them,
-    // `desc + <line>` appends one, `desc -` drops the last. Anything else
-    // (including a bare `+`) is unknown.
+    // `desc + <line>` appends one, `desc -` drops the last, `desc edit`
+    // opens the line editor. Anything else (including a bare `+`) is unknown.
     r.register("desc", |rest| {
         let rest = rest.trim();
         if rest.is_empty() {
             Some(Command::Desc { op: DescOp::Show })
         } else if rest.eq_ignore_ascii_case("clear") {
             Some(Command::Desc { op: DescOp::Clear })
+        } else if rest.eq_ignore_ascii_case("edit") {
+            Some(Command::Desc { op: DescOp::Edit })
         } else if rest == "-" {
             Some(Command::Desc { op: DescOp::Remove })
         } else {
@@ -580,6 +582,8 @@ mod tests {
             })
         );
         assert_eq!(parse("desc -"), Some(Command::Desc { op: DescOp::Remove }));
+        assert_eq!(parse("desc edit"), Some(Command::Desc { op: DescOp::Edit }));
+        assert_eq!(parse("desc EDIT"), Some(Command::Desc { op: DescOp::Edit }));
         assert_eq!(parse("desc +"), None);
         assert_eq!(parse("desc +   "), None);
         assert_eq!(parse("desc bogus"), None);

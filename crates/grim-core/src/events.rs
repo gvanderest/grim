@@ -31,8 +31,8 @@ pub enum Command {
     /// (empty text) clears it.
     Title { text: String },
     /// `desc` views your description paragraphs; `desc clear` empties them,
-    /// `desc + <line>` appends one, `desc -` drops the last. (A future
-    /// `desc edit` will open the line editor.)
+    /// `desc + <line>` appends one, `desc -` drops the last, `desc edit`
+    /// opens the line editor.
     Desc { op: DescOp },
     /// Movement via cardinal direction
     Move { direction: Cardinal },
@@ -137,6 +137,35 @@ pub enum DescOp {
     Add(String),
     /// `desc -` — drop the last paragraph.
     Remove,
+    /// `desc edit` — open the line editor on your paragraphs.
+    Edit,
+}
+
+/// What an editor session edits. The callback routing: completion carries
+/// this back, and each consumer handles its own kind. New consumers add a
+/// variant, never a new event type.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EditorKind {
+    /// The actor's own `Description` paragraphs (`desc edit`).
+    Description,
+}
+
+/// Engine → scene: open the line editor for `character`, preloaded with
+/// `initial`. The scene attaches the modal session and shows the entry view.
+#[derive(Message, Debug, Clone, PartialEq)]
+pub struct OpenEditor {
+    pub character: Entity,
+    pub kind: EditorKind,
+    pub initial: Vec<String>,
+}
+
+/// Scene → engine: the editor closed. `lines` is `Some` on `@save` (apply
+/// them) and `None` on `@exit` (discard). The consumer confirms to its actor.
+#[derive(Message, Debug, Clone, PartialEq)]
+pub struct EditorDone {
+    pub character: Entity,
+    pub kind: EditorKind,
+    pub lines: Option<Vec<String>>,
 }
 
 // ─── Engine → Client (semantic events for formatting) ───────────────

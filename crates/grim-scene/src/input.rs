@@ -16,10 +16,12 @@
 use bevy::prelude::*;
 use grim_actor::{Actor, Character, Linkdead};
 use grim_core::components::{Account, Client, Description, Name as GrimName};
+use grim_core::events::EditorDone;
 use grim_networking::{Connection, ConnectionInput, ConnectionOutput};
 use grim_persistence::PersistenceConfig;
 
 use crate::command;
+use crate::editor;
 use crate::params::{PlayerChars, RoomResolver, SessionRes};
 use crate::scene_stack::{top_is_ingame, InGameScene, SceneStack};
 use crate::session::JustEnteredWorld;
@@ -41,6 +43,7 @@ pub(crate) fn handle_ingame_input(
     connections: Query<&Connection>,
     accounts: Query<&Account>,
     mut just_entered: ResMut<JustEnteredWorld>,
+    mut done: MessageWriter<EditorDone>,
     mut outputs: MessageWriter<ConnectionOutput>,
 ) {
     // Snapshot every session once per tick for the `sockets` list. A second
@@ -81,6 +84,30 @@ pub(crate) fn handle_ingame_input(
             continue;
         }
         let conn = client.connection;
+        // Editor modal first: a session inside the editor never reaches the
+        // command parser — lines append, `@` lines control, close emits done.
+        // The state is a `Client` field (not a component), so opening and
+        // closing here are visible to later lines in the same tick.
+        if client.editor.is_some() {
+            let Some(editor) = client.editor.as_mut() else {
+                continue;
+            };
+            match editor::handle_editor_line(editor, ev.text.as_str()) {
+                editor::EditorAction::Stay { reply } => {
+                    if let Some(text) = reply {
+                        outputs.write(ConnectionOutput {
+                            echo: None,
+                            ..ConnectionOutput::new(conn, text)
+                        });
+                    }
+                }
+                editor::EditorAction::Closed { done: finished } => {
+                    client.editor = None;
+                    done.write(finished);
+                }
+            }
+            continue;
+        }
         command::handle_ingame(
             &mut client,
             conn,
