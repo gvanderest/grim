@@ -69,6 +69,25 @@ pub(crate) fn format_output(
         let formatted = formatter::format_linkdead(&ev.name, ev.reconnecting);
         broadcast_global(&formatted, &room_occupants, &mut outputs);
     }
+    // Causal order, not arrival order: attempt-phase speech (channel) and
+    // direct lines (info) are written before the movement system writes the
+    // arrival description, so they render first — a farewell precedes the new
+    // room, never dangles after it. Cross-actor simultaneity stays
+    // arbitrary-but-deterministic; same-tick causality is what we keep.
+    for ev in channel_events.read() {
+        emit_channel(
+            ev,
+            &channel_registry,
+            &names,
+            &room_occupants,
+            &rooms,
+            &characters,
+            &mut outputs,
+        );
+    }
+    for ev in info_events.read() {
+        emit_info(ev, &room_occupants, &mut outputs);
+    }
     for ev in look_room_events.read() {
         emit_look_room(
             ev,
@@ -82,22 +101,8 @@ pub(crate) fn format_output(
     for ev in look_entity_events.read() {
         emit_look_entity(ev, &room_occupants, &names, &descriptions, &mut outputs);
     }
-    for ev in channel_events.read() {
-        emit_channel(
-            ev,
-            &channel_registry,
-            &names,
-            &room_occupants,
-            &rooms,
-            &characters,
-            &mut outputs,
-        );
-    }
     for ev in move_events.read() {
         emit_move(ev, &names, &room_occupants, &mut outputs);
-    }
-    for ev in info_events.read() {
-        emit_info(ev, &room_occupants, &mut outputs);
     }
     for ev in gecho_events.read() {
         emit_gecho(ev, &names, &characters, &room_occupants, &mut outputs);

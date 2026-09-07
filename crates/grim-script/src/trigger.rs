@@ -10,14 +10,13 @@ use serde::Deserialize;
 
 /// Which room-transition moment a script fires on.
 ///
-// The `Attempt*` variants are observe-only notifications today — nothing can
-// deny a move yet, so they carry no veto power. They exist so scripts can
-// react to intent (a farewell as someone *starts* to leave) separately from
-// the committed `Enter`/`Leave` facts, and so a future guard can add denial
-// without renaming the vocabulary.
+/// The `Attempt*` variants fire synchronously before placement and can deny
+/// the move (`deny()` latches); the committed `Enter`/`Leave` facts only
+/// observe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TriggerKind {
+    AttemptWalk,
     AttemptEnter,
     AttemptLeave,
     Enter,
@@ -28,6 +27,7 @@ impl TriggerKind {
     /// The `event.type` string scripts match on.
     pub fn as_str(self) -> &'static str {
         match self {
+            TriggerKind::AttemptWalk => "attempt_walk",
             TriggerKind::AttemptEnter => "attempt_enter",
             TriggerKind::AttemptLeave => "attempt_leave",
             TriggerKind::Enter => "enter",

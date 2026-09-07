@@ -2,14 +2,14 @@
 //!
 //! The sandbox is structural, not advisory. Each firing builds a state with
 //! only pure-data stdlib (`math`, `string`, `table`, `utf8`), then installs
-//! exactly three globals: `rand()` (`[0, 1)`), `say(text)` (captured, routed
-//! by the caller), and the read-only `event` table (`{type}`). Lua's base
-//! library ships with every state, so the entries that load code, touch the
-//! host, or talk anywhere ([`STRIPPED_GLOBALS`]) are explicitly nilled — the
-//! tests pin each one absent. A memory cap plus an instruction budget turn
-//! runaway scripts into errors instead of hangs.
-
-use std::cell::RefCell;
+//! exactly four globals: `rand()` (`[0, 1)`), `say(text)` (captured, routed
+//! by the caller), `deny()` (blocks the attempted action — composes with
+//! speech, so a script says its refusal *then* denies), and the read-only
+//! `event` table (`{type}`). Lua's base library ships with every state, so
+//! the entries that load code, touch the host, or talk anywhere
+//! ([`STRIPPED_GLOBALS`]) are explicitly nilled — the tests pin each one
+//! absent. A memory cap plus an instruction budget turn runaway scripts into
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use mlua::{HookTriggers, Lua, LuaOptions, StdLib};
@@ -46,12 +46,24 @@ const MEMORY_LIMIT_BYTES: usize = 256 * 1024;
 /// script runs dozens; an infinite loop trips this instead of the tick.
 const INSTRUCTION_BUDGET: u32 = 100_000;
 
-/// Run precompiled `bytecode` for `on`, returning every `say`ed line in order.
+/// What one trigger firing did: every `say`ed line, plus whether the script
+/// called `deny()`. Denial composes with speech — a script says its refusal
+/// *then* denies, so the mover hears the echo and stays put.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Outcome {
+    /// Every `say`ed line, in order.
+    pub said: Vec<String>,
+    /// Whether the script denied the attempted action.
+    pub denied: bool,
+}
+
+/// Run precompiled `bytecode` for `on`, returning what it said and whether it
+/// denied.
 ///
 /// Any Lua failure — a runtime error, an exhausted budget — comes back as
 /// `Err` text. Nothing throws across this boundary: a failing script can
 /// never crash the calling system.
-pub fn run_trigger(bytecode: &[u8], on: TriggerKind) -> Result<Vec<String>, String> {
+pub fn run_trigger(bytecode: &[u8], on: TriggerKind) -> Result<Outcome, String> {
     let libs = StdLib::MATH | StdLib::STRING | StdLib::TABLE | StdLib::UTF8;
     let lua = Lua::new_with(libs, LuaOptions::default()).map_err(|e| e.to_string())?;
     lua.set_memory_limit(MEMORY_LIMIT_BYTES)
@@ -75,6 +87,7 @@ pub fn run_trigger(bytecode: &[u8], on: TriggerKind) -> Result<Vec<String>, Stri
     }
 
     let said: Rc<RefCell<Vec<String>>> = Rc::default();
+    let denied = Rc::new(Cell::new(false));
     lua.globals()
         .set(
             "say",
@@ -82,6 +95,19 @@ pub fn run_trigger(bytecode: &[u8], on: TriggerKind) -> Result<Vec<String>, Stri
                 let said = said.clone();
                 move |_, text: String| {
                     said.borrow_mut().push(text);
+                    Ok(())
+                }
+            })
+            .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+    lua.globals()
+        .set(
+            "deny",
+            lua.create_function({
+                let denied = denied.clone();
+                move |_, ()| {
+                    denied.set(true);
                     Ok(())
                 }
             })
@@ -100,10 +126,12 @@ pub fn run_trigger(bytecode: &[u8], on: TriggerKind) -> Result<Vec<String>, Stri
     lua.globals()
         .set("event", event)
         .map_err(|e| e.to_string())?;
-
     lua.load(bytecode).exec().map_err(|e| e.to_string())?;
-    let out = said.borrow().clone();
-    Ok(out)
+    let said = said.borrow().clone();
+    Ok(Outcome {
+        said,
+        denied: denied.get(),
+    })
 }
 
 #[cfg(test)]
@@ -111,14 +139,14 @@ mod tests {
     use super::*;
     use crate::trigger::compile;
 
-    fn run(source: &str, on: TriggerKind) -> Result<Vec<String>, String> {
+    fn run(source: &str, on: TriggerKind) -> Result<Outcome, String> {
         run_trigger(&compile(source).expect("fixture must compile"), on)
     }
 
     #[test]
     fn unconditional_say_is_captured() {
         assert_eq!(
-            run("say('Hello there.')", TriggerKind::Enter).unwrap(),
+            run("say('Hello there.')", TriggerKind::Enter).unwrap().said,
             ["Hello there."]
         );
     }
@@ -126,11 +154,14 @@ mod tests {
     #[test]
     fn chance_gate_passes_and_blocks() {
         assert_eq!(
-            run("if rand() >= 0 then say('a') end", TriggerKind::Enter).unwrap(),
+            run("if rand() >= 0 then say('a') end", TriggerKind::Enter)
+                .unwrap()
+                .said,
             ["a"]
         );
         assert!(run("if rand() < 0 then say('a') end", TriggerKind::Enter)
             .unwrap()
+            .said
             .is_empty());
     }
 
@@ -140,19 +171,24 @@ mod tests {
             "for i = 1, 200 do local r = rand() if r < 0 or r >= 1 then say('OUT') end end say('done')",
             TriggerKind::Enter,
         )
-        .unwrap();
+        .unwrap()
+        .said;
         assert_eq!(out, ["done"]);
     }
 
     #[test]
     fn event_type_is_visible() {
-        let out = run("say(event.type)", TriggerKind::AttemptLeave).unwrap();
+        let out = run("say(event.type)", TriggerKind::AttemptLeave)
+            .unwrap()
+            .said;
         assert_eq!(out, ["attempt_leave"]);
     }
 
     #[test]
     fn multiple_says_keep_order() {
-        let out = run("say('one') say('two')", TriggerKind::Leave).unwrap();
+        let out = run("say('one') say('two')", TriggerKind::Leave)
+            .unwrap()
+            .said;
         assert_eq!(out, ["one", "two"]);
     }
 
@@ -184,7 +220,8 @@ mod tests {
             "local t = 0 for _, v in pairs({1, 2}) do t = t + v end say(type('x') .. tostring(t))",
             TriggerKind::Enter,
         )
-        .unwrap();
+        .unwrap()
+        .said;
         assert_eq!(out, ["string3"]);
     }
 
@@ -194,7 +231,28 @@ mod tests {
             "say(string.upper('hi') .. math.floor(1.9) .. #'abc' .. utf8.len('é'))",
             TriggerKind::Enter,
         )
-        .unwrap();
+        .unwrap()
+        .said;
         assert_eq!(out, ["HI131"], "upper + floor + len + concat");
+    }
+
+    #[test]
+    fn deny_blocks_without_speech() {
+        let outcome = run("deny()", TriggerKind::AttemptLeave).unwrap();
+        assert!(outcome.denied);
+        assert!(outcome.said.is_empty());
+    }
+
+    #[test]
+    fn deny_composes_with_refusal_speech() {
+        let outcome = run("say('Halt!') deny()", TriggerKind::AttemptEnter).unwrap();
+        assert!(outcome.denied);
+        assert_eq!(outcome.said, ["Halt!"]);
+    }
+
+    #[test]
+    fn silence_does_not_deny() {
+        let outcome = run("say('hi')", TriggerKind::Enter).unwrap();
+        assert!(!outcome.denied);
     }
 }

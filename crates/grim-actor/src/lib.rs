@@ -33,4 +33,4 @@ pub use placement::InRoom;
 pub use player::{Linkdead, OutputHistory, Player};
 pub use plugin::ActorPlugin;
 pub use stored::{StoredCharacter, StoredObject};
-pub use transition::{AttemptEnter, AttemptLeave, Enter, Leave};
+pub use transition::{AttemptEnter, AttemptLeave, AttemptWalk, Enter, Leave};

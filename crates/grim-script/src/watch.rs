@@ -10,7 +10,9 @@
 //! `say` channel — pages every online admin via [`InfoMessage`] and the server
 //! log, and never disables anything.
 use bevy::prelude::*;
-use grim_actor::{AttemptEnter, AttemptLeave, Character, Creature, Enter, InRoom, Leave, Player};
+use grim_actor::{
+    AttemptEnter, AttemptLeave, AttemptWalk, Character, Creature, Enter, InRoom, Leave, Player,
+};
 use grim_channel::{ChannelMessage, ChannelRegistry};
 use grim_core::components::Name as GrimName;
 use grim_core::events::InfoMessage;
@@ -19,15 +21,14 @@ use grim_text::tr;
 use crate::runtime::run_trigger;
 use crate::trigger::{ScriptTriggers, TriggerKind};
 
-/// Watch all four transition moments. One system (not four) so the matching
-/// rule lives in exactly one place; the per-moment fan-out below is the only
-/// repetition, and it names the room each moment watches.
+/// The transition observers. One per moment (observers are concrete
+/// functions), all funneling into [`fire`] so the matching rule lives in
+/// exactly one place. Attempt observers run *synchronously* during the
+/// movement pipeline — a `deny()` latches onto the attempt before anything
+/// moves. Fact observers run post-placement.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn watch_transitions(
-    mut attempt_enter: MessageReader<AttemptEnter>,
-    mut attempt_leave: MessageReader<AttemptLeave>,
-    mut enter: MessageReader<Enter>,
-    mut leave: MessageReader<Leave>,
+pub(crate) fn on_attempt_walk(
+    mut trigger: On<AttemptWalk>,
     creatures: Query<(Entity, &ScriptTriggers, &InRoom), With<Creature>>,
     mob_names: Query<&GrimName>,
     admins: Query<(Entity, &Character, &Player)>,
@@ -35,62 +36,124 @@ pub(crate) fn watch_transitions(
     mut speech: MessageWriter<ChannelMessage>,
     mut info: MessageWriter<InfoMessage>,
 ) {
-    for ev in attempt_leave.read() {
-        fire(
-            TriggerKind::AttemptLeave,
-            ev.actor,
-            ev.room,
-            &creatures,
-            &mob_names,
-            &admins,
-            registry.as_deref(),
-            &mut speech,
-            &mut info,
-        );
-    }
-    for ev in attempt_enter.read() {
-        fire(
-            TriggerKind::AttemptEnter,
-            ev.actor,
-            ev.room,
-            &creatures,
-            &mob_names,
-            &admins,
-            registry.as_deref(),
-            &mut speech,
-            &mut info,
-        );
-    }
-    for ev in leave.read() {
-        fire(
-            TriggerKind::Leave,
-            ev.actor,
-            ev.room,
-            &creatures,
-            &mob_names,
-            &admins,
-            registry.as_deref(),
-            &mut speech,
-            &mut info,
-        );
-    }
-    for ev in enter.read() {
-        fire(
-            TriggerKind::Enter,
-            ev.actor,
-            ev.room,
-            &creatures,
-            &mob_names,
-            &admins,
-            registry.as_deref(),
-            &mut speech,
-            &mut info,
-        );
+    let attempt = *trigger.event();
+    if fire(
+        TriggerKind::AttemptWalk,
+        attempt.actor,
+        attempt.room,
+        &creatures,
+        &mob_names,
+        &admins,
+        registry.as_deref(),
+        &mut speech,
+        &mut info,
+    ) {
+        trigger.event_mut().denied = true;
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn on_attempt_leave(
+    mut trigger: On<AttemptLeave>,
+    creatures: Query<(Entity, &ScriptTriggers, &InRoom), With<Creature>>,
+    mob_names: Query<&GrimName>,
+    admins: Query<(Entity, &Character, &Player)>,
+    registry: Option<Res<ChannelRegistry>>,
+    mut speech: MessageWriter<ChannelMessage>,
+    mut info: MessageWriter<InfoMessage>,
+) {
+    let attempt = *trigger.event();
+    if fire(
+        TriggerKind::AttemptLeave,
+        attempt.actor,
+        attempt.room,
+        &creatures,
+        &mob_names,
+        &admins,
+        registry.as_deref(),
+        &mut speech,
+        &mut info,
+    ) {
+        trigger.event_mut().denied = true;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn on_attempt_enter(
+    mut trigger: On<AttemptEnter>,
+    creatures: Query<(Entity, &ScriptTriggers, &InRoom), With<Creature>>,
+    mob_names: Query<&GrimName>,
+    admins: Query<(Entity, &Character, &Player)>,
+    registry: Option<Res<ChannelRegistry>>,
+    mut speech: MessageWriter<ChannelMessage>,
+    mut info: MessageWriter<InfoMessage>,
+) {
+    let attempt = *trigger.event();
+    if fire(
+        TriggerKind::AttemptEnter,
+        attempt.actor,
+        attempt.room,
+        &creatures,
+        &mob_names,
+        &admins,
+        registry.as_deref(),
+        &mut speech,
+        &mut info,
+    ) {
+        trigger.event_mut().denied = true;
+    }
+}
+
+pub(crate) fn on_leave(
+    trigger: On<Leave>,
+    creatures: Query<(Entity, &ScriptTriggers, &InRoom), With<Creature>>,
+    mob_names: Query<&GrimName>,
+    admins: Query<(Entity, &Character, &Player)>,
+    registry: Option<Res<ChannelRegistry>>,
+    mut speech: MessageWriter<ChannelMessage>,
+    mut info: MessageWriter<InfoMessage>,
+) {
+    let fact = *trigger.event();
+    fire(
+        TriggerKind::Leave,
+        fact.actor,
+        fact.room,
+        &creatures,
+        &mob_names,
+        &admins,
+        registry.as_deref(),
+        &mut speech,
+        &mut info,
+    );
+}
+
+pub(crate) fn on_enter(
+    trigger: On<Enter>,
+    creatures: Query<(Entity, &ScriptTriggers, &InRoom), With<Creature>>,
+    mob_names: Query<&GrimName>,
+    admins: Query<(Entity, &Character, &Player)>,
+    registry: Option<Res<ChannelRegistry>>,
+    mut speech: MessageWriter<ChannelMessage>,
+    mut info: MessageWriter<InfoMessage>,
+) {
+    let fact = *trigger.event();
+    fire(
+        TriggerKind::Enter,
+        fact.actor,
+        fact.room,
+        &creatures,
+        &mob_names,
+        &admins,
+        registry.as_deref(),
+        &mut speech,
+        &mut info,
+    );
+}
+
 /// Fire every trigger for `on` on each scripted creature standing in `room`,
-/// skipping the mover itself (a mob never greets its own steps).
+/// skipping the mover itself (a mob never greets its own steps). Speech goes
+/// out on the `say` channel; facts fire a tick after placement, so their
+/// greetings land in a later flush than the arrival they react to.
 #[allow(clippy::too_many_arguments)]
 fn fire(
     on: TriggerKind,
@@ -102,12 +165,12 @@ fn fire(
     registry: Option<&ChannelRegistry>,
     speech: &mut MessageWriter<ChannelMessage>,
     info: &mut MessageWriter<InfoMessage>,
-) {
+) -> bool {
     let channel = registry.and_then(|r| r.get("say")).cloned();
-    // Attempt-time speech also goes to the mover directly: the room broadcast
     // renders after placement, when the mover is already gone (leave) or not
     // yet there (enter). Facts need no catch-up — whoever is present hears them.
     let catch_up_mover = matches!(on, TriggerKind::AttemptLeave | TriggerKind::AttemptEnter);
+    let mut denied = false;
     for (mob, triggers, inroom) in creatures.iter() {
         if mob == mover || inroom.room != room {
             continue;
@@ -118,41 +181,47 @@ fn fire(
                 continue;
             }
             match run_trigger(&trigger.bytecode, on) {
-                Ok(said) => match &channel {
-                    Some(say) => {
-                        for text in said {
-                            speech.write(ChannelMessage {
-                                channel: say.clone(),
-                                actor: mob,
-                                text: text.clone(),
-                            });
-                            if catch_up_mover {
-                                // Same third-party framing the room hears
-                                // (`channel.say.third_party`), delivered as a
-                                // direct line since the mover is mid-transition.
-                                info.write(InfoMessage {
-                                    target: mover,
-                                    text: tr!(
-                                        &format!("{}.third_party", say.key),
-                                        speaker = mob_name,
-                                        text = text
-                                    ),
+                Ok(outcome) => {
+                    if outcome.denied {
+                        denied = true;
+                    }
+                    match &channel {
+                        Some(say) => {
+                            for text in outcome.said {
+                                speech.write(ChannelMessage {
+                                    channel: say.clone(),
+                                    actor: mob,
+                                    text: text.clone(),
                                 });
+                                if catch_up_mover {
+                                    // Same third-party framing the room hears
+                                    // (`channel.say.third_party`), delivered as a
+                                    // direct line since the mover is mid-transition.
+                                    info.write(InfoMessage {
+                                        target: mover,
+                                        text: tr!(
+                                            &format!("{}.third_party", say.key),
+                                            speaker = mob_name,
+                                            text = text
+                                        ),
+                                    });
+                                }
                             }
                         }
+                        None => report(
+                            &mob_name,
+                            on,
+                            "the `say` channel is not registered",
+                            admins,
+                            info,
+                        ),
                     }
-                    None => report(
-                        &mob_name,
-                        on,
-                        "the `say` channel is not registered",
-                        admins,
-                        info,
-                    ),
-                },
+                }
                 Err(error) => report(&mob_name, on, &error, admins, info),
             }
         }
     }
+    denied
 }
 
 /// A trigger failed: log it for the operator and page every online admin.
@@ -259,14 +328,14 @@ mod tests {
     fn test_app() -> App {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
-            .add_message::<AttemptEnter>()
-            .add_message::<AttemptLeave>()
-            .add_message::<Enter>()
-            .add_message::<Leave>()
             .add_message::<ChannelMessage>()
             .add_message::<InfoMessage>()
             .init_resource::<ChannelRegistry>()
-            .add_systems(Update, watch_transitions);
+            .add_observer(on_attempt_walk)
+            .add_observer(on_attempt_leave)
+            .add_observer(on_attempt_enter)
+            .add_observer(on_leave)
+            .add_observer(on_enter);
         app.world_mut()
             .resource_mut::<ChannelRegistry>()
             .add_channel(grim_channel::Channel {
@@ -291,7 +360,7 @@ mod tests {
             vec![trigger(TriggerKind::Enter, "say('hi')")],
         );
         let mover = app.world_mut().spawn_empty().id();
-        app.world_mut().write_message(Enter {
+        app.world_mut().trigger(Enter {
             actor: mover,
             room: dest,
         });
@@ -315,7 +384,7 @@ mod tests {
             vec![trigger(TriggerKind::Leave, "say('bye')")],
         );
         let mover = app.world_mut().spawn_empty().id();
-        app.world_mut().write_message(Enter {
+        app.world_mut().trigger(Enter {
             actor: mover,
             room: here,
         });
@@ -336,7 +405,7 @@ mod tests {
                 ScriptTriggers(vec![trigger(TriggerKind::Enter, "say('me')")]),
             ))
             .id();
-        app.world_mut().write_message(Enter { actor: mover, room });
+        app.world_mut().trigger(Enter { actor: mover, room });
         app.update();
         assert!(said(&mut app).is_empty());
     }
@@ -351,9 +420,10 @@ mod tests {
             vec![trigger(TriggerKind::AttemptLeave, "say('bye')")],
         );
         let mover = app.world_mut().spawn_empty().id();
-        app.world_mut().write_message(AttemptLeave {
+        app.world_mut().trigger(AttemptLeave {
             actor: mover,
             room: src,
+            denied: false,
         });
         app.update();
         assert_eq!(said(&mut app), [(mob, "bye".to_string())]);
@@ -369,9 +439,10 @@ mod tests {
             vec![trigger(TriggerKind::AttemptLeave, "say('bye')")],
         );
         let mover = app.world_mut().spawn_empty().id();
-        app.world_mut().write_message(AttemptLeave {
+        app.world_mut().trigger(AttemptLeave {
             actor: mover,
             room: src,
+            denied: false,
         });
         app.update();
         let pages = infos(&mut app);
@@ -399,7 +470,7 @@ mod tests {
             vec![trigger(TriggerKind::Leave, "say('bye')")],
         );
         let mover = app.world_mut().spawn_empty().id();
-        app.world_mut().write_message(Leave {
+        app.world_mut().trigger(Leave {
             actor: mover,
             room: src,
         });
@@ -414,7 +485,7 @@ mod tests {
         scripted_mob(&mut app, room, vec![trigger(TriggerKind::Enter, "nope()")]);
         let admin = spawned_character(&mut app, vec![grim_actor::Role::Admin]);
         let mover = app.world_mut().spawn_empty().id();
-        app.world_mut().write_message(Enter { actor: mover, room });
+        app.world_mut().trigger(Enter { actor: mover, room });
         app.update();
         let pages = infos(&mut app);
         assert_eq!(pages.len(), 1, "exactly one admin page");
@@ -452,8 +523,29 @@ mod tests {
         ));
         spawned_character(&mut app, Vec::new());
         let mover = app.world_mut().spawn_empty().id();
-        app.world_mut().write_message(Enter { actor: mover, room });
+        app.world_mut().trigger(Enter { actor: mover, room });
         app.update();
         assert!(infos(&mut app).is_empty());
+    }
+
+    #[test]
+    fn lua_deny_latches_the_attempt() {
+        let mut app = test_app();
+        let src = app.world_mut().spawn_empty().id();
+        scripted_mob(
+            &mut app,
+            src,
+            vec![trigger(TriggerKind::AttemptLeave, "say('Hold!') deny()")],
+        );
+        let mover = app.world_mut().spawn_empty().id();
+        let mut attempt = AttemptLeave {
+            actor: mover,
+            room: src,
+            denied: false,
+        };
+        app.world_mut().trigger_ref(&mut attempt);
+        assert!(attempt.denied, "script deny() must latch the attempt");
+        let texts: Vec<String> = said(&mut app).into_iter().map(|(_, t)| t).collect();
+        assert_eq!(texts, ["Hold!"], "refusal echo still goes out");
     }
 }

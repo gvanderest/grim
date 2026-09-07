@@ -1,11 +1,11 @@
 //! `ScriptPlugin`: run sandboxed mob triggers on room transitions.
 //!
-//! Layers on `grim-actor` (which owns and emits the transition events) and
+//! Layers on `grim-actor` (which owns and fires the transition events) and
 //! `grim-channel` (whose `say` channel carries mob speech). Compose after both.
 
 use bevy::prelude::*;
 
-use crate::watch::watch_transitions;
+use crate::watch::{on_attempt_enter, on_attempt_leave, on_attempt_walk, on_enter, on_leave};
 
 /// Sandboxed Lua triggers on room entry/exit. See the crate docs for the
 /// sandbox contract.
@@ -13,19 +13,22 @@ pub struct ScriptPlugin;
 
 impl Plugin for ScriptPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, watch_transitions);
+        app.add_observer(on_attempt_walk)
+            .add_observer(on_attempt_leave)
+            .add_observer(on_attempt_enter)
+            .add_observer(on_leave)
+            .add_observer(on_enter);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_actor::{AttemptEnter, AttemptLeave, Creature, Enter, InRoom, Leave};
+    use grim_actor::{Creature, Enter, InRoom};
     use grim_channel::ChannelMessage;
     use grim_core::components::Name as GrimName;
-    use grim_core::events::InfoMessage;
 
-    use crate::trigger::{compile, ScriptTriggers};
+    use crate::trigger::{compile, ScriptTriggers, TriggerKind};
 
     /// The plugin composes with the channel plugin it layers on: a transition
     /// reaches a scripted mob and its speech leaves on the default `say`
@@ -35,12 +38,7 @@ mod tests {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins)
             .add_plugins(grim_channel::ChannelPlugin)
-            .add_plugins(ScriptPlugin)
-            .add_message::<AttemptEnter>()
-            .add_message::<AttemptLeave>()
-            .add_message::<Enter>()
-            .add_message::<Leave>()
-            .add_message::<InfoMessage>();
+            .add_plugins(ScriptPlugin);
         let room = app.world_mut().spawn_empty().id();
         let mover = app.world_mut().spawn_empty().id();
         app.world_mut().spawn((
@@ -48,11 +46,11 @@ mod tests {
             GrimName("Grimmok".into()),
             InRoom { room },
             ScriptTriggers(vec![crate::trigger::CompiledTrigger {
-                on: crate::trigger::TriggerKind::Enter,
+                on: TriggerKind::Enter,
                 bytecode: compile("say('yo')").unwrap(),
             }]),
         ));
-        app.world_mut().write_message(Enter { actor: mover, room });
+        app.world_mut().trigger(Enter { actor: mover, room });
         app.update();
 
         let messages = app.world().resource::<Messages<ChannelMessage>>();

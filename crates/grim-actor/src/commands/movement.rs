@@ -11,7 +11,7 @@ use grim_world::{
 
 use crate::character::Character;
 use crate::placement::InRoom;
-use crate::transition::{AttemptEnter, AttemptLeave, Enter, Leave};
+use crate::transition::{AttemptEnter, AttemptLeave, AttemptWalk, Enter, Leave};
 
 /// Build a room's persisted [`RoomLocation`] from its `Room` + `Area` records.
 /// `handle_move` reaches this shape via `grim_world::room_location` (which holds
@@ -51,24 +51,58 @@ fn place_actor(
     }
 }
 
-/// `move <direction>`: traverse an exit, emitting a movement event and an
-/// automatic look at the destination. Also refreshes the character's persisted
-/// `last_room` so a restart/copyover resumes them where they walked to.
-#[allow(clippy::too_many_arguments)]
+/// A committed room transition waiting for its facts to fire next tick.
+#[derive(Debug, Clone, Copy)]
+struct RoomFact {
+    actor: Entity,
+    from: Entity,
+    to: Entity,
+}
+
+/// Facts committed by placement but not yet fired. Double-buffered: the
+/// orchestrator pushes to `incoming`, `fire_pending_facts` fires `ready` and
+/// rotates, so facts always fire the tick *after* the arrival they follow —
+/// in a later flush, whatever the command-flush timing is.
+#[derive(Resource, Default)]
+pub(crate) struct PendingFacts {
+    ready: Vec<RoomFact>,
+    incoming: Vec<RoomFact>,
+}
+
+/// Fire last tick's committed facts. Chained after the orchestrators so the
+/// buffer rotation is deterministic: facts fire exactly one tick after the
+/// placement that committed them.
+fn fire_pending_facts(mut pending: ResMut<PendingFacts>, mut commands: Commands) {
+    let PendingFacts { ready, incoming } = std::mem::take(&mut *pending);
+    for fact in ready {
+        commands.trigger(Leave {
+            actor: fact.actor,
+            room: fact.from,
+        });
+        commands.trigger(Enter {
+            actor: fact.actor,
+            room: fact.to,
+        });
+    }
+    pending.ready = incoming;
+}
+
+/// `move <direction>`: traverse an exit. Validation runs here; the phased
+/// point of no return runs in a queued closure so the attempt triggers fire
+/// synchronously (`trigger_ref`) with placement in one atomic step: walk and
+/// room attempts first (vetoable — a denied move never places), then
+/// placement, the `MoveEvent` fact (the "walking happened" event the game
+/// acts on), and the automatic look at the destination. The committed
+/// `Leave`/`Enter` facts queue into `PendingFacts` and fire next tick (see
+/// `fire_pending_facts`), so their speech lands in a later flush than the
+/// arrival. Also refreshes the character's persisted `last_room` so a
 pub(crate) fn handle_move(
     mut engine: MessageReader<EngineCommand>,
-    mut inroom: Query<&mut InRoom>,
+    mut commands: Commands,
+    inroom: Query<&InRoom>,
     exits: Query<&Exits>,
     rooms: Query<&Room>,
     areas: Query<&Area>,
-    mut characters: Query<&mut Character>,
-    mut move_ev: MessageWriter<MoveEvent>,
-    mut look_room: MessageWriter<LookRoom>,
-    mut info: MessageWriter<InfoMessage>,
-    mut attempt_leave: MessageWriter<AttemptLeave>,
-    mut attempt_enter: MessageWriter<AttemptEnter>,
-    mut leave: MessageWriter<Leave>,
-    mut enter: MessageWriter<Enter>,
 ) {
     for cmd in engine.read() {
         let Command::Move { direction } = cmd.command else {
@@ -82,37 +116,78 @@ pub(crate) fn handle_move(
         match exits.get(from) {
             Ok(room_exits) => match room_exits.exits.get(&direction).copied() {
                 Some(to) => {
-                    // Attempts fire before placement (observe-only: they deny
-                    // nothing), facts after the committed `MoveEvent`.
-                    attempt_leave.write(AttemptLeave { actor, room: from });
-                    attempt_enter.write(AttemptEnter { actor, room: to });
                     // Keep the persisted location current on every step so an
                     // unexpected restart or copyover resumes the character in the
                     // room they actually walked to, not a stale one.
                     let loc = room_location(to, &rooms, &areas);
-                    place_actor(actor, to, loc, &mut inroom, &mut characters);
-                    move_ev.write(MoveEvent {
-                        actor,
-                        from,
-                        to,
-                        direction,
-                    });
-                    leave.write(Leave { actor, room: from });
-                    enter.write(Enter { actor, room: to });
-                    look_room.write(LookRoom {
-                        target: actor,
-                        room: to,
+                    commands.queue(move |world: &mut World| {
+                        let mut walk = AttemptWalk {
+                            actor,
+                            room: from,
+                            direction,
+                            denied: false,
+                        };
+                        world.trigger_ref(&mut walk);
+                        if walk.denied {
+                            return;
+                        }
+                        let mut leave = AttemptLeave {
+                            actor,
+                            room: from,
+                            denied: false,
+                        };
+                        world.trigger_ref(&mut leave);
+                        if leave.denied {
+                            return;
+                        }
+                        let mut enter = AttemptEnter {
+                            actor,
+                            room: to,
+                            denied: false,
+                        };
+                        world.trigger_ref(&mut enter);
+                        if enter.denied {
+                            return;
+                        }
+                        // Placement (the `place_actor` seam, inlined: inside a
+                        // queued closure there are no queries, only the world).
+                        if let Some(mut ir) = world.get_mut::<InRoom>(actor) {
+                            ir.room = to;
+                        }
+                        if let Some(loc) = loc {
+                            if let Some(mut character) = world.get_mut::<Character>(actor) {
+                                character.last_room = Some(loc);
+                            }
+                        }
+                        world
+                            .resource_mut::<Messages<MoveEvent>>()
+                            .write(MoveEvent {
+                                actor,
+                                from,
+                                to,
+                                direction,
+                            });
+                        // Facts fire next tick (see `fire_pending_facts`), so
+                        // their speech lands in a later flush than the arrival.
+                        world
+                            .resource_mut::<PendingFacts>()
+                            .incoming
+                            .push(RoomFact { actor, from, to });
+                        world.resource_mut::<Messages<LookRoom>>().write(LookRoom {
+                            target: actor,
+                            room: to,
+                        });
                     });
                 }
                 None => {
-                    info.write(InfoMessage {
+                    commands.write_message(InfoMessage {
                         target: actor,
                         text: "You can't go that way.\n".into(),
                     });
                 }
             },
             Err(_) => {
-                info.write(InfoMessage {
+                commands.write_message(InfoMessage {
                     target: actor,
                     text: "You can't go that way.\n".into(),
                 });
@@ -132,16 +207,14 @@ pub(crate) fn handle_move(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_goto(
     mut engine: MessageReader<EngineCommand>,
+    mut commands: Commands,
     mut inroom: Query<&mut InRoom>,
     rooms: Query<(Entity, &Room)>,
     areas: Query<(Entity, &Area)>,
     mut characters: Query<&mut Character>,
     mut look_room: MessageWriter<LookRoom>,
     mut info: MessageWriter<InfoMessage>,
-    mut attempt_leave: MessageWriter<AttemptLeave>,
-    mut attempt_enter: MessageWriter<AttemptEnter>,
-    mut leave: MessageWriter<Leave>,
-    mut enter: MessageWriter<Enter>,
+    mut pending: ResMut<PendingFacts>,
 ) {
     for cmd in engine.read() {
         let Command::Goto { target } = &cmd.command else {
@@ -162,13 +235,22 @@ pub(crate) fn handle_goto(
                         .map(|(_, a)| persisted_location(r, a))
                 });
                 if let Some(from) = from.filter(|from| *from != to) {
-                    attempt_leave.write(AttemptLeave { actor, room: from });
-                    attempt_enter.write(AttemptEnter { actor, room: to });
+                    // Greetings, not veto: teleports are admin tools, so the
+                    // attempts fire (deferred) but denial is never consulted.
+                    commands.trigger(AttemptLeave {
+                        actor,
+                        room: from,
+                        denied: false,
+                    });
+                    commands.trigger(AttemptEnter {
+                        actor,
+                        room: to,
+                        denied: false,
+                    });
                 }
                 place_actor(actor, to, loc, &mut inroom, &mut characters);
                 if let Some(from) = from.filter(|from| *from != to) {
-                    leave.write(Leave { actor, room: from });
-                    enter.write(Enter { actor, room: to });
+                    pending.incoming.push(RoomFact { actor, from, to });
                 }
                 look_room.write(LookRoom {
                     target: actor,
@@ -216,17 +298,18 @@ fn room_ident_line(entity: Entity, room: &Room) -> String {
 }
 
 /// Wire the `move` and `goto` handlers and the input/delivery messages they
-/// own, plus the room-transition events they emit (`AttemptLeave`/
-/// `AttemptEnter`/`Leave`/`Enter`). The world-happening events they emit
-/// (`MoveEvent`/`LookRoom`) are registered by `grim_world::WorldPlugin`.
+/// own. The room-transition moments are trigger *events* (`AttemptWalk`/
+/// `AttemptLeave`/`AttemptEnter`/`Leave`/`Enter`), which need no
+/// registration — observers (e.g. `grim-script`) attach directly. The
+/// world-happening events they emit (`MoveEvent`/`LookRoom`) are registered
+/// by `grim_world::WorldPlugin`. Committed facts fire a tick after placement
+/// via `fire_pending_facts`, chained here so the rotation is deterministic.
 pub(crate) fn register(app: &mut App) {
     app.add_message::<EngineCommand>()
         .add_message::<InfoMessage>()
-        .add_message::<AttemptLeave>()
-        .add_message::<AttemptEnter>()
-        .add_message::<Leave>()
-        .add_message::<Enter>()
-        .add_systems(Update, (handle_move, handle_goto));
+        .init_resource::<PendingFacts>()
+        .add_systems(Update, (handle_move, fire_pending_facts).chain());
+    app.add_systems(Update, handle_goto);
 }
 
 #[cfg(test)]
@@ -247,6 +330,12 @@ mod tests {
         app.add_plugins(MinimalPlugins)
             .add_plugins(grim_world::WorldPlugin);
         register(&mut app);
+        app.init_resource::<walking::TransitionLog>();
+        app.add_observer(walking::log_attempt_walk);
+        app.add_observer(walking::log_attempt_leave);
+        app.add_observer(walking::log_attempt_enter);
+        app.add_observer(walking::log_leave);
+        app.add_observer(walking::log_enter);
         app
     }
 
@@ -305,6 +394,9 @@ mod tests {
             ))
             .id()
     }
+    fn room_of(app: &App, actor: Entity) -> Entity {
+        app.world().get::<InRoom>(actor).unwrap().room
+    }
 
     fn send_goto(app: &mut App, actor: Entity, target: &str) {
         app.world_mut().write_message(EngineCommand {
@@ -320,10 +412,6 @@ mod tests {
         let messages = app.world().resource::<Messages<InfoMessage>>();
         let mut cursor = messages.get_cursor();
         cursor.read(messages).map(|m| m.text.clone()).collect()
-    }
-
-    fn room_of(app: &App, actor: Entity) -> Entity {
-        app.world().get::<InRoom>(actor).unwrap().room
     }
 
     // ── walking an exit ──────────────────────────────────────────────
@@ -358,22 +446,55 @@ mod tests {
             assert_eq!(look_room_count(&app), 1);
         }
 
-        pub(super) fn transition_events(app: &App) -> (usize, usize, usize, usize) {
-            fn count<M: Message>(app: &App) -> usize {
-                let messages = app.world().resource::<Messages<M>>();
-                let mut cursor = messages.get_cursor();
-                cursor.read(messages).count()
+        /// Observer-fired transition log: the synchronous record of which
+        /// moments fired, in firing order. Wired in [`super::test_app`].
+        #[derive(Resource, Default)]
+        pub(super) struct TransitionLog(pub(super) Vec<(String, Entity, Entity)>);
+
+        pub(super) fn log_attempt_walk(e: On<AttemptWalk>, mut log: ResMut<TransitionLog>) {
+            let ev = e.event();
+            log.0.push(("attempt_walk".into(), ev.actor, ev.room));
+        }
+
+        pub(super) fn log_attempt_leave(e: On<AttemptLeave>, mut log: ResMut<TransitionLog>) {
+            let ev = e.event();
+            log.0.push(("attempt_leave".into(), ev.actor, ev.room));
+        }
+
+        pub(super) fn log_attempt_enter(e: On<AttemptEnter>, mut log: ResMut<TransitionLog>) {
+            let ev = e.event();
+            log.0.push(("attempt_enter".into(), ev.actor, ev.room));
+        }
+
+        pub(super) fn log_leave(e: On<Leave>, mut log: ResMut<TransitionLog>) {
+            let ev = e.event();
+            log.0.push(("leave".into(), ev.actor, ev.room));
+        }
+
+        pub(super) fn log_enter(e: On<Enter>, mut log: ResMut<TransitionLog>) {
+            let ev = e.event();
+            log.0.push(("enter".into(), ev.actor, ev.room));
+        }
+
+        /// The (attempt_walk, attempt_leave, attempt_enter, leave, enter) counts.
+        pub(super) fn transition_events(app: &App) -> (usize, usize, usize, usize, usize) {
+            let log = app.world().resource::<TransitionLog>();
+            let mut counts = (0, 0, 0, 0, 0);
+            for (kind, _, _) in &log.0 {
+                match kind.as_str() {
+                    "attempt_walk" => counts.0 += 1,
+                    "attempt_leave" => counts.1 += 1,
+                    "attempt_enter" => counts.2 += 1,
+                    "leave" => counts.3 += 1,
+                    "enter" => counts.4 += 1,
+                    _ => {}
+                }
             }
-            (
-                count::<AttemptLeave>(app),
-                count::<AttemptEnter>(app),
-                count::<Leave>(app),
-                count::<Enter>(app),
-            )
+            counts
         }
 
         #[test]
-        fn move_valid_exit_emits_attempts_then_facts() {
+        fn move_valid_exit_emits_attempts_then_facts_in_order() {
             let mut app = test_app();
             let room2 = app.world_mut().spawn(()).id();
             let mut exits = Exits::default();
@@ -387,15 +508,96 @@ mod tests {
                 },
             });
             app.update();
-            assert_eq!(transition_events(&app), (1, 1, 1, 1));
-            let messages = app.world().resource::<Messages<AttemptLeave>>();
-            let mut cursor = messages.get_cursor();
-            let attempt = cursor.read(messages).next().unwrap();
-            assert_eq!((attempt.actor, attempt.room), (actor, room1));
-            let messages = app.world().resource::<Messages<Enter>>();
-            let mut cursor = messages.get_cursor();
-            let entered = cursor.read(messages).next().unwrap();
-            assert_eq!((entered.actor, entered.room), (actor, room2));
+            // Attempts fire (and placement lands) before any fact: facts
+            // always fire a later tick, whatever the command-flush timing.
+            assert_eq!(transition_events(&app), (1, 1, 1, 0, 0));
+            assert_eq!(room_of(&app, actor), room2);
+            app.update();
+            app.update();
+            assert_eq!(transition_events(&app), (1, 1, 1, 1, 1));
+            // Attempts fire before facts, in phase order.
+            let log = app.world().resource::<TransitionLog>();
+            let kinds: Vec<&str> = log.0.iter().map(|(k, _, _)| k.as_str()).collect();
+            assert_eq!(
+                kinds,
+                [
+                    "attempt_walk",
+                    "attempt_leave",
+                    "attempt_enter",
+                    "leave",
+                    "enter"
+                ]
+            );
+            assert_eq!((log.0[1].1, log.0[1].2), (actor, room1));
+            assert_eq!((log.0[4].1, log.0[4].2), (actor, room2));
+        }
+
+        #[test]
+        fn denied_attempt_leave_blocks_placement() {
+            let mut app = test_app();
+            let room2 = app.world_mut().spawn(()).id();
+            let mut exits = Exits::default();
+            exits.exits.insert(Cardinal::North, room2);
+            let room1 = app.world_mut().spawn(exits).id();
+            let actor = app.world_mut().spawn(InRoom { room: room1 }).id();
+            app.add_observer(|mut e: On<AttemptLeave>| e.event_mut().denied = true);
+            app.world_mut().write_message(EngineCommand {
+                client: actor,
+                command: Command::Move {
+                    direction: Cardinal::North,
+                },
+            });
+            app.update();
+            app.update();
+            app.update();
+            assert_eq!(room_of(&app, actor), room1, "denied move must not place");
+            assert_eq!(transition_events(&app), (1, 1, 0, 0, 0));
+            assert_eq!(look_room_count(&app), 0, "denied move shows no arrival");
+        }
+
+        #[test]
+        fn denied_attempt_enter_blocks_placement() {
+            let mut app = test_app();
+            let room2 = app.world_mut().spawn(()).id();
+            let mut exits = Exits::default();
+            exits.exits.insert(Cardinal::North, room2);
+            let room1 = app.world_mut().spawn(exits).id();
+            let actor = app.world_mut().spawn(InRoom { room: room1 }).id();
+            app.add_observer(|mut e: On<AttemptEnter>| e.event_mut().denied = true);
+            app.world_mut().write_message(EngineCommand {
+                client: actor,
+                command: Command::Move {
+                    direction: Cardinal::North,
+                },
+            });
+            app.update();
+            app.update();
+            app.update();
+            assert_eq!(room_of(&app, actor), room1, "denied move must not place");
+            assert_eq!(transition_events(&app), (1, 1, 1, 0, 0));
+        }
+
+        #[test]
+        fn denied_attempt_walk_blocks_everything_after_it() {
+            let mut app = test_app();
+            let room2 = app.world_mut().spawn(()).id();
+            let mut exits = Exits::default();
+            exits.exits.insert(Cardinal::North, room2);
+            let room1 = app.world_mut().spawn(exits).id();
+            let actor = app.world_mut().spawn(InRoom { room: room1 }).id();
+            app.add_observer(|mut e: On<AttemptWalk>| e.event_mut().denied = true);
+            app.world_mut().write_message(EngineCommand {
+                client: actor,
+                command: Command::Move {
+                    direction: Cardinal::North,
+                },
+            });
+            app.update();
+            app.update();
+            app.update();
+            assert_eq!(room_of(&app, actor), room1, "denied move must not place");
+            assert_eq!(transition_events(&app), (1, 0, 0, 0, 0));
+            assert_eq!(look_room_count(&app), 0, "denied move shows no arrival");
         }
 
         #[test]
@@ -410,7 +612,7 @@ mod tests {
                 },
             });
             app.update();
-            assert_eq!(transition_events(&app), (0, 0, 0, 0));
+            assert_eq!(transition_events(&app), (0, 0, 0, 0, 0));
         }
 
         #[test]
@@ -576,22 +778,14 @@ mod tests {
             let actor = spawn_actor_in(&mut app, start, true);
             send_goto(&mut app, actor, "market");
             assert_eq!(room_of(&app, actor), dest);
-            let messages = app.world().resource::<Messages<AttemptLeave>>();
-            let mut cursor = messages.get_cursor();
-            let ev = cursor.read(messages).next().expect("AttemptLeave");
-            assert_eq!((ev.actor, ev.room), (actor, start));
-            let messages = app.world().resource::<Messages<AttemptEnter>>();
-            let mut cursor = messages.get_cursor();
-            let ev = cursor.read(messages).next().expect("AttemptEnter");
-            assert_eq!((ev.actor, ev.room), (actor, dest));
-            let messages = app.world().resource::<Messages<Leave>>();
-            let mut cursor = messages.get_cursor();
-            let ev = cursor.read(messages).next().expect("Leave");
-            assert_eq!((ev.actor, ev.room), (actor, start));
-            let messages = app.world().resource::<Messages<Enter>>();
-            let mut cursor = messages.get_cursor();
-            let ev = cursor.read(messages).next().expect("Enter");
-            assert_eq!((ev.actor, ev.room), (actor, dest));
+            // Teleports skip the walk intent but greet both rooms; facts land later.
+            assert_eq!(super::walking::transition_events(&app), (0, 1, 1, 0, 0));
+            app.update();
+            app.update();
+            assert_eq!(super::walking::transition_events(&app), (0, 1, 1, 1, 1));
+            let log = app.world().resource::<super::walking::TransitionLog>();
+            assert_eq!((log.0[0].1, log.0[0].2), (actor, start));
+            assert_eq!((log.0[3].1, log.0[3].2), (actor, dest));
         }
 
         #[test]
@@ -601,7 +795,7 @@ mod tests {
             let actor = spawn_actor_in(&mut app, start, true);
             send_goto(&mut app, actor, "square");
             assert_eq!(room_of(&app, actor), start);
-            assert_eq!(super::walking::transition_events(&app), (0, 0, 0, 0));
+            assert_eq!(super::walking::transition_events(&app), (0, 0, 0, 0, 0));
         }
 
         #[test]
