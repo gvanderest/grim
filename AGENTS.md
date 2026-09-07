@@ -108,6 +108,7 @@ When developing new features, start by asking:
 4. **Read the whole function.** Elided ranges = unseen — expand range.
 5. **Test immediately after the last edit.**
 6. **Explicit character sets, not ASCII ranges.** `'k'..='w'` ≠ `krgybmcw`. Use `'k' | 'r' | 'g' | 'y' | 'b' | 'm' | 'c' | 'w'`.
+6a. **Never byte-slice untrusted input.** `s[..n]` panics on multibyte input (`give épée bob` crashed `is_all_head`). Use `s.get(..n)` and treat `None` as no-match — player input must miss, never crash.
 7. **Update README.md** when architecture, roadmap, or conventions change — not this file.
 7a. **Every crate has a `README.md` following [`docs/README.template.md`](./docs/README.template.md).** It's the map to that crate — Components, Systems, and (GRIM-specifically) **Commands with the file each handler lives in**, plus Resources/Events. Keep it current *in the same change*: whenever you add, move, or remove a Component / System / Resource / Event / Command, update that crate's README so the pointers stay true — the Commands→handler table especially (a stale handler pointer is worse than none). Findability is the point; treat the README as part of the code, not an afterthought.
 8. **NEVER use `--no-verify` on commits.** Pre-commit hooks (lint, fmt, coverage) are mandatory. If they block, fix what they catch.
