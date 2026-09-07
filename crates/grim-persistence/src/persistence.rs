@@ -53,7 +53,9 @@ fn load_persisted_data(mut commands: Commands, config: Res<PersistenceConfig>) {
     let characters_dir = config.characters_dir();
     let _ = fs::create_dir_all(&accounts_dir);
     let _ = fs::create_dir_all(&characters_dir);
-
+    // The single-file blocklist survives restarts with the accounts; a missing
+    // file is an empty list.
+    commands.insert_resource(crate::BanList::load(&config.dir));
     if let Ok(entries) = fs::read_dir(&accounts_dir) {
         for entry in entries.flatten() {
             let path = entry.path();

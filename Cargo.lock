@@ -1083,6 +1083,7 @@ dependencies = [
  "grim-networking",
  "grim-object",
  "grim-world",
+ "serde",
  "serde_json",
 ]
 

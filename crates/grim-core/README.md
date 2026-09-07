@@ -30,6 +30,7 @@ This crate *defines* the `Command` enum (the closed set of player verbs, `src/ev
 | `look` / `desc` / `move` / `goto` / `quit` / `title` / `shutdown` | `grim-actor` → `src/commands/<name>.rs` |
 | `say` / `yell` / `ooc` / `tell` / `reply` / `gecho` | `grim-channel` → `src/channel.rs` |
 | `finger` / `who` / `where` / `sockets` / `commands` / `areas` | `grim-scene` → `src/command.rs` (session-local) |
+| `ban` (`BanOp::List` / `Add` / `Remove` over `BanKind::Ip` / `Account` / `Character`) | `grim-scene` → `src/ban.rs` (engine queue; persists + kicks) |
 
 The closed `Command` enum + last-registered-wins registry are documented as defects slated for per-plugin typed dispatch (ARCHITECTURE.md §5.2, §8).
 
@@ -52,8 +53,7 @@ This crate owns no `Resource`s — `StartingRoom` moved to `grim-world` in Place
 | `LinkdeadAnnounce` | Message | `src/events.rs` |
 | `ServerBroadcast` | Message | `src/events.rs` |
 
-## Notes
-- Also defines non-ECS value types: `Command` and `ClientState` (`src/events.rs` / `src/components.rs`), `Gender` (`src/character.rs`), `Cardinal` (`src/cardinal.rs`), and `GrimId` (base62 ×12 id, `src/id.rs`). (`RoomLocation` moved to `grim-world` in Placement Phase 2a step 3.) A `prelude` re-exports the common set; `src/color.rs` re-exports `grim-color` so `grim::color::*` keeps resolving.
+- Also defines non-ECS value types: `Command` (plus the `ban` vocabulary `BanKind`/`BanOp`) and `ClientState` (`src/events.rs` / `src/components.rs`), `Gender` (`src/character.rs`), `Cardinal` (`src/cardinal.rs`), and `GrimId` (base62 ×12 id, `src/id.rs`). (`RoomLocation` moved to `grim-world` in Placement Phase 2a step 3.) A `prelude` re-exports the common set; `src/color.rs` re-exports `grim-color` so `grim::color::*` keeps resolving.
 - The events named `SayEvent`/`MoveEvent`/etc. are **facts only** — there is no attempt/fact split yet, so nothing can veto them (ARCHITECTURE.md §6, §8).
 - Called a "god-types crate" in ARCHITECTURE.md §8: colour, `tr`, the command registry, and wire types have already been split out; game events + components are what remain. Expect this crate to shrink over time — improve over time.
 
