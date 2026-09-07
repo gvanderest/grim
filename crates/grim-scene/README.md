@@ -18,7 +18,7 @@ by `grim-auth`.
 | `InGameScene` | `src/scene_stack.rs` | Marker on the scene entity topping an in-world session. Missing/empty stack reads as not-in-game (fail closed). |
 | `Client` | (`grim-core::components`) | Per-connection session state; consumed here, defined upstream. |
 | `ClientState` | (`grim-core::components`) | Login/creation/in-game state machine; the in-game arm drives this crate, the pre-game arms drive `grim-auth`. Still the pre-game driver — the stack mirrors only world entry until ADR-0003 lands fully. |
-| `EditorSession` | `src/editor.rs` | Modal line-editor state on a session (character, kind, buffer). Present exactly while editing; input routes here instead of the parser. |
+| `EditorSession` | `src/editor.rs` (state on `Client::editor`, `grim-core`) | Modal line-editor state (character, kind, buffer). A plain field — not a component — so opening/closing is visible to later lines in the same tick. |
 
 ## Systems
 

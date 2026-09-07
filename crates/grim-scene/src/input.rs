@@ -21,20 +21,12 @@ use grim_networking::{Connection, ConnectionInput, ConnectionOutput};
 use grim_persistence::PersistenceConfig;
 
 use crate::command;
-use crate::editor::{self, EditorSession};
+use crate::editor;
 use crate::params::{PlayerChars, RoomResolver, SessionRes};
 use crate::scene_stack::{top_is_ingame, InGameScene, SceneStack};
 use crate::session::JustEnteredWorld;
 use crate::sockets::ClientSnapshot;
 
-/// The editor modal's world access, bundled so the input system stays within
-/// Bevy's system-parameter limit.
-#[derive(bevy::ecs::system::SystemParam)]
-pub(crate) struct EditorSink<'w, 's> {
-    editors: Query<'w, 's, &'static mut EditorSession>,
-    commands: Commands<'w, 's>,
-    done: MessageWriter<'w, EditorDone>,
-}
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_ingame_input(
     mut inputs: MessageReader<ConnectionInput>,
@@ -51,7 +43,7 @@ pub(crate) fn handle_ingame_input(
     connections: Query<&Connection>,
     accounts: Query<&Account>,
     mut just_entered: ResMut<JustEnteredWorld>,
-    mut editor_sink: EditorSink,
+    mut done: MessageWriter<EditorDone>,
     mut outputs: MessageWriter<ConnectionOutput>,
 ) {
     // Snapshot every session once per tick for the `sockets` list. A second
@@ -94,8 +86,13 @@ pub(crate) fn handle_ingame_input(
         let conn = client.connection;
         // Editor modal first: a session inside the editor never reaches the
         // command parser — lines append, `@` lines control, close emits done.
-        if let Ok(mut editor) = editor_sink.editors.get_mut(snap.client) {
-            match editor::handle_editor_line(&mut editor, ev.text.as_str()) {
+        // The state is a `Client` field (not a component), so opening and
+        // closing here are visible to later lines in the same tick.
+        if client.editor.is_some() {
+            let Some(editor) = client.editor.as_mut() else {
+                continue;
+            };
+            match editor::handle_editor_line(editor, ev.text.as_str()) {
                 editor::EditorAction::Stay { reply } => {
                     if let Some(text) = reply {
                         outputs.write(ConnectionOutput {
@@ -105,11 +102,8 @@ pub(crate) fn handle_ingame_input(
                     }
                 }
                 editor::EditorAction::Closed { done: finished } => {
-                    editor_sink.done.write(finished);
-                    editor_sink
-                        .commands
-                        .entity(snap.client)
-                        .remove::<EditorSession>();
+                    client.editor = None;
+                    done.write(finished);
                 }
             }
             continue;

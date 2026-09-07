@@ -84,6 +84,7 @@ fn default_string(key: &str) -> String {
         "editor.unknown" => "Unknown editor command. Use @save, @exit, or @clear.\n",
         "desc.saved" => "Your description has been saved.\n",
         "desc.edit_cancelled" => "Edit cancelled, description unchanged.\n",
+        "commands.desc" => "desc [clear|+/-|edit] — View or edit your description paragraphs",
         "sockets.empty" => "No connections.\n",
         "sockets.header" => "Sockets connected (%{total}):\n",
         "sockets.row" => "  [%{id}] %{addr} %{state} %{name} (%{account})\n",
