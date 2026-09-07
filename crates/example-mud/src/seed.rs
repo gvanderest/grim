@@ -311,7 +311,7 @@ fn spawn_npc(commands: &mut Commands, area_slug: &str, npc: &NpcBlueprint, room:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim::prelude::CarriedBy;
+    use grim::prelude::{CarriedBy, TriggerKind};
 
     /// The repo's committed area blueprints, resolved from this crate's manifest
     /// dir so the test works regardless of the process working directory.
@@ -386,6 +386,13 @@ mod tests {
             .iter(app.world())
             .count();
         assert_eq!(creatures, 1);
+
+        // Grimmok spawned with both greeting triggers compiled.
+        let mut scripted = app.world_mut().query::<&ScriptTriggers>();
+        let triggers = scripted.iter(app.world()).next().expect("Grimmok scripted");
+        assert_eq!(triggers.0.len(), 2);
+        assert!(triggers.0.iter().any(|t| t.on == TriggerKind::Enter));
+        assert!(triggers.0.iter().any(|t| t.on == TriggerKind::AttemptLeave));
 
         // The creature carries its look paragraphs, keywords, and room line.
         let mut descs = app.world_mut().query::<(&GrimName, &Description)>();
