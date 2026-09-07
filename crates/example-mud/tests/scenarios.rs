@@ -149,6 +149,31 @@ fn movement_walks_between_seeded_rooms() {
     mud.send(alice, "south").assert_contains("The Rusted Anvil");
 }
 
+#[test]
+fn grimmok_greets_every_arrival() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    // Leave Grimmok's room, then come back: the enter trigger fires and the
+    // arrival-room broadcast reaches the mover.
+    mud.send(alice, "north").assert_contains("Town Square");
+    mud.send(alice, "south")
+        .assert_contains("Hello there adventurer");
+}
+
+#[test]
+fn grimmok_farewell_reaches_those_who_stay() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+
+    // Alice leaves the tavern: the attempt-leave trigger fires while she is
+    // still inside, so Grimmok's farewell goes to the room — heard by Bob,
+    // who stays, not by Alice, who is already gone.
+    let _ = mud.send(alice, "north");
+    mud.send(bob, "look").assert_contains("See you later");
+}
+
 /// Log an existing account's first character back in (after quit or reboot):
 /// email → password → character menu → select → MOTD → room.
 fn login_again(mud: &mut Mud, email: &str) -> Session {
