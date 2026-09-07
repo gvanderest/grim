@@ -3,10 +3,12 @@
 //! For each transition event, every [`Creature`] in the affected room — except
 //! the mover itself — fires its triggers for that moment in blueprint order.
 //! Script speech goes out as a `say` [`ChannelMessage`] from the mob (rendered
-//! by the existing channel path, so mobs sound exactly like players). Any
-//! failure — a Lua error, or a missing `say` channel — pages every online
-//! admin via [`InfoMessage`] and the server log, and never disables anything.
-
+//! by the existing channel path, so mobs sound exactly like players), with one
+//! addition: attempt-time speech also reaches the mover directly, because the
+//! room broadcast renders after placement, when the mover is already gone
+//! (leave) or not yet there (enter). Any failure — a Lua error, or a missing
+//! `say` channel — pages every online admin via [`InfoMessage`] and the server
+//! log, and never disables anything.
 use bevy::prelude::*;
 use grim_actor::{AttemptEnter, AttemptLeave, Character, Creature, Enter, InRoom, Leave, Player};
 use grim_channel::{ChannelMessage, ChannelRegistry};
@@ -102,10 +104,15 @@ fn fire(
     info: &mut MessageWriter<InfoMessage>,
 ) {
     let channel = registry.and_then(|r| r.get("say")).cloned();
+    // Attempt-time speech also goes to the mover directly: the room broadcast
+    // renders after placement, when the mover is already gone (leave) or not
+    // yet there (enter). Facts need no catch-up — whoever is present hears them.
+    let catch_up_mover = matches!(on, TriggerKind::AttemptLeave | TriggerKind::AttemptEnter);
     for (mob, triggers, inroom) in creatures.iter() {
         if mob == mover || inroom.room != room {
             continue;
         }
+        let mob_name = mob_names_or_entity(mob_names, mob);
         for trigger in &triggers.0 {
             if trigger.on != on {
                 continue;
@@ -117,20 +124,32 @@ fn fire(
                             speech.write(ChannelMessage {
                                 channel: say.clone(),
                                 actor: mob,
-                                text,
+                                text: text.clone(),
                             });
+                            if catch_up_mover {
+                                // Same third-party framing the room hears
+                                // (`channel.say.third_party`), delivered as a
+                                // direct line since the mover is mid-transition.
+                                info.write(InfoMessage {
+                                    target: mover,
+                                    text: tr!(
+                                        &format!("{}.third_party", say.key),
+                                        speaker = mob_name,
+                                        text = text
+                                    ),
+                                });
+                            }
                         }
                     }
                     None => report(
-                        mob,
+                        &mob_name,
                         on,
                         "the `say` channel is not registered",
-                        mob_names,
                         admins,
                         info,
                     ),
                 },
-                Err(error) => report(mob, on, &error, mob_names, admins, info),
+                Err(error) => report(&mob_name, on, &error, admins, info),
             }
         }
     }
@@ -139,18 +158,19 @@ fn fire(
 /// A trigger failed: log it for the operator and page every online admin.
 /// Nothing is disabled — the next transition fires the script again.
 fn report(
-    mob: Entity,
+    mob_name: &str,
     on: TriggerKind,
     error: &str,
-    mob_names: &Query<&GrimName>,
     admins: &Query<(Entity, &Character, &Player)>,
     info: &mut MessageWriter<InfoMessage>,
 ) {
-    let name = mob_names_or_entity(mob_names, mob);
-    bevy::log::error!("script trigger failed: {name} ({}): {error}", on.as_str());
+    bevy::log::error!(
+        "script trigger failed: {mob_name} ({}): {error}",
+        on.as_str()
+    );
     let text = tr!(
         "script.trigger.failed",
-        name = name,
+        name = mob_name,
         trigger = on.as_str(),
         error = error
     );
@@ -337,6 +357,54 @@ mod tests {
         });
         app.update();
         assert_eq!(said(&mut app), [(mob, "bye".to_string())]);
+    }
+
+    #[test]
+    fn attempt_speech_also_reaches_the_mover() {
+        let mut app = test_app();
+        let src = app.world_mut().spawn_empty().id();
+        scripted_mob(
+            &mut app,
+            src,
+            vec![trigger(TriggerKind::AttemptLeave, "say('bye')")],
+        );
+        let mover = app.world_mut().spawn_empty().id();
+        app.world_mut().write_message(AttemptLeave {
+            actor: mover,
+            room: src,
+        });
+        app.update();
+        let pages = infos(&mut app);
+        assert_eq!(pages.len(), 1, "mover gets one direct line");
+        assert_eq!(pages[0].0, mover);
+        assert!(
+            pages[0].1.contains("Grimmok"),
+            "framed as speech: {}",
+            pages[0].1
+        );
+        assert!(
+            pages[0].1.contains("bye"),
+            "carries the text: {}",
+            pages[0].1
+        );
+    }
+
+    #[test]
+    fn committed_leave_does_not_page_the_mover() {
+        let mut app = test_app();
+        let src = app.world_mut().spawn_empty().id();
+        scripted_mob(
+            &mut app,
+            src,
+            vec![trigger(TriggerKind::Leave, "say('bye')")],
+        );
+        let mover = app.world_mut().spawn_empty().id();
+        app.world_mut().write_message(Leave {
+            actor: mover,
+            room: src,
+        });
+        app.update();
+        assert!(infos(&mut app).is_empty(), "facts speak to the room only");
     }
 
     #[test]

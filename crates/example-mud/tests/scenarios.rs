@@ -169,8 +169,8 @@ fn grimmok_farewell_reaches_those_who_stay() {
 
     // Alice leaves the tavern: the attempt-leave trigger fires while she is
     // still inside, so Grimmok's farewell goes to the room — heard by Bob,
-    // who stays, not by Alice, who is already gone.
-    let _ = mud.send(alice, "north");
+    // who stays — and straight to Alice, who is mid-transition.
+    mud.send(alice, "north").assert_contains("See you later");
     mud.send(bob, "look").assert_contains("See you later");
 }
 
