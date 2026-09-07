@@ -20,7 +20,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use bevy::log::{error, warn};
+use bevy::log::{error, info, warn};
 use bevy::prelude::*;
 use grim::prelude::{
     compile, Actor, Area, Cardinal, CompiledTrigger, Creature, Description, Exits, Gender, GrimId,
@@ -304,6 +304,11 @@ fn spawn_npc(commands: &mut Commands, area_slug: &str, npc: &NpcBlueprint, room:
         InRoom { room },
     ));
     if !compiled.is_empty() {
+        info!(
+            "area '{area_slug}' npc '{}': {} script trigger(s) loaded",
+            npc.name,
+            compiled.len()
+        );
         mob.insert(ScriptTriggers(compiled));
     }
 }
