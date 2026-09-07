@@ -107,6 +107,11 @@ fn split_tokens(rest: &str) -> Option<Vec<(usize, usize)>> {
                 return None;
             }
             i += 1;
+            // Text glued to the closing quote (`"sword"bob`) is malformed:
+            // without a delimiter the item/being divide is a guess.
+            if i < bytes.len() && !bytes[i].is_ascii_whitespace() {
+                return None;
+            }
         } else {
             while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
                 i += 1;
@@ -917,6 +922,24 @@ mod tests {
         );
     }
     // ── Quit ──────────────────────────────────────────────────────
+    #[test]
+    fn test_give_and_steal_reject_text_glued_to_quote() {
+        // Without a delimiter after the closing quote the item/being divide
+        // is a guess, so both verbs are unknown — never a half-split move.
+        assert_eq!(parse("give \"sword\"bob"), None);
+        assert_eq!(parse("give \"brass lantern\"x bob"), None);
+        assert_eq!(parse("steal \"coin\"bob"), None);
+        assert_eq!(parse("steal 2.\"coin\"x bob"), None);
+        // Whitespace-delimited quotes still parse on both verbs.
+        assert_eq!(
+            parse("steal \"brass lantern\" bob"),
+            Some(Command::Steal {
+                item: "\"brass lantern\"".into(),
+                target: "bob".into()
+            })
+        );
+    }
+
     #[test]
     fn test_quit_and_exit() {
         assert_eq!(parse("quit"), Some(Command::Quit));

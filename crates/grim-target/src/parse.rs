@@ -164,8 +164,12 @@ fn is_quantity_form(s: &str) -> bool {
 /// lantern"` and `brass lantern` both mean every term must match). Quoting
 /// matters one layer up, where `give`/`steal` split `<item> <target>` — a
 /// quoted phrase stays on one side of that divide. `None` when no terms
-/// remain.
+/// remain, or when the quotes do not balance (an unterminated quote is
+/// malformed, matching the `give`/`steal` split — fail closed, never guess).
 pub fn split_target_terms(raw: &str) -> Option<Vec<String>> {
+    if raw.chars().filter(|c| *c == '"').count() % 2 != 0 {
+        return None;
+    }
     let terms: Vec<String> = raw
         .replace('"', "")
         .split_whitespace()
@@ -214,14 +218,12 @@ mod tests {
     }
 
     #[test]
-    fn stray_quotes_are_stripped_not_rejected() {
-        // Quotes only matter to `give`/`steal` argument splitting; here they
-        // vanish, so a dangling quote still finds its sword.
-        assert_eq!(parse_target("\"brass", ParseOptions::ITEM), one("brass"));
-        assert_eq!(
-            parse_target("2.\"brass", ParseOptions::BEING),
-            parse_target("2.brass", ParseOptions::BEING)
-        );
+    fn unterminated_quote_is_rejected() {
+        // Malformed quotes fail closed, matching the `give`/`steal` split:
+        // handlers answer with their miss line instead of guessing.
+        assert_eq!(parse_target("\"brass", ParseOptions::ITEM), None);
+        assert_eq!(parse_target("2.\"brass", ParseOptions::BEING), None);
+        assert_eq!(parse_target("brass\"", ParseOptions::ITEM), None);
     }
 
     #[test]
