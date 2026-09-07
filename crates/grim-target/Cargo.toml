@@ -1,0 +1,11 @@
+[package]
+name = "grim-target"
+version = "0.1.0"
+edition = "2021"
+
+# Target parsing + keyword query: turn a raw `<target>` string into a
+# `TargetSpec` (quantity / offset / all + keyword terms) and resolve that spec
+# against candidate entities. Pure functions over strings plus Bevy `Entity`
+# for ordering — no game types, so every verb crate can depend on it.
+[dependencies]
+bevy = { workspace = true, default-features = false }

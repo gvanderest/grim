@@ -8,6 +8,7 @@ grim-core = { path = "../grim-core" }
 grim-world = { path = "../grim-world" }
 grim-actor = { path = "../grim-actor" }
 grim-text = { path = "../grim-text" }
+grim-target = { path = "../grim-target" }
 bevy = { workspace = true, default-features = false }
 
 [dev-dependencies]

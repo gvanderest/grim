@@ -43,10 +43,10 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | `where` | `handle_ingame` → `format_where` (`src/command.rs`) | Show where players are located. |
 | `inventory` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/inventory.rs`) | List carried objects' short names (sorted), or the empty line. |
 | `equipment` | `handle_ingame` → `tr!("equipment.empty")` (`src/command.rs`) | Dummy: always "You are wearing nothing." (no item system yet). |
-| `get <keyword>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Pick up the best-matching ground object; room sees "<name> picks up <short>". |
-| `drop <keyword>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Drop the best-matching carried object; room sees "<name> drops <short>". |
-| `give <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/give.rs`) | Hand a carried object to a PC here (creatures refuse); mover/other/room each see a named line (`format_transfer_events`). |
-| `steal <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/steal.rs`) | Take a carried object from a being here; same three-way echo. Existence checks only. |
+| `get <target>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Pick up matches from the ground (`grim-target` selectors: `2.coin`, `3*coin`, `all [words]`); room sees "<name> picks up <short>" per item. |
+| `drop <target>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Drop matches from the pack (same selectors); room sees "<name> drops <short>" per item. |
+| `give <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/give.rs`) | Hand matches to a PC here (creatures refuse); quote-aware split (`give "brass lantern" bob`; `all`-headed items run to the last word). Mover/other/room each see a named line (`format_transfer_events`). |
+| `steal <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/steal.rs`) | Take matches from a being here (same split/selectors); same three-way echo. Existence checks only. |
 | `areas` | `handle_ingame` → `format_areas` (`src/command.rs`) | List known areas. |
 | `commands` | `handle_ingame` → `format_commands` (`src/formatter.rs`) | Show the command list. |
 | `help` | `handle_ingame` → `format_commands` (`src/command.rs`) | Alias for `commands` (parser maps `help` → `Command::Commands`). |

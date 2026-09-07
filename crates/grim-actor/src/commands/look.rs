@@ -1,11 +1,12 @@
 //! `look` rendering: turn a `look` command into the room/entity description
 //! events (`LookRoom`/`LookEntity`) or a "not here" info message. Reads the
 //! actor's [`InRoom`] placement and the [`Name`] of entities sharing the room;
-//! targets resolve by rank (see [`find_subject`]).
+//! targets resolve through [`grim_target`] (see [`find_subject`]).
 
 use bevy::prelude::*;
 use grim_core::components::{Keywords, Name};
 use grim_core::events::{Command, EngineCommand, InfoMessage, LookEntity, LookRoom};
+use grim_target::{parse_target, query, ParseOptions};
 
 use crate::placement::InRoom;
 
@@ -34,8 +35,7 @@ pub(crate) fn handle_look(
                 });
             }
             Some(name) => {
-                let want = name.to_lowercase();
-                let subject = find_subject(&want, actor, actor_room.room, &named);
+                let subject = find_subject(name, actor, actor_room.room, &named);
                 match subject {
                     Some(subject) => {
                         look_entity.write(LookEntity {
@@ -56,50 +56,37 @@ pub(crate) fn handle_look(
 }
 
 /// Resolve a `look` target to an entity in `room`. `self` is always the actor;
-/// otherwise the best candidate wins by rank: exact name, then exact keyword,
-/// then name/keyword prefix with the shortest name first (so `wrack` finds
-/// `Wrack` over `Wrackus` regardless of order, and `wracku` disambiguates).
-/// Ties fall through to the lowest entity id, keeping resolution deterministic.
+/// otherwise the [`ParseOptions::BEING`] spec picks the winner: the best
+/// ranked candidate, or the Nth (`look 2.goblin`). Ranking is exact name,
+/// then exact keyword, then name/keyword prefix with the shortest name first
+/// (so `wrack` finds `Wrack` over `Wrackus` regardless of order, and `wracku`
+/// disambiguates). Ties fall through to the lowest entity id, keeping
+/// resolution deterministic.
 fn find_subject(
-    want: &str,
+    raw: &str,
     actor: Entity,
     room: Entity,
     named: &Query<(Entity, &InRoom, &Name, Option<&Keywords>)>,
 ) -> Option<Entity> {
-    if want == "self" {
+    if raw.trim().eq_ignore_ascii_case("self") {
         return Some(actor);
     }
-    if want.is_empty() {
-        return None;
-    }
-    named
-        .iter()
-        .filter(|(_, ir, _, _)| ir.room == room)
-        .filter_map(|(e, _, nm, kw)| {
-            rank_target(&nm.0, kw, want).map(|rank| (rank, e.to_bits(), e))
-        })
-        .min()
-        .map(|(_, _, e)| e)
-}
-
-/// Rank one in-room name against `want`: exact name (0), exact keyword (1),
-/// or prefix (2, shortest name then alphabetical). `None` when neither the
-/// name nor any keyword touches `want`.
-pub fn rank_target(name: &str, kw: Option<&Keywords>, want: &str) -> Option<(u8, usize, String)> {
-    let lower = name.to_lowercase();
-    if lower == want {
-        return Some((0, 0, String::new()));
-    }
-    let kws: Vec<String> = kw
-        .map(|kw| kw.0.iter().map(|k| k.to_lowercase()).collect())
-        .unwrap_or_default();
-    if kws.iter().any(|k| k == want) {
-        return Some((1, 0, String::new()));
-    }
-    if lower.starts_with(want) || kws.iter().any(|k| k.starts_with(want)) {
-        return Some((2, name.len(), lower));
-    }
-    None
+    let spec = parse_target(raw, ParseOptions::BEING)?;
+    query(
+        &spec,
+        named
+            .iter()
+            .filter(|(_, ir, _, _)| ir.room == room)
+            .map(|(entity, _, name, keywords)| {
+                (
+                    entity,
+                    name.0.as_str(),
+                    keywords.map(|k| k.0.as_slice()).unwrap_or(&[]),
+                )
+            }),
+    )
+    .into_iter()
+    .next()
 }
 
 /// Wire the `look` handler and the input/delivery messages it owns. The
@@ -338,5 +325,48 @@ mod tests {
             assert!(iter.next().is_none(), "expected exactly one InfoMessage");
         }
         assert_eq!(look_room_count(&app), 0);
+    }
+
+    #[test]
+    fn look_offset_selects_second_ranked() {
+        let mut app = test_app();
+        let room = app.world_mut().spawn(()).id();
+        let actor = app
+            .world_mut()
+            .spawn((InRoom { room }, Name("hero".into())))
+            .id();
+        // Exact ("goblin") outranks prefix ("goblins"), so `2.goblin` finds
+        // the prefixed one.
+        let goblins = app
+            .world_mut()
+            .spawn((InRoom { room }, Name("goblins".into())))
+            .id();
+        let goblin = app
+            .world_mut()
+            .spawn((InRoom { room }, Name("goblin".into())))
+            .id();
+        assert_eq!(
+            look_subjects(&mut app, actor, &["goblin", "2.goblin"]),
+            vec![goblin, goblins]
+        );
+    }
+
+    #[test]
+    fn look_quoted_group_matches_every_term() {
+        let mut app = test_app();
+        let room = app.world_mut().spawn(()).id();
+        let actor = app
+            .world_mut()
+            .spawn((InRoom { room }, Name("hero".into())))
+            .id();
+        // No keywords: only the multi-term AND reaches the inner word.
+        let lantern = app
+            .world_mut()
+            .spawn((InRoom { room }, Name("brass lantern".into())))
+            .id();
+        assert_eq!(
+            look_subjects(&mut app, actor, &["\"brass lantern\""]),
+            vec![lantern]
+        );
     }
 }

@@ -125,6 +125,7 @@ plugin registering five scenes. That is correct and not a violation.
 | `grim-color` | — (plain library) | colour codes, ANSI rendering, palette |
 | `grim-text` | — (plain library) | the Catalog: strings, templates, interpolation |
 | `grim-command` | — (`CommandRegistry` type; resource held by `grim-scene`) | command registry, resolution, dispatch |
+| `grim-target` | — (plain library) | target parsing + keyword query: `TargetSpec` selectors (`2.x`, `N*x`, `all`, quoted groups), ranking, selector application |
 | `grim-core` | — (transitional, dissolving — not the floor) | leftover shared types until each moves to its owner: `Name`→actor, `RoomLocation` already→world, `Command` dies with typed dispatch, game events→owners, validation→owners |
 | `grim-networking` | `GrimNetworkingPlugin` | wire shapes: `Connection`, `ConnectionInput`/`Output`, `Established`/`Closed`, `DisconnectRequest` (no `Transport` trait until a 2nd transport lands) |
 | `grim-networking-telnet` | `TelnetPlugin` | telnet transport: TCP server, IAC negotiation, tokio↔Bevy bridge, ANSI on the wire |
@@ -136,7 +137,7 @@ plugin registering five scenes. That is correct and not a violation.
 | `grim-world` | `WorldPlugin` (+ `ShutdownPlugin`) | rooms, areas, exits, room-address lookups, `RoomLocation` (being-free) |
 | `grim-actor` | `ActorPlugin` | the beings — `Actor` base + PC `Character` + `Creature` mob marker + `Player`/`InRoom`/… and the `StoredCharacter` disk DTO — plus the being-reading verbs (`look`/`move`/`goto`/`quit`/`title`/`shutdown`) |
 | `grim-channel` | `ChannelPlugin` | channel registry, audience, eligibility (§7) |
-| `grim-object` | `ObjectPlugin` | things — `Object` marker + `CarriedBy` carrier link and the carrying verbs (`get`/`drop`/`inventory`); sits above `grim-actor`, never the reverse |
+| `grim-object` | `ObjectPlugin` | things — `Object` marker + `CarriedBy` carrier link and the carrying verbs (`get`/`drop`/`inventory`/`give`/`steal`, all resolved through `grim-target`); sits above `grim-actor`, never the reverse |
 | `grim-persistence` | `PersistencePlugin` | account/character save and load, player aliases, channel toggles |
 | `grim` | — | facade: re-exports and the D&D default plugin group (`GrimDefaultPlugins`) |
 | `example-mud` | *binary* | composition and world seed |

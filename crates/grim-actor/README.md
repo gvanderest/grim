@@ -2,7 +2,7 @@
 > The "beings" of the world (characters, players, placement) and the being-reading command verbs.
 
 **Role:** vertical — actors (beings + their verbs)
-**Depends on:** `grim-core`, `grim-world`, `grim-networking`, `grim-color`
+**Depends on:** `grim-core`, `grim-world`, `grim-networking`, `grim-color`, `grim-target`
 
 An **actor** is any entity that can act in the world and be placed in a room —
 player characters and creatures (mobs). Every being carries the shared `Actor`
@@ -38,7 +38,7 @@ creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the
 
 | System | Schedule | File | Purpose |
 |---|---|---|---|
-| `look::handle_look` | `Update` | `src/commands/look.rs` | Reads `Command::Look`; emits `LookRoom` (no target) or `LookEntity`, else a "not here" `InfoMessage`. Ranking: `self`, exact name, exact keyword, shortest prefix name. |
+| `look::handle_look` | `Update` | `src/commands/look.rs` | Reads `Command::Look`; emits `LookRoom` (no target) or `LookEntity`, else a "not here" `InfoMessage`. Targets resolve via `grim-target` (`BEING` spec: best rank, or Nth with `2.goblin`). |
 | `desc::handle_desc` | `Update` | `src/commands/desc.rs` | Reads `Command::Desc`; views/edits the actor's own `Description` paragraphs (`Show` reuses `LookEntity` on self; `Edit` emits `OpenEditor` preloaded). |
 | `desc::handle_editor_done` | `Update` | `src/commands/desc.rs` | Reads `EditorDone` for `EditorKind::Description`; replaces the actor's paragraphs on `@save`, confirms the discard on `@exit`. |
 | `movement::handle_move` | `Update` | `src/commands/movement.rs` | Reads `Command::Move`; walks an exit, refreshes `last_room`, emits `MoveEvent` + auto-look. |
@@ -52,7 +52,7 @@ Player-facing verbs and where to find their handlers.
 
 | Command | Handler | Summary |
 |---|---|---|
-| `look [target]` | `src/commands/look.rs` | Describe the current room, or a named entity within it (`self` = you; exact name beats prefix, shortest prefix name wins). |
+| `look [target]` | `src/commands/look.rs` | Describe the current room, or a named entity within it (`self` = you; exact name beats prefix, shortest prefix name wins; `2.goblin` takes the second, `"two words"` needs every word). |
 | `desc [clear\|+\|-\|edit]` | `src/commands/desc.rs` | View or edit your description paragraphs (`clear` empties, `+ <line>` appends, `-` drops the last, `edit` opens the line editor). |
 | `move` — `n`/`e`/`s`/`w`/`u`/`d` (+ `north`…) | `src/commands/movement.rs` | Walk through an exit; emits `MoveEvent`. Direction aliases parsed in `grim-scene`. |
 | `goto <address>` | `src/commands/movement.rs` | Admin teleport to a room by address. |

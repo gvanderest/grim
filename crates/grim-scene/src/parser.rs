@@ -45,15 +45,107 @@ fn parse_tell(rest: &str) -> Option<Command> {
     })
 }
 
-/// Split `<item> <target>` for `give`/`steal`: the item is the first word,
-/// the being everything after it. Both parts required.
+/// Split `<item> <target>` for `give`/`steal`. Tokens are shell-like: an
+/// optional `N*`/`N.` selector prefix plus a bare word or a `"quoted phrase"`.
+/// Usually the item is the first token and the being everything after it
+/// (`give "brass lantern" bob`), but an `all`-headed item (`all`, `all sword`,
+/// `all.sword`) is greedy — it runs to the last token so the being stays one
+/// word (`give all sword "Grimmok Ironhand"`, quoted when multi-word). Both
+/// parts required; an unterminated quote is unknown.
 fn split_transfer(rest: &str) -> Option<(String, String)> {
-    let (item, target) = rest.split_once(' ')?;
-    let (item, target) = (item.trim(), target.trim());
-    if item.is_empty() || target.is_empty() {
+    let rest = rest.trim();
+    let tokens = split_tokens(rest)?;
+    if tokens.is_empty() {
         return None;
     }
-    Some((item.to_string(), target.to_string()))
+    if is_all_head(&rest[tokens[0].0..tokens[0].1]) {
+        if tokens.len() < 2 {
+            return None;
+        }
+        let (item_end, target_start) = (tokens[tokens.len() - 2].1, tokens[tokens.len() - 1].0);
+        return Some((
+            rest[..item_end].trim().to_string(),
+            rest[target_start..].trim().to_string(),
+        ));
+    }
+    let (first_start, first_end) = tokens[0];
+    let target = rest[first_end..].trim();
+    if target.is_empty() {
+        return None;
+    }
+    Some((rest[first_start..first_end].to_string(), target.to_string()))
+}
+
+/// Byte ranges of shell-like tokens in `rest`: `[N*|N.]?(bare|"quoted")`.
+/// `None` on an unterminated quote.
+fn split_tokens(rest: &str) -> Option<Vec<(usize, usize)>> {
+    let bytes = rest.as_bytes();
+    let mut tokens = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            break;
+        }
+        let start = i;
+        // Optional `N*` / `N.` selector prefix stays glued to its token.
+        let mut j = i;
+        while j < bytes.len() && bytes[j].is_ascii_digit() {
+            j += 1;
+        }
+        if j > i && j < bytes.len() && (bytes[j] == b'*' || bytes[j] == b'.') {
+            i = j + 1;
+        }
+        if i < bytes.len() && bytes[i] == b'"' {
+            i += 1;
+            while i < bytes.len() && bytes[i] != b'"' {
+                i += 1;
+            }
+            if i >= bytes.len() {
+                return None;
+            }
+            i += 1;
+            // Text glued to the closing quote (`"sword"bob`) is malformed:
+            // without a delimiter the item/being divide is a guess.
+            if i < bytes.len() && !bytes[i].is_ascii_whitespace() {
+                return None;
+            }
+        } else {
+            while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+        }
+        tokens.push((start, i));
+    }
+    Some(tokens)
+}
+
+/// Whether a split token heads an `all` item: `all` plus a boundary (end,
+/// `.`, `*`, or `"`) so `alloy` stays a plain word. Case-insensitive.
+fn is_all_head(token: &str) -> bool {
+    // Strip a glued `N*` / `N.` prefix first (`2.all` still heads an all).
+    let mut head = token;
+    if let Some(digits) = head.find(|c: char| !c.is_ascii_digit()) {
+        if digits > 0 {
+            let after = &head[digits..];
+            if let Some(stripped) = after.strip_prefix(|c| c == '*' || c == '.') {
+                head = stripped;
+            }
+        }
+    }
+    let Some(head3) = head.get(..3) else {
+        return false;
+    };
+    if !head3.eq_ignore_ascii_case("all") {
+        return false;
+    }
+    match head.as_bytes().get(3) {
+        None => true,
+        Some(b'.' | b'*' | b'"') => true,
+        Some(_) => false,
+    }
 }
 
 #[allow(clippy::too_many_lines)] // reason: flat command-registration list
@@ -214,8 +306,10 @@ fn build_registry() -> CommandRegistry<Command> {
             target: target.to_string(),
         })
     });
-    // `give <item> <target>` / `steal <item> <target>` — item is the first
-    // word, the being the rest; both parts required. Alongside get/drop so
+    // `give <item> <target>` / `steal <item> <target>` — quote-aware split
+    // (`split_transfer`): the item is one token (selector prefixes and
+    // `"quoted phrases"` stay glued), the being the rest — except an
+    // `all`-headed item, which runs to the last token. Alongside get/drop so
     // the `ge` prefix still reaches `gecho`.
     r.register("give", |rest| {
         let (item, target) = split_transfer(rest)?;
@@ -744,7 +838,108 @@ mod tests {
         assert_eq!(parse("steal coin"), None);
     }
 
+    #[test]
+    fn test_give_split_keeps_quoted_item_together() {
+        assert_eq!(
+            parse("give \"brass lantern\" bob"),
+            Some(Command::Give {
+                item: "\"brass lantern\"".into(),
+                target: "bob".into()
+            })
+        );
+        // Multi-word beings still work when the item is one word.
+        assert_eq!(
+            parse("give sword Grimmok Ironhand"),
+            Some(Command::Give {
+                item: "sword".into(),
+                target: "Grimmok Ironhand".into()
+            })
+        );
+        // Selector prefixes stay glued to a quoted phrase.
+        assert_eq!(
+            parse("give 2.\"brass lantern\" bob"),
+            Some(Command::Give {
+                item: "2.\"brass lantern\"".into(),
+                target: "bob".into()
+            })
+        );
+        // An unterminated quote is unknown, not a half-split guess.
+        assert_eq!(parse("give \"brass bob"), None);
+    }
+
+    #[test]
+    fn test_give_split_all_runs_to_last_token() {
+        assert_eq!(
+            parse("give all bob"),
+            Some(Command::Give {
+                item: "all".into(),
+                target: "bob".into()
+            })
+        );
+        assert_eq!(
+            parse("give all sword bob"),
+            Some(Command::Give {
+                item: "all sword".into(),
+                target: "bob".into()
+            })
+        );
+        assert_eq!(
+            parse("give all.sword bob"),
+            Some(Command::Give {
+                item: "all.sword".into(),
+                target: "bob".into()
+            })
+        );
+        assert_eq!(
+            parse("give all \"brass lantern\" bob"),
+            Some(Command::Give {
+                item: "all \"brass lantern\"".into(),
+                target: "bob".into()
+            })
+        );
+        // A lone `all` has no being half.
+        assert_eq!(parse("give all"), None);
+        // `alloy` is a plain word, not an `all` item.
+        assert_eq!(
+            parse("give alloy bob"),
+            Some(Command::Give {
+                item: "alloy".into(),
+                target: "bob".into()
+            })
+        );
+    }
+
+    #[test]
+    fn test_give_split_multibyte_item_is_literal() {
+        // Multibyte words must not panic the `all` boundary check, and they
+        // split like any other first token.
+        assert_eq!(
+            parse("give épée bob"),
+            Some(Command::Give {
+                item: "épée".into(),
+                target: "bob".into()
+            })
+        );
+    }
     // ── Quit ──────────────────────────────────────────────────────
+    #[test]
+    fn test_give_and_steal_reject_text_glued_to_quote() {
+        // Without a delimiter after the closing quote the item/being divide
+        // is a guess, so both verbs are unknown — never a half-split move.
+        assert_eq!(parse("give \"sword\"bob"), None);
+        assert_eq!(parse("give \"brass lantern\"x bob"), None);
+        assert_eq!(parse("steal \"coin\"bob"), None);
+        assert_eq!(parse("steal 2.\"coin\"x bob"), None);
+        // Whitespace-delimited quotes still parse on both verbs.
+        assert_eq!(
+            parse("steal \"brass lantern\" bob"),
+            Some(Command::Steal {
+                item: "\"brass lantern\"".into(),
+                target: "bob".into()
+            })
+        );
+    }
+
     #[test]
     fn test_quit_and_exit() {
         assert_eq!(parse("quit"), Some(Command::Quit));

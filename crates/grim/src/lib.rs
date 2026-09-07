@@ -37,6 +37,9 @@ pub use grim_text::tr;
 // Command resolution.
 pub use grim_command::{CommandRegistry, Contest};
 
+// Target parsing + keyword query (shared by every verb that names something).
+pub use grim_target::{parse_target, query, rank_match, ParseOptions, Selector, TargetSpec};
+
 // Command events (semantic intents).
 pub use grim_command_events::*;
 

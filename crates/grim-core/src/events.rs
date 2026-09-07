@@ -12,7 +12,8 @@ pub struct EngineCommand {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
-    /// `look` or `look <target>`
+    /// `look` or `look <target>` — the target is a `grim-target` being spec
+    /// (`2.goblin` looks at the second; `"two words"` needs every word).
     Look { target: Option<String> },
     /// `say <text>` — room-scoped
     Say { text: String },
@@ -55,15 +56,19 @@ pub enum Command {
     Inventory,
     /// `equipment` — dummy: always reports empty (no item system yet).
     Equipment,
-    /// `get <keyword>` — pick up an object in the room (matched by name or
-    /// keyword, same ranking as `look`).
+    /// `get <target>` — pick up matches from the room. A `grim-target` item
+    /// spec: one match by default, `2.coin` the second, `3*coin` up to three,
+    /// `all [words]` every match.
     Get { target: String },
-    /// `drop <keyword>` — drop a carried object into the room.
+    /// `drop <target>` — drop matches from the pack (same selectors as `get`).
     Drop { target: String },
-    /// `give <item> <target>` — hand a carried object to a being in the room.
+    /// `give <item> <target>` — hand matches to a being here. Item-side
+    /// selectors as in `get` (`give all sword bob`); the being is one
+    /// recipient (`2.bob` for the second).
     Give { item: String, target: String },
-    /// `steal <item> <target>` — take an object from a being's inventory in
-    /// the room. Existence checks only; no skill checks (example workflow).
+    /// `steal <item> <target>` — take matches from a being's pack here.
+    /// Selectors as in `give`. Existence checks only; no skill checks
+    /// (example workflow).
     Steal { item: String, target: String },
     /// `commands` — list all registered commands
     Commands,

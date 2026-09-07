@@ -1,15 +1,17 @@
-//! `steal <item> <target>`: take an object from a being's pack in the room.
+//! `steal <item> <target>`: take objects from a being's pack in the room.
 //!
-//! Existence checks only — the victim must be here and must carry a match;
-//! there are no skill checks (example workflow). Creatures and characters are
-//! equally stealable. The move emits one [`TransferEvent`], rendered
-//! per-recipient like `give`. Misses answer the thief with an [`InfoMessage`].
+//! The item side is a [`grim_target`] spec ([`ParseOptions::ITEM`]) — `steal
+//! all coin bob` empties their coins — while the victim resolves through the
+//! shared [`find_being`](super::give::find_being) helper. Existence checks
+//! only — no skill checks (example workflow). Each move emits one
+//! [`TransferEvent`], rendered per-recipient like `give`. Misses answer the
+//! thief with an [`InfoMessage`].
 
 use bevy::prelude::*;
-use grim_actor::commands::look::rank_target;
 use grim_actor::placement::InRoom;
 use grim_core::components::Name as GrimName;
 use grim_core::events::{Command, EngineCommand, InfoMessage, TransferEvent, TransferKind};
+use grim_target::{parse_target, query, ParseOptions};
 use grim_text::tr;
 
 use crate::object::CarriedBy;
@@ -17,8 +19,8 @@ use crate::object::CarriedBy;
 use super::give::{find_being, is_self, Beings};
 use crate::persist::Carried;
 
-/// `steal <item> <target>`: move the best-matching object from the victim's
-/// pack into the thief's.
+/// `steal <item> <target>`: move the matching objects from the victim's pack
+/// into the thief's.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_steal(
     mut engine: MessageReader<EngineCommand>,
@@ -49,8 +51,15 @@ pub(crate) fn handle_steal(
             continue;
         }
         // The victim first: they must be here.
+        let Some(being_spec) = parse_target(target, ParseOptions::BEING) else {
+            info.write(InfoMessage {
+                target: actor,
+                text: tr!("item.steal.not_here"),
+            });
+            continue;
+        };
         let Some((victim, victim_name, _)) =
-            find_being(&target.to_lowercase(), actor_room.room, actor, &beings)
+            find_being(&being_spec, actor_room.room, actor, &beings)
         else {
             info.write(InfoMessage {
                 target: actor,
@@ -59,31 +68,45 @@ pub(crate) fn handle_steal(
             continue;
         };
         // Then their pack: they must carry a match.
-        let want_item = item.to_lowercase();
-        let loot = carried
-            .iter()
-            .filter(|(_, _, _, _, _, held)| held.carrier == victim)
-            .filter_map(|(e, nm, _, kw, _, _)| {
-                rank_target(&nm.0, kw, &want_item).map(|rank| (rank, e.to_bits(), e, nm.0.clone()))
-            })
-            .min();
-        let Some((_, _, entity, short)) = loot else {
+        let Some(item_spec) = parse_target(item, ParseOptions::ITEM) else {
             info.write(InfoMessage {
                 target: actor,
                 text: tr!("item.steal.not_found"),
             });
             continue;
         };
-        commands.entity(entity).insert(CarriedBy { carrier: actor });
-        transfers.write(TransferEvent {
-            mover: actor,
-            mover_name: actor_name.0.clone(),
-            other: victim,
-            other_name: victim_name,
-            room: actor_room.room,
-            short,
-            kind: TransferKind::Steal,
-        });
+        let loot = query(
+            &item_spec,
+            carried
+                .iter()
+                .filter(|(_, _, _, _, _, held)| held.carrier == victim)
+                .map(|(e, nm, _, kw, _, _)| {
+                    (e, nm.0.as_str(), kw.map(|k| k.0.as_slice()).unwrap_or(&[]))
+                }),
+        );
+        if loot.is_empty() {
+            info.write(InfoMessage {
+                target: actor,
+                text: tr!("item.steal.not_found"),
+            });
+            continue;
+        }
+        for entity in loot {
+            let Ok((_, name, _, _, _, _)) = carried.get(entity) else {
+                continue;
+            };
+            let short = name.0.clone();
+            commands.entity(entity).insert(CarriedBy { carrier: actor });
+            transfers.write(TransferEvent {
+                mover: actor,
+                mover_name: actor_name.0.clone(),
+                other: victim,
+                other_name: victim_name.clone(),
+                room: actor_room.room,
+                short,
+                kind: TransferKind::Steal,
+            });
+        }
     }
 }
 
@@ -266,5 +289,23 @@ mod tests {
             infos(&app),
             vec![(thief, "You can't steal from yourself.\n".to_string())]
         );
+    }
+
+    #[test]
+    fn steal_all_takes_every_match() {
+        let mut app = test_app();
+        let (room, thief) = room_with_thief(&mut app);
+        let victim = spawn_victim(&mut app, room, "Bob", false);
+        let a = give_item(&mut app, victim, "coin", &["coin"]);
+        let b = give_item(&mut app, victim, "coin", &["coin"]);
+        steal(&mut app, thief, "all coin", "bob");
+
+        for obj in [a, b] {
+            assert_eq!(app.world().get::<CarriedBy>(obj).unwrap().carrier, thief);
+        }
+        let evs = transfers(&app);
+        assert_eq!(evs.len(), 2);
+        assert!(evs.iter().all(|ev| ev.kind == TransferKind::Steal));
+        assert!(infos(&app).is_empty());
     }
 }
