@@ -2,7 +2,7 @@
 > Player-speech channels: `say`, `yell`, `ooc`, `tell`/`whisper`, `reply`, and admin `gecho`.
 
 **Role:** vertical — player speech / communication channels
-**Depends on:** `grim-core`, `grim-world`, `grim-actor`, `grim-text`
+**Depends on:** `grim-core`, `grim-world`, `grim-actor`, `grim-text`, `grim-target`
 
 ## Components
 | Component | File | Purpose |
@@ -16,7 +16,7 @@
 | `handle_yell` | `Update` | `src/commands/yell.rs` | Reads `Command::Yell`, emits `YellEvent` scoped to the actor's `Area`. |
 | `handle_ooc` | `Update` | `src/commands/ooc.rs` | Reads `Command::Ooc`, emits `OocEvent` (out-of-character global). |
 | `handle_gecho` | `Update` | `src/commands/gecho.rs` | Reads `Command::Gecho`, emits `GlobalEcho`. Re-checks admin (defense in depth). |
-| `handle_tell` | `Update` | `src/commands/tell.rs` | Reads `Command::Tell`, fuzzy-matches the target player, delivers a private whisper. |
+| `handle_tell` | `Update` | `src/commands/tell.rs` | Reads `Command::Tell`, rank-matches the target player (`grim-target`: exact beats prefix), delivers a private whisper. |
 | `handle_reply` | `Update` | `src/commands/reply.rs` | Reads `Command::Reply`, whispers the entity's `LastWhisperFrom`. |
 | `handle_channel` | `Update` | `src/handler.rs` | **Data-driven** unified channel handler - reads `EngineCommand`, dispatches to `ChannelMessage` based on channel config. |
 
@@ -27,7 +27,7 @@ Player-facing verbs and where to find their handlers.
 | `say <text>` | `handle_say` (`src/commands/say.rs`) | Broadcast to the current room; echoes "You say, '…'" to the speaker. |
 | `yell <text>` | `handle_yell` (`src/commands/yell.rs`) | Broadcast to every room in the actor's area. |
 | `ooc <text>` | `handle_ooc` (`src/commands/ooc.rs`) | Out-of-character global chat. |
-| `tell <target> <text>` | `handle_tell` (`src/commands/tell.rs`) | Private message to one player (case-insensitive name prefix; `self` targets sender). |
+| `tell <target> <text>` | `handle_tell` (`src/commands/tell.rs`) | Private message to one player (exact name beats prefix, shortest wins; `self` targets sender). |
 | `whisper <target> <text>` | `handle_tell` (`src/commands/tell.rs`) | Alias for `tell` (parsed in `grim-scene`). |
 | `reply <text>` | `handle_reply` (`src/commands/reply.rs`) | Whisper the last player who whispered you (`LastWhisperFrom`). |
 | `gecho <text>` | `handle_gecho` (`src/commands/gecho.rs`) | Admin-only world-wide echo. Gated at dispatch in `grim-scene`; re-checked here. |

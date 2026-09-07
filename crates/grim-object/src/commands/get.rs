@@ -1,15 +1,17 @@
-//! `get` / `drop`: move an object between a room and a carrier's hands.
+//! `get` / `drop`: move objects between a room and a carrier's hands.
 //!
-//! Both swap [`InRoom`] and [`CarriedBy`] atomically and emit one [`ItemEvent`]
-//! fact, which the scene layer renders per-recipient (first-party "You …" to
-//! the actor, third-party "<name> …" to the rest of the room). Misses answer
-//! the actor directly with an [`InfoMessage`].
+//! Targets are [`grim_target`] specs ([`ParseOptions::ITEM`]): one match by
+//! default, `2.coin` the second, `3*coin` up to three, `all [words]` every
+//! match. Each moved object emits one [`ItemEvent`] fact, which the scene
+//! layer renders per-recipient (first-party "You …" to the actor,
+//! third-party "<name> …" to the rest of the room). Misses answer the actor
+//! directly with an [`InfoMessage`].
 
 use bevy::prelude::*;
-use grim_actor::commands::look::rank_target;
 use grim_actor::placement::InRoom;
 use grim_core::components::{Keywords, Name as GrimName};
 use grim_core::events::{Command, EngineCommand, InfoMessage, ItemEvent, ItemKind};
+use grim_target::{parse_target, query, ParseOptions};
 use grim_text::tr;
 
 use crate::object::{CarriedBy, Object};
@@ -29,7 +31,7 @@ type Ground<'w, 's> = Query<
     (With<Object>, Without<CarriedBy>),
 >;
 
-/// `get <keyword>`: pick up the best-matching object in the actor's room.
+/// `get <target>`: pick up the matching objects in the actor's room.
 /// Ranking mirrors `look` (exact name, exact keyword, shortest-prefix name);
 /// ties fall to the lowest entity id, keeping resolution deterministic.
 pub(crate) fn handle_get(
@@ -52,31 +54,54 @@ pub(crate) fn handle_get(
         let Ok(actor_name) = names.get(actor) else {
             continue;
         };
-        match find_ground(&target.to_lowercase(), actor_room.room, &objects) {
-            Some((entity, short)) => {
-                commands.entity(entity).remove::<InRoom>();
-                commands.entity(entity).insert(CarriedBy { carrier: actor });
-                items.write(ItemEvent {
-                    actor,
-                    room: actor_room.room,
-                    actor_name: actor_name.0.clone(),
-                    short,
-                    kind: ItemKind::Pickup,
-                });
-            }
-            None => {
-                info.write(InfoMessage {
-                    target: actor,
-                    text: tr!("item.get.not_found"),
-                });
-            }
+        let Some(spec) = parse_target(target, ParseOptions::ITEM) else {
+            info.write(InfoMessage {
+                target: actor,
+                text: tr!("item.get.not_found"),
+            });
+            continue;
+        };
+        let found = query(
+            &spec,
+            objects
+                .iter()
+                .filter(|(_, ir, _, _)| ir.room == actor_room.room)
+                .map(|(entity, _, name, keywords)| {
+                    (
+                        entity,
+                        name.0.as_str(),
+                        keywords.map(|k| k.0.as_slice()).unwrap_or(&[]),
+                    )
+                }),
+        );
+        if found.is_empty() {
+            info.write(InfoMessage {
+                target: actor,
+                text: tr!("item.get.not_found"),
+            });
+            continue;
+        }
+        for entity in found {
+            let Ok((_, _, name, _)) = objects.get(entity) else {
+                continue;
+            };
+            let short = name.0.clone();
+            commands.entity(entity).remove::<InRoom>();
+            commands.entity(entity).insert(CarriedBy { carrier: actor });
+            items.write(ItemEvent {
+                actor,
+                room: actor_room.room,
+                actor_name: actor_name.0.clone(),
+                short,
+                kind: ItemKind::Pickup,
+            });
         }
     }
 }
 
-/// `drop <keyword>`: drop the best-matching carried object into the actor's
-/// room. Matching runs over the carrier's objects only, with the same ranking
-/// as `get`.
+/// `drop <target>`: drop the matching carried objects into the actor's room.
+/// Matching runs over the carrier's objects only, with the same ranking as
+/// `get`.
 pub(crate) fn handle_drop(
     mut engine: MessageReader<EngineCommand>,
     mut commands: Commands,
@@ -97,52 +122,51 @@ pub(crate) fn handle_drop(
         let Ok(actor_name) = names.get(actor) else {
             continue;
         };
-        let want = target.to_lowercase();
-        let found = carried
-            .iter()
-            .filter(|(_, _, _, held)| held.carrier == actor)
-            .filter_map(|(e, nm, kw, _)| {
-                rank_target(&nm.0, kw, &want).map(|rank| (rank, e.to_bits(), e, nm.0.clone()))
-            })
-            .min();
-        match found {
-            Some((_, _, entity, short)) => {
-                commands.entity(entity).remove::<CarriedBy>();
-                commands.entity(entity).insert(InRoom {
-                    room: actor_room.room,
-                });
-                items.write(ItemEvent {
-                    actor,
-                    room: actor_room.room,
-                    actor_name: actor_name.0.clone(),
-                    short,
-                    kind: ItemKind::Drop,
-                });
-            }
-            None => {
-                info.write(InfoMessage {
-                    target: actor,
-                    text: tr!("item.drop.not_carried"),
-                });
-            }
+        let Some(spec) = parse_target(target, ParseOptions::ITEM) else {
+            info.write(InfoMessage {
+                target: actor,
+                text: tr!("item.drop.not_carried"),
+            });
+            continue;
+        };
+        let found = query(
+            &spec,
+            carried
+                .iter()
+                .filter(|(_, _, _, held)| held.carrier == actor)
+                .map(|(entity, name, keywords, _)| {
+                    (
+                        entity,
+                        name.0.as_str(),
+                        keywords.map(|k| k.0.as_slice()).unwrap_or(&[]),
+                    )
+                }),
+        );
+        if found.is_empty() {
+            info.write(InfoMessage {
+                target: actor,
+                text: tr!("item.drop.not_carried"),
+            });
+            continue;
+        }
+        for entity in found {
+            let Ok((_, name, _, _)) = carried.get(entity) else {
+                continue;
+            };
+            let short = name.0.clone();
+            commands.entity(entity).remove::<CarriedBy>();
+            commands.entity(entity).insert(InRoom {
+                room: actor_room.room,
+            });
+            items.write(ItemEvent {
+                actor,
+                room: actor_room.room,
+                actor_name: actor_name.0.clone(),
+                short,
+                kind: ItemKind::Drop,
+            });
         }
     }
-}
-
-/// The best ground object in `room` matching `want`: exact name, exact
-/// keyword, then shortest-prefix name, ties to the lowest entity id.
-fn find_ground(want: &str, room: Entity, objects: &Ground) -> Option<(Entity, String)> {
-    if want.is_empty() {
-        return None;
-    }
-    objects
-        .iter()
-        .filter(|(_, ir, _, _)| ir.room == room)
-        .filter_map(|(e, _, nm, kw)| {
-            rank_target(&nm.0, kw, want).map(|rank| (rank, e.to_bits(), e, nm.0.clone()))
-        })
-        .min()
-        .map(|(_, _, e, short)| (e, short))
 }
 
 /// Wire the get/drop handlers and the messages they read. [`ItemEvent`] is
@@ -390,5 +414,171 @@ mod tests {
         // Bob still carries it; Alice got the miss line.
         assert_eq!(app.world().get::<CarriedBy>(bobs).unwrap().carrier, bob);
         assert_eq!(infos(&app).len(), 1);
+    }
+
+    #[test]
+    fn get_quantity_picks_up_to_count() {
+        let mut app = test_app();
+        let (_room, actor) = room_with_actor(&mut app);
+        // Three coins on the ground; `2*coin` takes two.
+        let room = app.world().get::<InRoom>(actor).unwrap().room;
+        let (a, b, c) = (
+            spawn_object(&mut app, room, "coin", &["coin"]),
+            spawn_object(&mut app, room, "coin", &["coin"]),
+            spawn_object(&mut app, room, "coin", &["coin"]),
+        );
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Get {
+                target: "2*coin".into(),
+            },
+        });
+        app.update();
+        let evs = item_events(&app);
+        assert_eq!(evs.len(), 2);
+        assert!(evs.iter().all(|ev| ev.kind == ItemKind::Pickup));
+        let carried: Vec<_> = [a, b, c]
+            .into_iter()
+            .filter(|e| app.world().get::<CarriedBy>(*e).is_some())
+            .collect();
+        assert_eq!(carried.len(), 2);
+        assert!(infos(&app).is_empty());
+    }
+
+    #[test]
+    fn get_all_picks_up_every_match() {
+        let mut app = test_app();
+        let (room, actor) = room_with_actor(&mut app);
+        let coin = spawn_object(&mut app, room, "coin", &["coin"]);
+        let sword = spawn_object(&mut app, room, "sword", &["sword"]);
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Get {
+                target: "all".into(),
+            },
+        });
+        app.update();
+        assert_eq!(item_events(&app).len(), 2);
+        for obj in [coin, sword] {
+            assert_eq!(app.world().get::<CarriedBy>(obj).unwrap().carrier, actor);
+        }
+        assert!(infos(&app).is_empty());
+    }
+
+    #[test]
+    fn get_offset_picks_second_ranked() {
+        let mut app = test_app();
+        let (room, actor) = room_with_actor(&mut app);
+        // Exact ("coin") outranks prefix ("coins"), so `2.coin` is "coins".
+        let exact = spawn_object(&mut app, room, "coin", &["coin"]);
+        let prefixed = spawn_object(&mut app, room, "coins", &["coins"]);
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Get {
+                target: "2.coin".into(),
+            },
+        });
+        app.update();
+        let evs = item_events(&app);
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0].short, "coins");
+        assert!(app.world().get::<InRoom>(prefixed).is_none());
+        assert!(app.world().get::<InRoom>(exact).is_some());
+    }
+
+    #[test]
+    fn get_invalid_spec_answers_not_found() {
+        let mut app = test_app();
+        let (room, actor) = room_with_actor(&mut app);
+        let obj = spawn_object(&mut app, room, "coin", &["coin"]);
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Get {
+                target: "2.".into(),
+            },
+        });
+        app.update();
+        assert!(item_events(&app).is_empty());
+        assert!(app.world().get::<InRoom>(obj).is_some());
+        assert_eq!(
+            infos(&app),
+            vec![(actor, "You don't see that here.\n".to_string())]
+        );
+    }
+
+    #[test]
+    fn get_quoted_group_matches_every_term() {
+        let mut app = test_app();
+        let (room, actor) = room_with_actor(&mut app);
+        // No keywords: only the multi-term AND can match the inner word.
+        let obj = spawn_object(&mut app, room, "brass lantern", &[]);
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Get {
+                target: "\"brass lantern\"".into(),
+            },
+        });
+        app.update();
+        let evs = item_events(&app);
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0].short, "brass lantern");
+        assert!(app.world().get::<InRoom>(obj).is_none());
+    }
+
+    #[test]
+    fn drop_all_drops_everything_carried() {
+        let mut app = test_app();
+        let (room, actor) = room_with_actor(&mut app);
+        let (a, b) = (
+            spawn_object(&mut app, room, "coin", &["coin"]),
+            spawn_object(&mut app, room, "sword", &["sword"]),
+        );
+        for obj in [a, b] {
+            app.world_mut().entity_mut(obj).remove::<InRoom>();
+            app.world_mut()
+                .entity_mut(obj)
+                .insert(CarriedBy { carrier: actor });
+        }
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Drop {
+                target: "all".into(),
+            },
+        });
+        app.update();
+        let evs = item_events(&app);
+        assert_eq!(evs.len(), 2);
+        assert!(evs.iter().all(|ev| ev.kind == ItemKind::Drop));
+        for obj in [a, b] {
+            assert!(app.world().get::<CarriedBy>(obj).is_none());
+            assert_eq!(app.world().get::<InRoom>(obj).unwrap().room, room);
+        }
+        assert!(infos(&app).is_empty());
+    }
+
+    #[test]
+    fn drop_offset_drops_second_ranked() {
+        let mut app = test_app();
+        let (room, actor) = room_with_actor(&mut app);
+        let exact = spawn_object(&mut app, room, "coin", &["coin"]);
+        let prefixed = spawn_object(&mut app, room, "coins", &["coins"]);
+        for obj in [exact, prefixed] {
+            app.world_mut().entity_mut(obj).remove::<InRoom>();
+            app.world_mut()
+                .entity_mut(obj)
+                .insert(CarriedBy { carrier: actor });
+        }
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Drop {
+                target: "2.coin".into(),
+            },
+        });
+        app.update();
+        let evs = item_events(&app);
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0].short, "coins");
+        assert_eq!(app.world().get::<InRoom>(prefixed).unwrap().room, room);
+        assert!(app.world().get::<CarriedBy>(exact).is_some());
     }
 }

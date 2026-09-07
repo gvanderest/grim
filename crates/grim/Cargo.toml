@@ -7,6 +7,7 @@ edition = "2021"
 grim-core = { path = "../grim-core" }
 grim-text = { path = "../grim-text" }
 grim-command = { path = "../grim-command" }
+grim-target = { path = "../grim-target" }
 grim-command-events = { path = "../grim-command-events" }
 grim-networking = { path = "../grim-networking" }
 grim-networking-telnet = { path = "../grim-networking-telnet" }

@@ -948,6 +948,7 @@ dependencies = [
  "grim-object",
  "grim-persistence",
  "grim-scene",
+ "grim-target",
  "grim-text",
  "grim-world",
 ]
@@ -961,6 +962,7 @@ dependencies = [
  "grim-color",
  "grim-core",
  "grim-networking",
+ "grim-target",
  "grim-text",
  "grim-world",
  "serde",
@@ -995,6 +997,7 @@ dependencies = [
  "chrono",
  "grim-actor",
  "grim-core",
+ "grim-target",
  "grim-text",
  "grim-world",
 ]
@@ -1064,6 +1067,7 @@ dependencies = [
  "chrono",
  "grim-actor",
  "grim-core",
+ "grim-target",
  "grim-text",
  "grim-world",
 ]
@@ -1099,6 +1103,13 @@ dependencies = [
  "grim-text",
  "grim-world",
  "serde_json",
+]
+
+[[package]]
+name = "grim-target"
+version = "0.1.0"
+dependencies = [
+ "bevy",
 ]
 
 [[package]]

@@ -1,17 +1,20 @@
-//! `give <item> <target>`: hand a carried object to a being in the room.
+//! `give <item> <target>`: hand carried objects to a being in the room.
 //!
+//! The item side is a [`grim_target`] spec ([`ParseOptions::ITEM`]) — `give
+//! all sword bob` hands over every sword — while the being side takes a
+//! [`ParseOptions::BEING`] spec (one recipient, `2.bob` for the second).
 //! Player characters accept; creatures refuse ("They don't want that item.").
-//! The move emits one [`TransferEvent`], which the scene layer renders
+//! Each move emits one [`TransferEvent`], which the scene layer renders
 //! per-recipient (first-party to the giver, second-party to the recipient,
 //! third-party to the rest of the room). Misses answer the giver directly
 //! with an [`InfoMessage`].
 
 use bevy::prelude::*;
-use grim_actor::commands::look::rank_target;
 use grim_actor::placement::InRoom;
 use grim_actor::{Character, Creature, Linkdead, Player};
 use grim_core::components::{Keywords, Name as GrimName};
 use grim_core::events::{Command, EngineCommand, InfoMessage, TransferEvent, TransferKind};
+use grim_target::{parse_target, query, ParseOptions, TargetSpec};
 use grim_text::tr;
 
 use crate::object::CarriedBy;
@@ -35,35 +38,35 @@ pub(crate) type Beings<'w, 's> = Query<
     ),
 >;
 
-/// The best being in `room` matching `want` (never `actor`): exact name,
-/// exact keyword, then shortest-prefix name, ties to the lowest entity id.
+/// The being in `room` matching `spec` (never `actor`): exact name, exact
+/// keyword, then shortest-prefix name, ties to the lowest entity id.
 /// Returns the entity, its display name, and whether it is a creature.
 /// Self-dealing is the caller's job (`is_self`); this only excludes the actor.
 pub(crate) fn find_being(
-    want: &str,
+    spec: &TargetSpec,
     room: Entity,
     actor: Entity,
     beings: &Beings,
 ) -> Option<(Entity, String, bool)> {
-    if want.is_empty() {
-        return None;
-    }
-    beings
-        .iter()
-        .filter(|(e, ir, _, _, ch, cr, p, l)| {
-            *e != actor
-                && ir.room == room
-                && (cr.is_some() || (ch.is_some() && (p.is_some() || l.is_some())))
-        })
-        .filter_map(|(e, _, nm, kw, _, cr, _, _)| {
-            rank_target(&nm.0, kw, want)
-                .map(|rank| (rank, e.to_bits(), e, nm.0.clone(), cr.is_some()))
-        })
-        .min()
-        .map(|(_, _, e, name, is_creature)| (e, name, is_creature))
+    let found = query(
+        spec,
+        beings
+            .iter()
+            .filter(|(e, ir, _, _, ch, cr, p, l)| {
+                *e != actor
+                    && ir.room == room
+                    && (cr.is_some() || (ch.is_some() && (p.is_some() || l.is_some())))
+            })
+            .map(|(e, _, nm, kw, _, _, _, _)| {
+                (e, nm.0.as_str(), kw.map(|k| k.0.as_slice()).unwrap_or(&[]))
+            }),
+    );
+    let entity = found.into_iter().next()?;
+    let (_, _, name, _, _, is_creature, _, _) = beings.get(entity).ok()?;
+    Some((entity, name.0.clone(), is_creature.is_some()))
 }
 
-/// `give <item> <target>`: move the best-matching carried object into a being's
+/// `give <item> <target>`: move the matching carried objects into a being's
 /// pack. PCs accept; creatures refuse.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_give(
@@ -95,35 +98,56 @@ pub(crate) fn handle_give(
             });
             continue;
         }
-        let want_item = item.to_lowercase();
-        let held = carried
-            .iter()
-            .filter(|(_, _, _, _, _, held)| held.carrier == actor)
-            .filter_map(|(e, nm, _, kw, _, _)| {
-                rank_target(&nm.0, kw, &want_item).map(|rank| (rank, e.to_bits(), e, nm.0.clone()))
-            })
-            .min();
-        let Some((_, _, entity, short)) = held else {
+        let Some(item_spec) = parse_target(item, ParseOptions::ITEM) else {
             info.write(InfoMessage {
                 target: actor,
                 text: tr!("item.give.not_carried"),
             });
             continue;
         };
-        match find_being(&target.to_lowercase(), actor_room.room, actor, &beings) {
+        let held = query(
+            &item_spec,
+            carried
+                .iter()
+                .filter(|(_, _, _, _, _, held)| held.carrier == actor)
+                .map(|(e, nm, _, kw, _, _)| {
+                    (e, nm.0.as_str(), kw.map(|k| k.0.as_slice()).unwrap_or(&[]))
+                }),
+        );
+        if held.is_empty() {
+            info.write(InfoMessage {
+                target: actor,
+                text: tr!("item.give.not_carried"),
+            });
+            continue;
+        };
+        let Some(being_spec) = parse_target(target, ParseOptions::BEING) else {
+            info.write(InfoMessage {
+                target: actor,
+                text: tr!("item.give.not_here"),
+            });
+            continue;
+        };
+        match find_being(&being_spec, actor_room.room, actor, &beings) {
             Some((recipient, recipient_name, false)) => {
-                commands
-                    .entity(entity)
-                    .insert(CarriedBy { carrier: recipient });
-                transfers.write(TransferEvent {
-                    mover: actor,
-                    mover_name: actor_name.0.clone(),
-                    other: recipient,
-                    other_name: recipient_name,
-                    room: actor_room.room,
-                    short,
-                    kind: TransferKind::Give,
-                });
+                for entity in held {
+                    let Ok((_, name, _, _, _, _)) = carried.get(entity) else {
+                        continue;
+                    };
+                    let short = name.0.clone();
+                    commands
+                        .entity(entity)
+                        .insert(CarriedBy { carrier: recipient });
+                    transfers.write(TransferEvent {
+                        mover: actor,
+                        mover_name: actor_name.0.clone(),
+                        other: recipient,
+                        other_name: recipient_name.clone(),
+                        room: actor_room.room,
+                        short,
+                        kind: TransferKind::Give,
+                    });
+                }
             }
             Some((_, _, true)) => {
                 info.write(InfoMessage {
@@ -348,5 +372,79 @@ mod tests {
             infos(&app),
             vec![(giver, "You can't give something to yourself.\n".to_string())]
         );
+    }
+
+    #[test]
+    fn give_all_hands_over_every_match() {
+        let mut app = test_app();
+        let (room, giver) = room_with_giver(&mut app);
+        let recipient = spawn_pc(&mut app, room, "Bob");
+        let a = give_item(&mut app, giver, "coin", &["coin"]);
+        let b = give_item(&mut app, giver, "coin", &["coin"]);
+        give(&mut app, giver, "all coin", "bob");
+
+        for obj in [a, b] {
+            assert_eq!(
+                app.world().get::<CarriedBy>(obj).unwrap().carrier,
+                recipient
+            );
+        }
+        let evs = transfers(&app);
+        assert_eq!(evs.len(), 2);
+        assert!(evs.iter().all(|ev| ev.kind == TransferKind::Give));
+        assert!(infos(&app).is_empty());
+    }
+
+    #[test]
+    fn give_quantity_caps_at_count() {
+        let mut app = test_app();
+        let (room, giver) = room_with_giver(&mut app);
+        let recipient = spawn_pc(&mut app, room, "Bob");
+        let (a, b, c) = (
+            give_item(&mut app, giver, "coin", &["coin"]),
+            give_item(&mut app, giver, "coin", &["coin"]),
+            give_item(&mut app, giver, "coin", &["coin"]),
+        );
+        give(&mut app, giver, "2*coin", "bob");
+
+        let moved: Vec<_> = [a, b, c]
+            .into_iter()
+            .filter(|obj| app.world().get::<CarriedBy>(*obj).unwrap().carrier == recipient)
+            .collect();
+        assert_eq!(moved.len(), 2);
+        assert_eq!(transfers(&app).len(), 2);
+        assert!(infos(&app).is_empty());
+    }
+
+    #[test]
+    fn give_quoted_item_matches_every_term() {
+        let mut app = test_app();
+        let (room, giver) = room_with_giver(&mut app);
+        let recipient = spawn_pc(&mut app, room, "Bob");
+        let obj = give_item(&mut app, giver, "brass lantern", &[]);
+        give(&mut app, giver, "\"brass lantern\"", "bob");
+
+        assert_eq!(
+            app.world().get::<CarriedBy>(obj).unwrap().carrier,
+            recipient
+        );
+        assert_eq!(transfers(&app).len(), 1);
+        assert!(infos(&app).is_empty());
+    }
+
+    #[test]
+    fn give_offset_being_picks_second_ranked() {
+        let mut app = test_app();
+        let (room, giver) = room_with_giver(&mut app);
+        // Exact ("Bob") outranks prefix ("Bobby"), so `2.bob` is Bobby.
+        let bobby = spawn_pc(&mut app, room, "Bobby");
+        spawn_pc(&mut app, room, "Bob");
+        let obj = give_item(&mut app, giver, "coin", &["coin"]);
+        give(&mut app, giver, "coin", "2.bob");
+        assert_eq!(app.world().get::<CarriedBy>(obj).unwrap().carrier, bobby);
+        let evs = transfers(&app);
+        assert_eq!(evs.len(), 1);
+        assert_eq!(evs[0].other, bobby);
+        assert!(infos(&app).is_empty());
     }
 }

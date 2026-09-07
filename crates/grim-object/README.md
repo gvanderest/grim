@@ -2,12 +2,12 @@
 > Things beings can pick up, carry, and drop.
 
 **Role:** vertical — things
-**Depends on:** `grim-core`, `grim-actor`, `grim-text`
+**Depends on:** `grim-core`, `grim-actor`, `grim-text`, `grim-target`
 
 An object is `Object + Name + Keywords + RoomDescription (+ InRoom while on the
 ground, + CarriedBy while carried — never both)`. `Name` is the short name
 (inventory rows, pickup lines); `RoomDescription` is the long line under the
-room description; `Keywords` feeds get/drop matching with `look`'s ranking.
+room description; `Keywords` feeds target matching via `grim-target` (`look`'s ranking + selectors).
 
 ## Components
 | Component | File | Purpose |
@@ -26,11 +26,11 @@ room description; `Keywords` feeds get/drop matching with `look`'s ranking.
 
 ## Commands
 Player-facing verbs and where to find their handlers.
-| `get <keyword>` | `get::handle_get` | Pick up the best-matching ground object (exact name, exact keyword, shortest-prefix). |
-| `drop <keyword>` | `get::handle_drop` | Drop the best-matching carried object into the room. |
+| `get <target>` | `get::handle_get` | Pick up matches from the ground (`2.coin` 2nd, `3*coin` three, `all [words]` all; one `ItemEvent` each). |
+| `drop <target>` | `get::handle_drop` | Drop matches from the pack into the room (same selectors; one `ItemEvent` each). |
 | `inventory` / `inv` | `inventory::handle_inventory` | List carried short names. |
-| `give <item> <who>` | `give::handle_give` | Hand a carried object to a PC here (creatures refuse). |
-| `steal <item> <who>` | `steal::handle_steal` | Take a carried object from a being here. |
+| `give <item> <who>` | `give::handle_give` | Hand matches to a PC here (creatures refuse; one `TransferEvent` each). `all`/quantity on the item side; quoted phrases stay together. |
+| `steal <item> <who>` | `steal::handle_steal` | Take matches from a being here (same selectors on the item side). |
 
 ## Resources & Events
 | Name | Kind (Resource/Message) | File |

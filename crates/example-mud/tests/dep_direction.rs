@@ -48,6 +48,8 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // ── Foundation ──────────────────────────────────────────────────────────
     // `grim-color` depends on nothing internal (Bevy-free, serde-free leaf). §4.
     // `grim-command` "depends on nothing but Bevy" — confirmed, no internal edges. §4.
+    // `grim-target` likewise depends on nothing internal (Bevy only, for
+    // `Entity` ordering): target parsing + keyword query shared by the verbs. §4.
     //
     // `grim-text` → `grim-color`: the catalog converts/escapes colour markup. §4.
     ("grim-text", "grim-color"),
@@ -139,8 +141,13 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // NOTE (desc verb): actor replies (`desc` confirmations) render through the
     // catalog like grim-channel's do — same subsystem→leaf shape, no cycle.
     ("grim-actor", "grim-text"),
+    // NOTE (keyword query): `look` resolves targets through grim-target
+    // (BEING specs + ranking). grim-target depends on nothing internal.
+    ("grim-actor", "grim-target"),
     ("grim-channel", "grim-core"),
     ("grim-channel", "grim-text"),
+    // NOTE (keyword query): `tell` rank-matches through grim-target.
+    ("grim-channel", "grim-target"),
     // NOTE (Placement Phase 2a step 2): grim-channel reads beings (Character/
     // Player/InRoom), so it depends on grim-actor. grim-actor does not depend on
     // grim-channel, so this adds no cycle.
@@ -157,6 +164,9 @@ const ALLOWED_NORMAL: &[Edge] = &[
     ("grim-object", "grim-core"),
     ("grim-object", "grim-actor"),
     ("grim-object", "grim-text"),
+    // NOTE (keyword query): get/drop/give/steal resolve through grim-target
+    // (ITEM specs + selectors). grim-target depends on nothing internal.
+    ("grim-object", "grim-target"),
     // `grim-persistence` loads/saves accounts + characters (→ god-types) and reacts
     // to connection lifecycle events (→ grim-networking).
     ("grim-persistence", "grim-core"),
@@ -180,6 +190,8 @@ const ALLOWED_NORMAL: &[Edge] = &[
     ("grim", "grim-core"),
     ("grim", "grim-text"),
     ("grim", "grim-command"),
+    // NOTE (keyword query): the facade re-exports the target parsing/query API.
+    ("grim", "grim-target"),
     ("grim", "grim-networking"),
     ("grim", "grim-networking-telnet"),
     ("grim", "grim-scene"),

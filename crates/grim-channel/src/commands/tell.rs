@@ -1,10 +1,11 @@
 //! `tell <target> <text>` (alias `whisper`): a private message to one player.
-//! `target` is fuzzy-matched (case-insensitive name prefix) among connected
-//! players; `self` targets the sender.
+//! `target` matches by the shared keyword rank (case-insensitive exact name,
+//! then name prefix) among connected players; `self` targets the sender.
 
 use bevy::prelude::*;
 use grim_core::components::Name;
 use grim_core::events::{Command, EngineCommand, InfoMessage};
+use grim_target::rank_match;
 
 use crate::whisper::{deliver_whisper, LivePc};
 
@@ -28,13 +29,19 @@ pub(crate) fn handle_tell(
         let recipient = if target.eq_ignore_ascii_case("self") {
             Some(actor)
         } else {
-            let want = target.to_ascii_lowercase();
+            let want = target.to_lowercase();
             // Match any player in the world, including linkdead ones — a whisper
             // to a linkdead player is fine; they'll see it when they return.
+            // Ranked (exact beats prefix, shortest name wins), ties to the
+            // lowest entity id — deterministic under duplicate names.
             players
                 .iter()
-                .find(|(_, n)| n.0.to_ascii_lowercase().starts_with(&want))
-                .map(|(e, _)| e)
+                .filter_map(|(e, n)| {
+                    rank_match(&n.0, &[], std::slice::from_ref(&want))
+                        .map(|rank| (rank, e.to_bits(), e))
+                })
+                .min()
+                .map(|(_, _, e)| e)
         };
 
         let Some(recipient) = recipient else {
@@ -112,6 +119,26 @@ mod tests {
             client: alice,
             command: Command::Tell {
                 target: "wr".into(), // case-insensitive prefix
+                text: "hi".into(),
+            },
+        });
+        app.update();
+        let msgs = infos(&app);
+        assert!(msgs.contains(&(alice, "You tell Wrack 'hi'\n".to_string())));
+        assert!(msgs.contains(&(wrack, "Alice tells you 'hi'\n".to_string())));
+        assert_eq!(msgs.len(), 2);
+    }
+
+    #[test]
+    fn tell_exact_name_beats_longer_prefix() {
+        let mut app = test_app();
+        let alice = spawn_player(&mut app, "Alice");
+        spawn_player(&mut app, "Wrackus");
+        let wrack = spawn_player(&mut app, "Wrack");
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Command::Tell {
+                target: "wrack".into(),
                 text: "hi".into(),
             },
         });
