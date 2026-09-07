@@ -18,8 +18,8 @@
           "keywords": ["grimmok", "ironhand", "dwarf", "smith"],
           "room_description": "Grimmok Ironhand stands here, hammering metal.",
           "triggers": [
-            {"on": "enter", "script": "if rand() < 0.1 then say(\"Hello there adventurer.\") end"},
-            {"on": "attempt_leave", "script": "if rand() < 0.1 then say(\"See you later.\") end"}
+            {"on": "enter", "script": "if rand() < 1 then say(\"Hello there adventurer.\") end"},
+            {"on": "attempt_leave", "script": "if rand() < 1 then say(\"See you later.\") end"}
           ]
         }
       ],
