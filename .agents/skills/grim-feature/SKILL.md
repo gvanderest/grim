@@ -5,9 +5,10 @@ description: Run a GRIM feature end to end — grim-design, then grim-code, then
 
 # Grim Feature
 
-Lifecycle runner for one feature: **design → code → review-and-pr**. Each
-phase is its home skill; this skill owns the packet, the handoffs, and the
-stop conditions. Nothing here duplicates phase internals — it points at them.
+Lifecycle runner for one feature: **design → code → review-and-pr →
+babysit**. Each phase is its home skill; this skill owns the packet, the
+handoffs, and the stop conditions. Nothing here duplicates phase internals —
+it points at them.
 
 ## The packet
 
@@ -33,6 +34,8 @@ Lose the packet and the next phase starts blank — never re-derive it.
    the coder never silently re-scopes.
 3. **Review-and-PR** (`grim-review-and-pr`). Adversarial round, fix-or-accept,
    `gh pr create --fill --base main --body "…"`, green CI before human review.
+4. **Babysit** (`grim-babysit-pr`). Once the PR exists, watch it to merge:
+   CI/thread loop, conflicts stop for the user.
 
 ## Resume and rerun
 
