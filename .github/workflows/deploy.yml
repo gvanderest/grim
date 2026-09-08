@@ -20,6 +20,12 @@ jobs:
         with:
           targets: x86_64-unknown-linux-musl
 
+      # rust-toolchain.toml pins 1.98.1, which makes the action ignore the
+      # `targets:` input above (observed: musl target missing, E0463 on
+      # `core`/`std`). Install against the active toolchain explicitly.
+      - name: Add musl target
+        run: rustup target add x86_64-unknown-linux-musl
+
       # Matches ci.yml. Keyed separately so the musl target dir doesn't collide
       # with CI's host-target cache.
       - uses: Swatinem/rust-cache@v2
