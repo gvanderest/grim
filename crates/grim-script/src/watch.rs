@@ -169,7 +169,10 @@ fn fire(
     let channel = registry.and_then(|r| r.get("say")).cloned();
     // renders after placement, when the mover is already gone (leave) or not
     // yet there (enter). Facts need no catch-up — whoever is present hears them.
-    let catch_up_mover = matches!(on, TriggerKind::AttemptLeave | TriggerKind::AttemptEnter);
+    let catch_up_mover = matches!(
+        on,
+        TriggerKind::AttemptWalk | TriggerKind::AttemptLeave | TriggerKind::AttemptEnter
+    );
     let mut denied = false;
     for (mob, triggers, inroom) in creatures.iter() {
         if mob == mover || inroom.room != room {
@@ -455,6 +458,34 @@ mod tests {
         );
         assert!(
             pages[0].1.contains("bye"),
+            "carries the text: {}",
+            pages[0].1
+        );
+    }
+
+    #[test]
+    fn walk_attempt_speech_also_reaches_the_mover() {
+        let mut app = test_app();
+        let src = app.world_mut().spawn_empty().id();
+        scripted_mob(
+            &mut app,
+            src,
+            vec![trigger(TriggerKind::AttemptWalk, "self.say('Hold!')")],
+        );
+        let mover = app.world_mut().spawn_empty().id();
+        let mut attempt = AttemptWalk {
+            actor: mover,
+            room: src,
+            direction: grim_core::cardinal::Cardinal::North,
+            denied: false,
+        };
+        app.world_mut().trigger_ref(&mut attempt);
+        app.update();
+        let pages = infos(&mut app);
+        assert_eq!(pages.len(), 1, "mover gets one direct line");
+        assert_eq!(pages[0].0, mover);
+        assert!(
+            pages[0].1.contains("Hold!"),
             "carries the text: {}",
             pages[0].1
         );

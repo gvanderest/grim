@@ -401,12 +401,15 @@ doubles the event surface for a refusal nobody can cast.
 
 | Event | Kind | Paired |
 |-------|------|--------|
-| `Say`, `Move`, `Damage` | attempt — gag, locked door, immunity | yes |
-| `Said`, `Moved`, `Damaged` | fact | — |
+| `Say`, `Damage` | attempt — gag, immunity (future adopters) | when adopted |
+| `Said`, `Damaged` | fact (future) | — |
+| Movement: `AttemptWalk`/`AttemptLeave`/`AttemptEnter`, `MoveEvent`, `Leave`/`Enter` | adopted Pre/Mid/Post pair (see below) | yes |
 | `LoggedIn`, `ConnectionClosed` | fact | no |
 
-**Naming is by tense**: imperative for the attempt, past tense for the fact. `Pre`/
-`Post` reads as ceremony and does not say which is authoritative; tense does.
+**Naming**: pairs use tense — imperative attempt, past-tense fact. An action
+with a distinct transition midpoint additionally names its three moments
+(`AttemptX`/`Xing`/`X`, see below); the moment names carry the phase, the
+tense carries which side is authoritative.
 
 Both phases share one sync point, via `World::trigger_ref` — which runs observers
 immediately, unlike `Commands::trigger`, which defers to the next sync point:

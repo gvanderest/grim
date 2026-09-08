@@ -26,7 +26,7 @@ Player-facing verbs and where to find their handlers.
 | `TriggerKind` | serde enum (`enter`/`leave`/`attempt_enter`/`attempt_leave`) | `src/trigger.rs` |
 | `ChannelMessage` | Message (output, from `grim-channel`) | `src/watch.rs` (mob speech on the `say` channel) |
 ## Notes
-- **Sandbox:** fresh Lua state per firing; stdlib is `math`/`string`/`table`/`utf8` only, and `load`/`os`/`io`/`require`/`print`/etc. are explicitly nilled (`STRIPPED_GLOBALS`, pinned by tests). 256 KiB memory cap + 100k-instruction budget turn runaways into errors.
+- **Sandbox:** fresh Lua state per firing; stdlib is `math`/`string`/`table`/`utf8` only, and `load`/`os`/`io`/`require`/`print`/etc. are explicitly nilled (`STRIPPED_GLOBALS`, pinned by tests). 256 KiB memory cap + 100k-instruction budget turn runaways into errors. Speech is capped too (8 lines / 1024 bytes per firing), since `self.say` clones into Rust memory the cap cannot see.
 - **Facts fire a tick after placement:** `Leave`/`Enter` queue into the movement `PendingFacts` buffer, so their greetings land in a later flush than the arrival they react to. Attempt-time speech is immediate.
 - **Errors never disable:** a failing trigger logs + pages every online admin (`script.trigger.failed`) and fires again next transition.
 - **Attempts are blockable:** a script calls `event.deny()` to latch a denial (after `say`ing its refusal — echo belongs to the denier); a denied move never places. Facts only observe.

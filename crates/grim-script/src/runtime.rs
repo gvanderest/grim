@@ -2,15 +2,15 @@
 //!
 //! The sandbox is structural, not advisory. Each firing builds a state with
 //! only pure-data stdlib (`math`, `string`, `table`, `utf8`), then installs
-//! exactly three globals: `rand()` (`[0, 1)`), `self` (the observing entity —
-//! `self.say(text)` speaks as the mob), and the `event` table (`{type}` plus
-//! its `deny()` method, which blocks the attempted action). Dot or colon
-//! calls both work for the methods. Calling `event.deny()` composes with speech, so
-//! a script says its refusal *then* denies. Lua's base library ships with
-//! every state, so the entries that load code, touch
-//! the host, or talk anywhere ([`STRIPPED_GLOBALS`]) are explicitly nilled —
-//! the tests pin each one absent. A memory cap plus an instruction budget
-//! turn runaway scripts into errors instead of hangs.
+//! three script-provided globals: `rand()` (`[0, 1)`), `self` (the observing
+//! entity — `self.say(text)` speaks as the mob), and the `event` table
+//! (`{type}` plus its `deny()` method, which blocks the attempted action).
+//! Dot or colon calls both work for the methods. Denial composes with speech,
+//! so a script says its refusal *then* denies. Lua's base library ships with
+//! every state, so the entries that load code, touch the host, or talk
+//! anywhere ([`STRIPPED_GLOBALS`]) are explicitly nilled — the tests pin each
+//! one absent. A memory cap plus an instruction budget turn runaway scripts
+//! into errors instead of hangs.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -48,6 +48,16 @@ const MEMORY_LIMIT_BYTES: usize = 256 * 1024;
 /// VM instructions a firing may execute before the hook aborts it. A greeting
 /// script runs dozens; an infinite loop trips this instead of the tick.
 const INSTRUCTION_BUDGET: u32 = 100_000;
+
+/// Speech lines one firing may produce. The instruction budget alone does not
+/// bound host-side growth: each `self.say` clones out of Lua into Rust memory
+/// the memory cap cannot see, then queues one message per line. Eight lines
+/// is generous for one trigger moment; the ninth fails the firing loudly.
+const MAX_SAID_LINES: usize = 8;
+
+/// Total speech bytes one firing may produce, for the same reason. A greeting
+/// is tens of bytes; a kilobyte is headroom, not a target.
+const MAX_SAID_BYTES: usize = 1024;
 
 /// What one trigger firing did: every `say`ed line, plus whether the script
 /// called `deny()`. Denial composes with speech — a script says its refusal
@@ -115,7 +125,14 @@ pub fn run_trigger(bytecode: &[u8], on: TriggerKind) -> Result<Outcome, String> 
                 }
                 match text {
                     Some(text) => {
-                        said.borrow_mut().push(text);
+                        let mut said = said.borrow_mut();
+                        let used: usize = said.iter().map(|line| line.len()).sum();
+                        if said.len() >= MAX_SAID_LINES || used + text.len() > MAX_SAID_BYTES {
+                            return Err(mlua::Error::RuntimeError(
+                                "speech limit exceeded (8 lines / 1024 bytes per trigger)".into(),
+                            ));
+                        }
+                        said.push(text);
                         Ok(())
                     }
                     None => Err(mlua::Error::RuntimeError(
@@ -264,6 +281,16 @@ mod tests {
     }
 
     #[test]
+    fn bare_say_is_gone() {
+        run("say('hi')", TriggerKind::Enter).expect_err("speech lives on self now");
+    }
+
+    #[test]
+    fn say_without_text_is_an_error() {
+        run("self.say()", TriggerKind::Enter).expect_err("say needs a line");
+    }
+
+    #[test]
     fn deny_blocks_without_speech() {
         let outcome = run("event.deny()", TriggerKind::AttemptLeave).unwrap();
         assert!(outcome.denied);
@@ -278,13 +305,24 @@ mod tests {
     }
 
     #[test]
-    fn silence_does_not_deny() {
-        let outcome = run("self.say('hi')", TriggerKind::Enter).unwrap();
-        assert!(!outcome.denied);
+    fn speech_lines_are_capped() {
+        let ok = run("for i = 1, 8 do self.say('x') end", TriggerKind::Enter).unwrap();
+        assert_eq!(ok.said.len(), 8);
+        let err = run("for i = 1, 9 do self.say('x') end", TriggerKind::Enter)
+            .expect_err("ninth line must fail the firing");
+        assert!(err.contains("speech limit"), "got: {err}");
     }
 
     #[test]
-    fn bare_say_is_gone() {
-        run("say('hi')", TriggerKind::Enter).expect_err("speech lives on self now");
+    fn speech_bytes_are_capped() {
+        let err = run("self.say(string.rep('x', 2000))", TriggerKind::Enter)
+            .expect_err("oversized line must fail the firing");
+        assert!(err.contains("speech limit"), "got: {err}");
+    }
+
+    #[test]
+    fn silence_does_not_deny() {
+        let outcome = run("self.say('hi')", TriggerKind::Enter).unwrap();
+        assert!(!outcome.denied);
     }
 }

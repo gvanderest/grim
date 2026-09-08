@@ -121,6 +121,15 @@ pub(crate) fn handle_move(
                     // room they actually walked to, not a stale one.
                     let loc = room_location(to, &rooms, &areas);
                     commands.queue(move |world: &mut World| {
+                        // Serial moves: two intents for one actor can queue in
+                        // the same tick (two sessions, a teleport mid-step).
+                        // The snapshots above are stale if another closure
+                        // already placed this actor — fail closed and drop the
+                        // intent rather than walking from the wrong room.
+                        let current = world.get::<InRoom>(actor).map(|ir| ir.room);
+                        if current != Some(from) {
+                            return;
+                        }
                         let mut walk = AttemptWalk {
                             actor,
                             room: from,
@@ -598,6 +607,37 @@ mod tests {
             assert_eq!(room_of(&app, actor), room1, "denied move must not place");
             assert_eq!(transition_events(&app), (1, 0, 0, 0, 0));
             assert_eq!(look_room_count(&app), 0, "denied move shows no arrival");
+        }
+
+        #[test]
+        fn second_queued_move_for_same_actor_is_stale_and_skipped() {
+            let mut app = test_app();
+            let room2 = app.world_mut().spawn(()).id();
+            let room3 = app.world_mut().spawn(()).id();
+            let mut exits = Exits::default();
+            exits.exits.insert(Cardinal::North, room2);
+            exits.exits.insert(Cardinal::East, room3);
+            let room1 = app.world_mut().spawn(exits).id();
+            let actor = app.world_mut().spawn(InRoom { room: room1 }).id();
+            // Both intents validate against room1 and queue; the north
+            // closure places first, so the east closure finds the actor
+            // already gone and must drop rather than walk from room1.
+            for direction in [Cardinal::North, Cardinal::East] {
+                app.world_mut().write_message(EngineCommand {
+                    client: actor,
+                    command: Command::Move { direction },
+                });
+            }
+            app.update();
+            app.update();
+            app.update();
+            assert_eq!(room_of(&app, actor), room2);
+            let messages = app.world().resource::<Messages<MoveEvent>>();
+            let mut cursor = messages.get_cursor();
+            let mut iter = cursor.read(messages);
+            let ev = iter.next().expect("exactly the north move");
+            assert_eq!((ev.from, ev.to), (room1, room2));
+            assert!(iter.next().is_none(), "stale east move must not fire");
         }
 
         #[test]
