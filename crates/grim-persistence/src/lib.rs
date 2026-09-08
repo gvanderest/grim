@@ -6,5 +6,6 @@ pub mod persistence;
 
 pub use bans::{BanEntry, BanList};
 pub use persistence::{
-    load_account_characters, load_character_by_name, PersistenceConfig, PersistencePlugin,
+    load_account_characters, load_all_characters, load_character_by_name, PersistenceConfig,
+    PersistencePlugin,
 };

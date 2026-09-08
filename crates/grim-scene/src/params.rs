@@ -33,12 +33,14 @@ pub(crate) type PlayerChars<'w, 's> = Query<
 /// Session-scoped resources bundled into one `SystemParam` so the in-game
 /// dispatcher can take the command registry as a real `Res` without exceeding
 /// Bevy's 16-parameter system limit. The race/class registries feed the WHO
-/// column abbreviations.
+/// column abbreviations; the wizlist snapshot feeds the offline half of the
+/// `wizlist`.
 #[derive(bevy::ecs::system::SystemParam)]
 pub(crate) struct SessionRes<'w> {
     pub(crate) registry: Res<'w, grim_command::CommandRegistry<Command>>,
     pub(crate) races: Res<'w, RaceRegistry>,
     pub(crate) classes: Res<'w, ClassRegistry>,
+    pub(crate) wizlist: Res<'w, crate::who::WizlistAdmins>,
 }
 
 /// Rooms + areas bundled so placement code can resolve a persisted

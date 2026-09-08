@@ -37,7 +37,7 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | Command | Handler | Summary |
 | `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last, `edit` opens the line editor). |
 | `who` | `handle_ingame` → `format_who` (`src/who.rs`) | List online characters (admins first, then level/connect/name). |
-| `finger <name>` | `handle_ingame` → `finger::format` (`src/finger.rs`) | Character sheet (name/level/gender/race/class + description), online or off-disk. |
+| `wizlist` | `handle_ingame` → `format_wizlist` (`src/who.rs`) | List every admin: online rows plus `(offline)` rows from the `WizlistAdmins` startup snapshot (`load_wizlist_admins`). |
 | `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last). |
 | `sockets` | `handle_ingame` → `format_sockets` (`src/sockets.rs`) | List live connections by id (admin-only; masked as unknown for others). |
 | `ban list [type]` / `ban add <type> <pattern>` / `ban remove <type> <pattern>` | parser → engine queue (`src/parser.rs`, `src/ban.rs`) | Blocklist admin verbs (types `ip`/`account`/`character`; IP patterns `*`-wildcarded per octet). Admin-only + masked; an `add` persists and kicks every matching session. |
@@ -62,6 +62,7 @@ Other verbs (`look`, `move`, `say`, `shutdown`, …) are parsed here then routed
 | `SceneSystems` | `SystemSet` (pub; orders the pre-game system before in-game input) | `src/plugin.rs` |
 | `EngineCommand` | Message (emitted to engine) | `src/command.rs` |
 | `BanList` | Resource (consumed for `ban` + resume refusal; owned by `grim-persistence`, `bans.json`-backed) | `src/ban.rs`, `src/resume.rs` |
+| `WizlistAdmins` | Resource (startup disk snapshot of admin characters for the offline half of `wizlist`) | `src/who.rs` (`load_wizlist_admins`) |
 | `ConnectionOutput` | Message (emitted; from `grim-networking`) | `src/output.rs` |
 | `ItemEvent` / `TransferEvent` | Message (consumed → rendered per-recipient) | `src/item_output.rs` (`format_item_events`, `format_transfer_events`, `format_look_pack`) |
 | `OpenEditor` / `EditorDone` | Message (consumed/emitted; the editor callback) | `src/editor.rs` (`open_editor`, `handle_editor_line`) |

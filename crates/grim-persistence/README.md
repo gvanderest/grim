@@ -16,7 +16,7 @@
 | `save_on_disconnect` | `Update` | `src/persistence.rs` | On `ConnectionClosed`: persist bound account + character (refreshing `last_room` from `InRoom`), transfer `OutputHistory`, mark the character `Linkdead`, despawn client/connection. |
 | `save_on_move` | `Update` | `src/persistence.rs` | On `MoveEvent` for a character: write the character JSON so on-disk `last_room` stays current for copyover restore. |
 
-Helper functions (not systems): `load_account_characters` and `load_character_by_name` read characters lazily for login-time loading.
+Helper functions (not systems): `load_account_characters` and `load_character_by_name` read characters lazily for login-time loading; `load_all_characters` scans every character file (backs the `wizlist` startup snapshot).
 
 ## Commands
 Player-facing verbs and where to find their handlers.

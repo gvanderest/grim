@@ -75,14 +75,9 @@ fn load_persisted_data(mut commands: Commands, config: Res<PersistenceConfig>) {
     // so the world only holds characters that are actually in play.
 }
 
-/// Read every character on disk belonging to `account_id`, as flat
-/// [`StoredCharacter`] DTOs (the caller splits them into components when
-/// spawning). Used to lazily bring an account's characters into the world at
-/// login. Missing dir → empty.
-pub fn load_account_characters(
-    config: &PersistenceConfig,
-    account_id: GrimId,
-) -> Vec<StoredCharacter> {
+/// Read every character on disk as flat [`StoredCharacter`] DTOs. Missing dir
+/// → empty. Corrupt/unparseable files are skipped, like the account load.
+pub fn load_all_characters(config: &PersistenceConfig) -> Vec<StoredCharacter> {
     let dir = config.characters_dir();
     let mut out = Vec::new();
     if let Ok(entries) = fs::read_dir(&dir) {
@@ -93,14 +88,26 @@ pub fn load_account_characters(
             }
             if let Ok(data) = fs::read_to_string(&path) {
                 if let Ok(stored) = serde_json::from_str::<StoredCharacter>(&data) {
-                    if stored.account_id == account_id {
-                        out.push(stored);
-                    }
+                    out.push(stored);
                 }
             }
         }
     }
     out
+}
+
+/// Read every character on disk belonging to `account_id`, as flat
+/// [`StoredCharacter`] DTOs (the caller splits them into components when
+/// spawning). Used to lazily bring an account's characters into the world at
+/// login. Missing dir → empty.
+pub fn load_account_characters(
+    config: &PersistenceConfig,
+    account_id: GrimId,
+) -> Vec<StoredCharacter> {
+    load_all_characters(config)
+        .into_iter()
+        .filter(|stored| stored.account_id == account_id)
+        .collect()
 }
 
 /// Read a single character from disk by its canonical name (`<name>.json`) as a
@@ -402,6 +409,49 @@ mod tests {
                 "TestHero"
             );
             assert!(load_character_by_name(&config, "Nobody").is_none());
+
+            let _ = fs::remove_dir_all(&dir);
+        }
+
+        #[test]
+        fn load_all_characters_reads_every_file_regardless_of_account() {
+            // Backs the `wizlist` startup snapshot: every admin on disk must be
+            // visible even when their account never logs in. A unique temp dir
+            // so no FS_LOCK is needed.
+            static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+            let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let dir =
+                std::env::temp_dir().join(format!("grim-pers-all-{}-{}", std::process::id(), n));
+            let _ = fs::remove_dir_all(&dir);
+            fs::create_dir_all(dir.join("characters")).unwrap();
+
+            let mut admin = stored("Archon", GrimId::new());
+            admin.roles.push(grim_actor::Role::Admin);
+            let plain = stored("Pleb", GrimId::new());
+            for c in [&admin, &plain] {
+                fs::write(
+                    dir.join("characters").join(format!("{}.json", c.name)),
+                    serde_json::to_string(c).unwrap(),
+                )
+                .unwrap();
+            }
+            // A non-JSON file and a corrupt blob are skipped, not fatal.
+            fs::write(dir.join("characters").join("notes.txt"), "hi").unwrap();
+            fs::write(dir.join("characters").join("broken.json"), "{nope").unwrap();
+
+            let config = PersistenceConfig { dir: dir.clone() };
+            let mut all = load_all_characters(&config);
+            all.sort_by(|a, b| a.name.cmp(&b.name));
+            assert_eq!(all.len(), 2);
+            assert_eq!(all[0].name, "Archon");
+            assert!(all[0].roles.contains(&grim_actor::Role::Admin));
+            assert_eq!(all[1].name, "Pleb");
+
+            // Missing dir reads as empty.
+            let missing = PersistenceConfig {
+                dir: dir.join("nope"),
+            };
+            assert!(load_all_characters(&missing).is_empty());
 
             let _ = fs::remove_dir_all(&dir);
         }

@@ -56,6 +56,11 @@ impl Plugin for ScenePlugin {
         // in-game input system consults it to avoid re-dispatching the line that
         // triggered the transition (see input.rs).
         app.init_resource::<JustEnteredWorld>();
+        // Admin snapshot backing the offline half of the `wizlist`: read once
+        // at startup (a reboot refreshes it). init_resource so the `Res` in
+        // `SessionRes` exists before the loader replaces it.
+        app.init_resource::<crate::who::WizlistAdmins>();
+        app.add_systems(Startup, crate::who::load_wizlist_admins);
         crate::editor::register(app);
         app.add_message::<ConnectionOutput>()
             .add_message::<ConnectionResumed>()
