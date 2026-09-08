@@ -53,7 +53,6 @@ impl Plugin for ChannelPlugin {
                 listen: ListenEligibility::All,
                 key: "channel.ooc".to_string(),
             });
-
         // Register the channel message for data-driven dispatch
         app.add_message::<ChannelMessage>();
 

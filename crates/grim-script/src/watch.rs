@@ -535,7 +535,10 @@ mod tests {
         scripted_mob(
             &mut app,
             src,
-            vec![trigger(TriggerKind::AttemptLeave, "say('Hold!') deny()")],
+            vec![trigger(
+                TriggerKind::AttemptLeave,
+                "say('Hold!') event:deny()",
+            )],
         );
         let mover = app.world_mut().spawn_empty().id();
         let mut attempt = AttemptLeave {

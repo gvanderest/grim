@@ -2,13 +2,15 @@
 //!
 //! The sandbox is structural, not advisory. Each firing builds a state with
 //! only pure-data stdlib (`math`, `string`, `table`, `utf8`), then installs
-//! exactly four globals: `rand()` (`[0, 1)`), `say(text)` (captured, routed
-//! by the caller), `deny()` (blocks the attempted action — composes with
-//! speech, so a script says its refusal *then* denies), and the read-only
-//! `event` table (`{type}`). Lua's base library ships with every state, so
-//! the entries that load code, touch the host, or talk anywhere
-//! ([`STRIPPED_GLOBALS`]) are explicitly nilled — the tests pin each one
-//! absent. A memory cap plus an instruction budget turn runaway scripts into
+//! exactly three globals: `rand()` (`[0, 1)`), `say(text)` (captured, routed
+//! by the caller), and the `event` table (`{type}` plus its `deny()` method —
+//! colon or dot call both work). Calling it blocks the attempted action and
+//! composes with speech, so a script says its refusal *then* denies. Lua's
+//! base library ships with every state, so the entries that load code, touch
+//! the host, or talk anywhere ([`STRIPPED_GLOBALS`]) are explicitly nilled —
+//! the tests pin each one absent. A memory cap plus an instruction budget
+//! turn runaway scripts into errors instead of hangs.
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -103,19 +105,6 @@ pub fn run_trigger(bytecode: &[u8], on: TriggerKind) -> Result<Outcome, String> 
         .map_err(|e| e.to_string())?;
     lua.globals()
         .set(
-            "deny",
-            lua.create_function({
-                let denied = denied.clone();
-                move |_, ()| {
-                    denied.set(true);
-                    Ok(())
-                }
-            })
-            .map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
-    lua.globals()
-        .set(
             "rand",
             lua.create_function(|_, ()| Ok(rand::random::<f64>()))
                 .map_err(|e| e.to_string())?,
@@ -123,6 +112,22 @@ pub fn run_trigger(bytecode: &[u8], on: TriggerKind) -> Result<Outcome, String> 
         .map_err(|e| e.to_string())?;
     let event = lua.create_table().map_err(|e| e.to_string())?;
     event.set("type", on.as_str()).map_err(|e| e.to_string())?;
+    // `event.deny()` (or `event:deny()` — colon passes `event` as self, which
+    // is accepted and ignored): blocks the attempted action. A method on the
+    // event, not a fourth global, so the global surface stays `rand`/`say`/`event`.
+    event
+        .set(
+            "deny",
+            lua.create_function({
+                let denied = denied.clone();
+                move |_, _: mlua::MultiValue| {
+                    denied.set(true);
+                    Ok(())
+                }
+            })
+            .map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
     lua.globals()
         .set("event", event)
         .map_err(|e| e.to_string())?;
@@ -238,14 +243,14 @@ mod tests {
 
     #[test]
     fn deny_blocks_without_speech() {
-        let outcome = run("deny()", TriggerKind::AttemptLeave).unwrap();
+        let outcome = run("event.deny()", TriggerKind::AttemptLeave).unwrap();
         assert!(outcome.denied);
         assert!(outcome.said.is_empty());
     }
 
     #[test]
     fn deny_composes_with_refusal_speech() {
-        let outcome = run("say('Halt!') deny()", TriggerKind::AttemptEnter).unwrap();
+        let outcome = run("say('Halt!') event:deny()", TriggerKind::AttemptEnter).unwrap();
         assert!(outcome.denied);
         assert_eq!(outcome.said, ["Halt!"]);
     }
