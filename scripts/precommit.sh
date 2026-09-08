@@ -3,6 +3,8 @@ set -uo pipefail
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT" || exit 1
+echo "=== pre-commit: clear coverage ==="
+rm -rf coverage && mkdir -p coverage
 
 echo "=== pre-commit: make lint ==="
 make lint || { echo "FAIL: make lint"; exit 1; }

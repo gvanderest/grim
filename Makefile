@@ -34,7 +34,9 @@ ci: lint coverage
 # ─── Coverage ─────────────────────────────────────────────────────────
 
 coverage:
-	mkdir -p coverage && \
+	# No coverage-artifact reuse: stale hashed/instrumented objects have
+	# wedged llvm-cov export before. Every run starts from a clean slate.
+	rm -rf target/llvm-cov-target coverage && mkdir -p coverage && \
 	if [ -x /usr/bin/llvm-cov ] && [ -x /usr/bin/llvm-profdata ]; then \
 		export LLVM_COV=/usr/bin/llvm-cov LLVM_PROFDATA=/usr/bin/llvm-profdata; \
 	fi && \
@@ -42,7 +44,7 @@ coverage:
 	cargo llvm-cov --lcov --output-path coverage/lcov.info \
 		--ignore-filename-regex 'src/main\.rs|src/seed\.rs' \
 		--fail-under-lines 90 \
-		--no-clean --workspace
+		--workspace
 # ─── Cleanup ──────────────────────────────────────────────────────────
 
 clean:
