@@ -1,6 +1,6 @@
 ---
 name: grim-review-and-pr
-description: Adversarial pre-merge review plus the commit-to-PR mechanics for GRIM — a reviewer subagent debates the diff for one round, findings graded fix-or-accept, then branch, commit, push, PR. Use when finishing a feature, before committing, before opening a PR, or when the user says grim-review-and-pr, review this diff, ship it, or cut a PR.
+description: Adversarial pre-merge review plus the push-to-PR mechanics for GRIM — a reviewer subagent debates the diff for one round, findings graded fix-or-accept, then PR with an explicit body. Use before committing, before opening a PR, or when the user says grim-review-and-pr, review this diff, ship it, or cut a PR. Branch only if needed; grim-code owns branching.
 ---
 
 # Grim Review and PR
@@ -9,20 +9,24 @@ Pre-merge debate, not design review: design-phase critique belongs to
 `grim-design`; this skill consumes its output (the tmp `DESIGN.md` or the
 published issue comment) plus the diff. A reviewer subagent argues against the
 diff; the implementer defends or fixes. Unresolved P0 blocks the merge. Then
-the repo workflow (AGENTS.md): branch from `main`, incremental commits, push,
-PR with an explicit body, CI, human review, squash merge.
+the repo workflow (AGENTS.md): push, PR with design link + accepted-P0 reasons
++ `Deferred:` references, CI, human review, squash merge.
 
 ## Quick start
 
 1. Preflight: `git status` (clean except intended files), `git branch
-   --show-current`, `gh auth status`. Wrong branch → branch from `main` first.
-2. Assemble the packet: `git diff main...HEAD` (or `git diff` if uncommitted)
-   plus the originating `.planning/tmp/<slug>/DESIGN.md` or the issue `#N`
-   that ratified it.
+   --show-current`, `gh auth status`. On the wrong branch, switch to the
+   packet branch from `grim-code`; branch fresh from `main` only when no
+   packet exists.
+2. Assemble the packet: `git diff main...HEAD` (or `git diff` if uncommitted),
+   the originating `.planning/tmp/<slug>/DESIGN.md` or the issue `#N` that
+   ratified it, and the handoff's verification evidence — spot-check one
+   evidence claim yourself before the reviewer grades.
 3. Run the adversarial round below. Fix-or-accept every finding.
-4. Commit → push → PR with an explicit `--body` (shape below). Pushing without
-   a PR is unfinished. NEVER `--no-verify`. NOTE: bare `gh pr create --fill`
-   leaves an empty body on single-line commits — always pass `--body`.
+4. Commit remaining fixes → push → `gh pr create --fill --base main --body
+   "…"` (AGENTS.md command plus an explicit body: bare `--fill` leaves it
+   empty on single-line commits). Pushing without a PR is unfinished. NEVER
+   `--no-verify`.
 
 ## Adversarial round
 
@@ -33,8 +37,9 @@ get a verification re-read against the finding, not a fresh round.
 - Grade every finding: **P0** (wrong-crate placement, closed enum/type where an
   open registry belongs, format-once-broadcast, untranslatable player string,
   broken invariant, fail-open gate, stale crate README per rule 7a, coverage
-  below the rule-10 floor) / **P1** (deferred: file `[deferred]…` issue,
-  reference `Deferred: #M`) / **nit** (fix inline or drop).
+  below the rule-10 floor) / **P1** (deferred: file `[deferred]…` issue, note
+  `Deferred: #M` in the design, comment on the originating issue) /
+  **nit** (fix inline or drop).
 - Argue each P0/P1 against `docs/ARCHITECTURE.md`, `CONTEXT.md`, scoped
   `docs/adr/*`, and the originating design. No grading without a cited
   constraint or an explicit "no constraint — judgment call".
@@ -47,8 +52,8 @@ get a verification re-read against the finding, not a fresh round.
 ## Commit and PR
 
 - Commits are incremental and green: `make precommit` passes per commit
-  (lint + coverage run at the hook; a red commit trains `--no-verify`).
-- Push the branch; create the PR with `--body`, never bare `--fill`:
-  design/issue link, accepted-P0 reasons, `Deferred: #M` references.
-- CI (`make lint`, `make coverage`, `integration` copyover job)
-  must be green before requesting human review.
+  (lint, fmt, coverage run at the hook; a red commit trains `--no-verify`).
+- Push the branch; create the PR per step 4: design/issue link, accepted-P0
+  reasons, `Deferred: #M` references.
+- CI (build, lint, test per AGENTS.md — the `check` job plus the `integration`
+  copyover job) must be green before requesting human review.

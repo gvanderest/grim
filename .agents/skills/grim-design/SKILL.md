@@ -20,6 +20,8 @@ it adds the arch/standards + retrofit + publish steps they lack.
    a design session touches tracked files until a later implementation branch.
 4. Run the gates below, iterating locally until the user says `publish`,
    `post it`, or `comment it`.
+5. On approval, continue via `grim-feature code` (re-enters at implementation
+   with the packet on disk) — or `grim-code` directly for just the build.
 
 ## Gates
 
