@@ -10,7 +10,7 @@ Pre-merge debate, not design review: design-phase critique belongs to
 published issue comment) plus the diff. A reviewer subagent argues against the
 diff; the implementer defends or fixes. Unresolved P0 blocks the merge. Then
 the repo workflow (AGENTS.md): branch from `main`, incremental commits, push,
-`gh pr create`, CI, human review, squash merge.
+PR with an explicit body, CI, human review, squash merge.
 
 ## Quick start
 
@@ -20,8 +20,9 @@ the repo workflow (AGENTS.md): branch from `main`, incremental commits, push,
    plus the originating `.planning/tmp/<slug>/DESIGN.md` or the issue `#N`
    that ratified it.
 3. Run the adversarial round below. Fix-or-accept every finding.
-4. Commit → push → `gh pr create --fill --base main`. Pushing without a PR is
-   unfinished. NEVER `--no-verify`.
+4. Commit → push → PR with an explicit `--body` (shape below). Pushing without
+   a PR is unfinished. NEVER `--no-verify`. NOTE: bare `gh pr create --fill`
+   leaves an empty body on single-line commits — always pass `--body`.
 
 ## Adversarial round
 
@@ -47,7 +48,7 @@ get a verification re-read against the finding, not a fresh round.
 
 - Commits are incremental and green: `make precommit` passes per commit
   (lint + coverage run at the hook; a red commit trains `--no-verify`).
-- Push the branch; `gh pr create --fill --base main`.
-- PR body links the design/issue and lists accepted-P0 reasons + `Deferred: #M`
-  references. CI (`make lint`, `make coverage`, `integration` copyover job)
+- Push the branch; create the PR with `--body`, never bare `--fill`:
+  design/issue link, accepted-P0 reasons, `Deferred: #M` references.
+- CI (`make lint`, `make coverage`, `integration` copyover job)
   must be green before requesting human review.
