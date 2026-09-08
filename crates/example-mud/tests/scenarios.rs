@@ -8,6 +8,7 @@
 mod harness;
 use grim::components::Gender;
 use grim::Role;
+use grim::TriggerKind;
 use harness::{Mud, Session};
 
 /// A password that satisfies validation (short ones are rejected — see
@@ -147,6 +148,46 @@ fn movement_walks_between_seeded_rooms() {
         .assert_contains("Town Square")
         .assert_contains("Exits: east, south");
     mud.send(alice, "south").assert_contains("The Rusted Anvil");
+}
+
+#[test]
+fn grimmok_greets_after_the_room_loads() {
+    let mut mud = Mud::new();
+    mud.set_mob_triggers(
+        "Grimmok Ironhand",
+        &[(TriggerKind::Enter, "self.say(\"Hello there adventurer.\")")],
+    );
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    // Leave Grimmok's room, then come back: the enter trigger is post-state,
+    // so the arrival description renders before the hello reacts to it.
+    mud.send(alice, "north").assert_contains("Town Square");
+    let back = mud.send(alice, "south");
+    let text = back.text();
+    let room = text.find("The Rusted Anvil").expect("arrival description");
+    let hello = text.find("Hello there adventurer").expect("enter greeting");
+    assert!(room < hello, "room loads before the hello:\n{text}");
+}
+
+#[test]
+fn grimmok_farewell_precedes_departure() {
+    let mut mud = Mud::new();
+    mud.set_mob_triggers(
+        "Grimmok Ironhand",
+        &[(TriggerKind::AttemptLeave, "self.say(\"See you later.\")")],
+    );
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+
+    // The attempt-leave trigger is pre-state: the farewell renders before
+    // the arrival it precedes — for Alice, who is mid-transition, and for
+    // Bob, who stays and hears the room broadcast.
+    let out = mud.send(alice, "north");
+    let text = out.text();
+    let bye = text.find("See you later").expect("farewell");
+    let square = text.find("Town Square").expect("arrival description");
+    assert!(bye < square, "farewell precedes the arrival:\n{text}");
+    mud.send(bob, "look").assert_contains("See you later");
 }
 
 /// Log an existing account's first character back in (after quit or reboot):

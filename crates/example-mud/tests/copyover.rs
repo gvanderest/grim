@@ -97,15 +97,23 @@ fn kill_group(pgid: u32) {
         .status();
 }
 
-#[allow(clippy::too_many_lines)] // reason: real-process/socket integration test; one linear scenario
+#[allow(clippy::too_many_lines)]
+// reason: real-process/socket integration test; one linear scenario
+// `cfg(coverage)` is set by cargo-llvm-cov, not Cargo: declare the use
+// expected so `-D warnings` stays green under `make coverage`.
+#[allow(unexpected_cfgs)]
 #[test]
 fn copyover_keeps_player_connected_and_resumes_last_room() {
-    // This spawns real, instrumented server processes and drives them over real
-    // sockets. Under `cargo llvm-cov --workspace` those processes are starved by
-    // the parallel test run and the handoff times out, so skip it there — the
-    // dedicated CI `integration-test` step runs it non-instrumented. Coverage of
-    // the copyover code itself is not lost meaningfully (a SIGKILLed successor
-    // never flushes its profile anyway; the fd framing is unit-tested).
+    // This spawns real server processes and drives them over real sockets.
+    // Under `cargo llvm-cov` the parallel run starves the fork+exec handoff,
+    // so skip when built with `cfg(coverage)` — CI runs this file separately,
+    // non-instrumented. Coverage of the copyover code itself is not lost
+    // meaningfully (a SIGKILLed successor never flushes its profile anyway;
+    // the fd framing is unit-tested).
+    if cfg!(coverage) {
+        eprintln!("skipping copyover IT under llvm-cov; see CI integration step");
+        return;
+    }
     // Unique port + isolated data dir per run.
     let port: u16 = 40000 + (std::process::id() % 10000) as u16;
     let dir = std::env::temp_dir().join(format!("grim-copyover-it-{}", std::process::id()));
@@ -207,9 +215,18 @@ fn copyover_keeps_player_connected_and_resumes_last_room() {
         .expect("send SIGUSR2");
     assert!(status.success(), "kill -USR2 failed");
 
-    // The predecessor exits; reap it so it isn't a zombie. The successor (in the
-    // same process group) is now serving on our still-open socket.
-    let _ = child.wait();
+    // The predecessor exits on a successful handoff; reap it so it isn't a
+    // zombie. Bound the wait — an unbounded `child.wait()` hangs the runner
+    // forever with no output if the handoff stalls (seen under llvm-cov
+    // starvation on CI).
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        match child.try_wait().expect("reap predecessor") {
+            Some(_) => break,
+            None if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(100)),
+            None => panic!("predecessor never exited after SIGUSR2"),
+        }
+    }
 
     // ── Same socket, no re-login: greeted by the reload and back in the Square ──
     expect(&mut stream, "world was reloaded", Duration::from_secs(60));

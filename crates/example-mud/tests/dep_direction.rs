@@ -157,6 +157,14 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // depends on grim-world. grim-world does not depend on grim-channel, so this
     // adds no cycle.
     ("grim-channel", "grim-world"),
+    // NOTE (mob scripting): grim-script runs sandboxed Lua triggers on room
+    // transitions. It reads beings (grim-actor), speaks through the say
+    // channel (grim-channel), pages via the god-types node (grim-core) and
+    // the catalog (grim-text). None of them depends back, so no cycle.
+    ("grim-script", "grim-actor"),
+    ("grim-script", "grim-channel"),
+    ("grim-script", "grim-core"),
+    ("grim-script", "grim-text"),
     // NOTE (objects): grim-object owns things (Object/CarriedBy + get/drop/
     // inventory). It reads being placement (grim-actor's InRoom) and renders
     // through the catalog (grim-text) plus the god-types node. grim-actor does
@@ -207,6 +215,9 @@ const ALLOWED_NORMAL: &[Edge] = &[
     ("grim", "grim-actor"),
     ("grim", "grim-channel"),
     ("grim", "grim-persistence"),
+    // NOTE (mob scripting): the facade re-exports the script trigger types +
+    // ScriptPlugin and adds ScriptPlugin to the default plugin groups.
+    ("grim", "grim-script"),
     // NOTE (typed-event command dispatch): grim-command-events holds semantic
     // intent events (MoveIntent, LookIntent, etc.) that the facade re-exports.
     ("grim", "grim-command-events"),

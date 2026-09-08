@@ -16,7 +16,11 @@
           "name": "Grimmok Ironhand",
           "description": ["A burly dwarf with a scorched beard and arms thick as tree trunks.", "He hammers rhythmically at a glowing blade, seemingly unaware of your presence."],
           "keywords": ["grimmok", "ironhand", "dwarf", "smith"],
-          "room_description": "Grimmok Ironhand stands here, hammering metal."
+          "room_description": "Grimmok Ironhand stands here, hammering metal.",
+          "triggers": [
+            {"on": "enter", "script": "if rand() < 0.1 then self.say(\"Hello there adventurer.\") end"},
+            {"on": "attempt_leave", "script": "if rand() < 0.1 then self.say(\"See you later.\") end"}
+          ]
         }
       ],
       "objects": [
