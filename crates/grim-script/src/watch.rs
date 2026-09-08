@@ -357,7 +357,7 @@ mod tests {
         let mob = scripted_mob(
             &mut app,
             dest,
-            vec![trigger(TriggerKind::Enter, "say('hi')")],
+            vec![trigger(TriggerKind::Enter, "self.say('hi')")],
         );
         let mover = app.world_mut().spawn_empty().id();
         app.world_mut().trigger(Enter {
@@ -376,12 +376,12 @@ mod tests {
         scripted_mob(
             &mut app,
             elsewhere,
-            vec![trigger(TriggerKind::Enter, "say('hi')")],
+            vec![trigger(TriggerKind::Enter, "self.say('hi')")],
         );
         scripted_mob(
             &mut app,
             here,
-            vec![trigger(TriggerKind::Leave, "say('bye')")],
+            vec![trigger(TriggerKind::Leave, "self.say('bye')")],
         );
         let mover = app.world_mut().spawn_empty().id();
         app.world_mut().trigger(Enter {
@@ -402,7 +402,7 @@ mod tests {
                 Creature,
                 GrimName("Restless".into()),
                 InRoom { room },
-                ScriptTriggers(vec![trigger(TriggerKind::Enter, "say('me')")]),
+                ScriptTriggers(vec![trigger(TriggerKind::Enter, "self.say('me')")]),
             ))
             .id();
         app.world_mut().trigger(Enter { actor: mover, room });
@@ -417,7 +417,7 @@ mod tests {
         let mob = scripted_mob(
             &mut app,
             src,
-            vec![trigger(TriggerKind::AttemptLeave, "say('bye')")],
+            vec![trigger(TriggerKind::AttemptLeave, "self.say('bye')")],
         );
         let mover = app.world_mut().spawn_empty().id();
         app.world_mut().trigger(AttemptLeave {
@@ -436,7 +436,7 @@ mod tests {
         scripted_mob(
             &mut app,
             src,
-            vec![trigger(TriggerKind::AttemptLeave, "say('bye')")],
+            vec![trigger(TriggerKind::AttemptLeave, "self.say('bye')")],
         );
         let mover = app.world_mut().spawn_empty().id();
         app.world_mut().trigger(AttemptLeave {
@@ -467,7 +467,7 @@ mod tests {
         scripted_mob(
             &mut app,
             src,
-            vec![trigger(TriggerKind::Leave, "say('bye')")],
+            vec![trigger(TriggerKind::Leave, "self.say('bye')")],
         );
         let mover = app.world_mut().spawn_empty().id();
         app.world_mut().trigger(Leave {
@@ -537,7 +537,7 @@ mod tests {
             src,
             vec![trigger(
                 TriggerKind::AttemptLeave,
-                "say('Hold!') event:deny()",
+                "self.say('Hold!') event:deny()",
             )],
         );
         let mover = app.world_mut().spawn_empty().id();

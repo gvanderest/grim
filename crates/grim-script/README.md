@@ -18,7 +18,7 @@
 Player-facing verbs and where to find their handlers.
 | Command | Handler | Summary |
 |---|---|---|
-| — | — | No player verbs. Mobs speak via `say(text)` inside scripts. |
+| — | — | No player verbs. Mobs speak via `self.say(text)` inside scripts. |
 
 ## Resources & Events
 | Name | Kind (Resource/Message) | File |

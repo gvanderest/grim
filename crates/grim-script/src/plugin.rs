@@ -47,7 +47,7 @@ mod tests {
             InRoom { room },
             ScriptTriggers(vec![crate::trigger::CompiledTrigger {
                 on: TriggerKind::Enter,
-                bytecode: compile("say('yo')").unwrap(),
+                bytecode: compile("self.say('yo')").unwrap(),
             }]),
         ));
         app.world_mut().trigger(Enter { actor: mover, room });

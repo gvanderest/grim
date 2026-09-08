@@ -4,8 +4,8 @@
 //! Lua source) pairs authored inline in the mob blueprint. When a being enters
 //! or leaves a room, every scripted creature in the affected room fires its
 //! matching triggers. Each firing runs in a fresh Lua state holding exactly
-//! three globals — `rand`, `say`, and `event` (whose `deny()` method blocks
-//! the attempted action) — over a pure-data
+//! three globals — `rand`, `self` (the observing entity), and `event` — over
+//! a pure-data
 //! stdlib (`math`, `string`, `table`, `utf8`); there is no `os`/`io`/
 //! `require`/`load`, an instruction budget, and a memory cap, so a bad script
 //! can neither escape nor hang the tick.

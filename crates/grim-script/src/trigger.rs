@@ -87,14 +87,14 @@ mod tests {
     #[test]
     fn kind_deserializes_snake_case() {
         let def: TriggerDef =
-            serde_json::from_str(r#"{"on": "attempt_leave", "script": "say('x')"}"#).unwrap();
+            serde_json::from_str(r#"{"on": "attempt_leave", "script": "self.say('x')"}"#).unwrap();
         assert_eq!(def.on, TriggerKind::AttemptLeave);
-        assert_eq!(def.script, "say('x')");
+        assert_eq!(def.script, "self.say('x')");
     }
 
     #[test]
     fn compile_accepts_valid_source() {
-        let bytes = compile("if rand() < 0.1 then say('hi') end").unwrap();
+        let bytes = compile("if rand() < 0.1 then self.say('hi') end").unwrap();
         assert!(!bytes.is_empty(), "bytecode must not be empty");
     }
 

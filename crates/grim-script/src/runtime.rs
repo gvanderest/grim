@@ -2,11 +2,12 @@
 //!
 //! The sandbox is structural, not advisory. Each firing builds a state with
 //! only pure-data stdlib (`math`, `string`, `table`, `utf8`), then installs
-//! exactly three globals: `rand()` (`[0, 1)`), `say(text)` (captured, routed
-//! by the caller), and the `event` table (`{type}` plus its `deny()` method —
-//! colon or dot call both work). Calling it blocks the attempted action and
-//! composes with speech, so a script says its refusal *then* denies. Lua's
-//! base library ships with every state, so the entries that load code, touch
+//! exactly three globals: `rand()` (`[0, 1)`), `self` (the observing entity —
+//! `self.say(text)` speaks as the mob), and the `event` table (`{type}` plus
+//! its `deny()` method, which blocks the attempted action). Dot or colon
+//! calls both work for the methods. Calling `event.deny()` composes with speech, so
+//! a script says its refusal *then* denies. Lua's base library ships with
+//! every state, so the entries that load code, touch
 //! the host, or talk anywhere ([`STRIPPED_GLOBALS`]) are explicitly nilled —
 //! the tests pin each one absent. A memory cap plus an instruction budget
 //! turn runaway scripts into errors instead of hangs.
@@ -87,22 +88,8 @@ pub fn run_trigger(bytecode: &[u8], on: TriggerKind) -> Result<Outcome, String> 
             .set(*name, mlua::Value::Nil)
             .map_err(|e| e.to_string())?;
     }
-
     let said: Rc<RefCell<Vec<String>>> = Rc::default();
     let denied = Rc::new(Cell::new(false));
-    lua.globals()
-        .set(
-            "say",
-            lua.create_function({
-                let said = said.clone();
-                move |_, text: String| {
-                    said.borrow_mut().push(text);
-                    Ok(())
-                }
-            })
-            .map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
     lua.globals()
         .set(
             "rand",
@@ -110,11 +97,42 @@ pub fn run_trigger(bytecode: &[u8], on: TriggerKind) -> Result<Outcome, String> 
                 .map_err(|e| e.to_string())?,
         )
         .map_err(|e| e.to_string())?;
+    // `self` is the observing entity: `self.say(text)` speaks as the mob.
+    // Dot or colon call both work — the colon-passed `self` is accepted and
+    // ignored, and the first string argument is the line.
+    let this = lua.create_table().map_err(|e| e.to_string())?;
+    this.set(
+        "say",
+        lua.create_function({
+            let said = said.clone();
+            move |_, args: mlua::MultiValue| {
+                let mut text = None;
+                for value in args {
+                    if let mlua::Value::String(s) = value {
+                        text = Some(s.to_str()?.to_string());
+                        break;
+                    }
+                }
+                match text {
+                    Some(text) => {
+                        said.borrow_mut().push(text);
+                        Ok(())
+                    }
+                    None => Err(mlua::Error::RuntimeError("say() needs a text argument".into())),
+                }
+            }
+        })
+        .map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    lua.globals()
+        .set("self", this)
+        .map_err(|e| e.to_string())?;
     let event = lua.create_table().map_err(|e| e.to_string())?;
     event.set("type", on.as_str()).map_err(|e| e.to_string())?;
     // `event.deny()` (or `event:deny()` — colon passes `event` as self, which
     // is accepted and ignored): blocks the attempted action. A method on the
-    // event, not a fourth global, so the global surface stays `rand`/`say`/`event`.
+    // event, like `self.say`, so the global surface stays `rand`/`self`/`event`.
     event
         .set(
             "deny",
@@ -151,7 +169,7 @@ mod tests {
     #[test]
     fn unconditional_say_is_captured() {
         assert_eq!(
-            run("say('Hello there.')", TriggerKind::Enter).unwrap().said,
+            run("self.say('Hello there.')", TriggerKind::Enter).unwrap().said,
             ["Hello there."]
         );
     }
@@ -159,12 +177,10 @@ mod tests {
     #[test]
     fn chance_gate_passes_and_blocks() {
         assert_eq!(
-            run("if rand() >= 0 then say('a') end", TriggerKind::Enter)
-                .unwrap()
-                .said,
+            run("if rand() >= 0 then self.say('a') end", TriggerKind::Enter).unwrap().said,
             ["a"]
         );
-        assert!(run("if rand() < 0 then say('a') end", TriggerKind::Enter)
+        assert!(run("if rand() < 0 then self.say('a') end", TriggerKind::Enter)
             .unwrap()
             .said
             .is_empty());
@@ -173,7 +189,7 @@ mod tests {
     #[test]
     fn rand_stays_in_unit_interval() {
         let out = run(
-            "for i = 1, 200 do local r = rand() if r < 0 or r >= 1 then say('OUT') end end say('done')",
+            "for i = 1, 200 do local r = rand() if r < 0 or r >= 1 then self.say('OUT') end end self.say('done')",
             TriggerKind::Enter,
         )
         .unwrap()
@@ -183,7 +199,7 @@ mod tests {
 
     #[test]
     fn event_type_is_visible() {
-        let out = run("say(event.type)", TriggerKind::AttemptLeave)
+        let out = run("self.say(event.type)", TriggerKind::AttemptLeave)
             .unwrap()
             .said;
         assert_eq!(out, ["attempt_leave"]);
@@ -191,7 +207,7 @@ mod tests {
 
     #[test]
     fn multiple_says_keep_order() {
-        let out = run("say('one') say('two')", TriggerKind::Leave)
+        let out = run("self.say('one') self.say('two')", TriggerKind::Leave)
             .unwrap()
             .said;
         assert_eq!(out, ["one", "two"]);
@@ -222,7 +238,7 @@ mod tests {
     #[test]
     fn kept_base_helpers_work() {
         let out = run(
-            "local t = 0 for _, v in pairs({1, 2}) do t = t + v end say(type('x') .. tostring(t))",
+            "local t = 0 for _, v in pairs({1, 2}) do t = t + v end self.say(type('x') .. tostring(t))",
             TriggerKind::Enter,
         )
         .unwrap()
@@ -233,7 +249,7 @@ mod tests {
     #[test]
     fn allowed_pure_libraries_work() {
         let out = run(
-            "say(string.upper('hi') .. math.floor(1.9) .. #'abc' .. utf8.len('é'))",
+            "self.say(string.upper('hi') .. math.floor(1.9) .. #'abc' .. utf8.len('é'))",
             TriggerKind::Enter,
         )
         .unwrap()
@@ -250,14 +266,20 @@ mod tests {
 
     #[test]
     fn deny_composes_with_refusal_speech() {
-        let outcome = run("say('Halt!') event:deny()", TriggerKind::AttemptEnter).unwrap();
+        let outcome = run("self.say('Halt!') event:deny()", TriggerKind::AttemptEnter).unwrap();
         assert!(outcome.denied);
         assert_eq!(outcome.said, ["Halt!"]);
     }
 
     #[test]
     fn silence_does_not_deny() {
-        let outcome = run("say('hi')", TriggerKind::Enter).unwrap();
+        let outcome = run("self.say('hi')", TriggerKind::Enter).unwrap();
         assert!(!outcome.denied);
     }
+
+    #[test]
+    fn bare_say_is_gone() {
+        run("say('hi')", TriggerKind::Enter).expect_err("speech lives on self now");
+    }
 }
+
