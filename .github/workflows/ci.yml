@@ -10,7 +10,8 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Cold `cargo install cargo-llvm-cov` alone eats minutes; 10 proved too tight.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -27,5 +28,17 @@ jobs:
       - name: Coverage
         run: make coverage
 
-      - name: Integration (copyover, non-instrumented)
-        run: RUSTFLAGS="-D warnings" cargo test -p example-mud --test copyover
+  # Real-process copyover test, separate job so it gets its own timeout window
+  # instead of the scraps of `check`. `-- --nocapture` streams progress live:
+  # libtest captures output per-test, so a killed/hung run otherwise leaves
+  # zero evidence of where it stuck.
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Copyover (non-instrumented)
+        run: RUSTFLAGS="-D warnings" cargo test -p example-mud --test copyover -- --nocapture
