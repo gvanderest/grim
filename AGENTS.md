@@ -103,6 +103,7 @@ When developing new features, start by asking:
 ## Editing Discipline
 
 1. **Re-ground after every edit.** Fresh snapshot tag + renumber from edit response or fresh `read`.
+1a. **Edits eat neighbors.** A range touching a boundary line can silently delete the adjacent statement (an insert `PUT <N:`/`PUT >N:` never can — prefer it near load-bearing lines like plugin registrations). Signals: auto-repair warnings on the edit response, or NEW `dead_code`/`unused` compiler warnings after your change. On either signal, `git diff` the file immediately and restore what the range ate (`editor::register` was lost this way, un-registering its messages and failing every downstream system validation).
 2. **Verify structure before chaining.** `read` the affected area before the next edit.
 3. **Prefer rewrite over surgical patch when code is young.** Files <5 edits old → `write` from scratch.
 4. **Read the whole function.** Elided ranges = unseen — expand range.
