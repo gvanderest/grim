@@ -118,16 +118,16 @@ pub fn run_trigger(bytecode: &[u8], on: TriggerKind) -> Result<Outcome, String> 
                         said.borrow_mut().push(text);
                         Ok(())
                     }
-                    None => Err(mlua::Error::RuntimeError("say() needs a text argument".into())),
+                    None => Err(mlua::Error::RuntimeError(
+                        "say() needs a text argument".into(),
+                    )),
                 }
             }
         })
         .map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
-    lua.globals()
-        .set("self", this)
-        .map_err(|e| e.to_string())?;
+    lua.globals().set("self", this).map_err(|e| e.to_string())?;
     let event = lua.create_table().map_err(|e| e.to_string())?;
     event.set("type", on.as_str()).map_err(|e| e.to_string())?;
     // `event.deny()` (or `event:deny()` — colon passes `event` as self, which
@@ -169,7 +169,9 @@ mod tests {
     #[test]
     fn unconditional_say_is_captured() {
         assert_eq!(
-            run("self.say('Hello there.')", TriggerKind::Enter).unwrap().said,
+            run("self.say('Hello there.')", TriggerKind::Enter)
+                .unwrap()
+                .said,
             ["Hello there."]
         );
     }
@@ -177,13 +179,17 @@ mod tests {
     #[test]
     fn chance_gate_passes_and_blocks() {
         assert_eq!(
-            run("if rand() >= 0 then self.say('a') end", TriggerKind::Enter).unwrap().said,
+            run("if rand() >= 0 then self.say('a') end", TriggerKind::Enter)
+                .unwrap()
+                .said,
             ["a"]
         );
-        assert!(run("if rand() < 0 then self.say('a') end", TriggerKind::Enter)
-            .unwrap()
-            .said
-            .is_empty());
+        assert!(
+            run("if rand() < 0 then self.say('a') end", TriggerKind::Enter)
+                .unwrap()
+                .said
+                .is_empty()
+        );
     }
 
     #[test]
@@ -282,4 +288,3 @@ mod tests {
         run("say('hi')", TriggerKind::Enter).expect_err("speech lives on self now");
     }
 }
-
