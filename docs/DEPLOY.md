@@ -1,12 +1,17 @@
 # Deployment
 
-Every push to `main` builds a static binary in GitHub Actions and rolls it onto
-a single EC2 host. No Docker, and nothing is compiled on the box — a t2.micro
-(1 GB RAM) cannot realistically build Bevy in release, so CI does it and ships
-the binary.
+Pushes to `main` that touch what runs on the box build a static binary in
+GitHub Actions and roll it onto a single EC2 host (see the trigger gate below).
+No Docker, and nothing is compiled on the box — a t2.micro (1 GB RAM) cannot
+realistically build Bevy in release, so CI does it and ships the binary.
 
 ## Pipeline
 
+**Trigger gate:** pushes to `main` deploy only when they touch what runs on the
+box — `crates/**`, `data/areas/**`, `assets/**`, `deploy/**`, or the root
+`Cargo.toml` / `Cargo.lock` / `rust-toolchain.toml` (see `on.push.paths` in
+`deploy.yml`). Anything else (docs, `.planning/`, CI, scripts) skips the
+pipeline; use `Run workflow` to force a deploy.
 `.github/workflows/deploy.yml`:
 
 1. **build** — `cargo build --release --target x86_64-unknown-linux-musl`. The
