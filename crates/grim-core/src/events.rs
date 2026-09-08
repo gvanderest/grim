@@ -42,6 +42,8 @@ pub enum Command {
     Quit,
     /// `who` — list connected players
     Who,
+    /// `wizlist` — list admin-flagged characters online
+    Wizlist,
     /// `where` — show who's in your area and their room
     Where,
     /// `finger <name>` — show a character's description, online or off.

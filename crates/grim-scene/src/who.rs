@@ -1,17 +1,36 @@
-//! Session-local list renderers: the MUD-style `who` list plus the `where`
-//! and `areas` lists. Factored out of [`crate::command::handle_ingame`] to
-//! hold that dispatcher under the line budget — the same one-file-per-list
-//! shape as `sockets.rs` and `finger.rs`.
+//! Session-local list renderers: the MUD-style `who` list, the admin-filtered
+//! `wizlist`, plus the `where` and `areas` lists. Factored out of
+//! [`crate::command::handle_ingame`] to hold that dispatcher under the line
+//! budget — the same one-file-per-list shape as `sockets.rs` and `finger.rs`.
 
 use std::cmp::Ordering;
 
 use bevy::prelude::*;
 use chrono::{DateTime, Utc};
-use grim_actor::Linkdead;
+use grim_actor::{Linkdead, Role, StoredCharacter};
 use grim_core::components::Gender;
+use grim_persistence::{load_all_characters, PersistenceConfig};
 
-use crate::formatter::{self, WhoRow};
+use crate::formatter;
 use crate::params::{PlayerChars, RoomResolver, SessionRes};
+
+/// Admin-flagged characters snapshotted from disk at startup, backing the
+/// offline half of the `wizlist`. Short-term shape (per review): a reboot
+/// refreshes it, but a role granted or revoked at runtime only takes effect on
+/// the live rows until the next restart — the snapshot is not rewritten.
+#[derive(Resource, Default)]
+pub(crate) struct WizlistAdmins(pub Vec<StoredCharacter>);
+
+/// Snapshot every admin-flagged character on disk into [`WizlistAdmins`].
+/// Missing dir → empty (same fail-closed read as the other disk scans).
+pub(crate) fn load_wizlist_admins(mut commands: Commands, config: Res<PersistenceConfig>) {
+    let mut admins: Vec<StoredCharacter> = load_all_characters(&config)
+        .into_iter()
+        .filter(|stored| stored.roles.contains(&Role::Admin))
+        .collect();
+    admins.sort_by_key(|a| a.name.to_lowercase());
+    commands.insert_resource(WizlistAdmins(admins));
+}
 
 /// The WHO ordering keys for one online character.
 struct WhoKey {
@@ -53,6 +72,153 @@ fn gender_char(gender: Gender) -> &'static str {
     }
 }
 
+// ─── WHO list (MUD-style column grid) ────────────────────────────────
+
+/// Column widths for the WHO stat block `LLL G RRRRR CCC GGGGG`.
+const WHO_LEVEL_W: usize = 3;
+const WHO_GENDER_W: usize = 1;
+const WHO_RACE_W: usize = 5;
+const WHO_CLASS_W: usize = 3;
+const WHO_GUILD_W: usize = 5;
+
+/// Colour reset appended after any admin-supplied WHO value (a `restrings`
+/// override or a `title`), so its colour can't bleed into the next column, the
+/// name, or the following row. Engine-computed columns (level number, `M`/`F`/`N`,
+/// registry abbrevs) carry no colour and are left untouched.
+const WHO_RESET: &str = "{x";
+
+/// Left-justify `s` into exactly `width` *visible* columns: pad with trailing
+/// spaces, or truncate to fit. Colour-aware — markup (`{X`/`@xRGB`) occupies no
+/// columns and is never split mid-token — so a coloured restring override stays
+/// aligned with the rest of the grid.
+fn pad_left(s: &str, width: usize) -> String {
+    let truncated = grim_color::truncate_visible(s, width);
+    let pad = width.saturating_sub(grim_color::visible_width(&truncated));
+    format!("{truncated}{}", " ".repeat(pad))
+}
+
+/// Right-justify `s` into exactly `width` *visible* columns: pad with leading
+/// spaces, or truncate to fit. Colour-aware (see [`pad_left`]). Used for the
+/// right-aligned level column.
+fn pad_right(s: &str, width: usize) -> String {
+    let truncated = grim_color::truncate_visible(s, width);
+    let pad = width.saturating_sub(grim_color::visible_width(&truncated));
+    format!("{}{truncated}", " ".repeat(pad))
+}
+
+/// One character's WHO row inputs. The caller computes each column's default
+/// text (level → `IMM`/number, gender → `M`/`F`/`N`, race/class → registry
+/// abbrev, guild → blank); this renderer applies any `restrings` override and
+/// the fixed-width grid.
+pub(crate) struct WhoRow<'a> {
+    /// Level column default: `"IMM"` for admins, else the level number.
+    pub level: String,
+    /// Gender column default: `"M"` / `"F"` / `"N"`.
+    pub gender: String,
+    /// Race abbrev (blank for legacy/unknown slug).
+    pub race: String,
+    /// Class abbrev (blank for legacy/unknown slug).
+    pub class: String,
+    /// Guild (blank — no guild system yet).
+    pub guild: String,
+    /// Real character name — NEVER restrung.
+    pub name: String,
+    /// Optional title, shown after the name.
+    pub title: Option<String>,
+    /// Persisted display overrides (`who_level`/`who_gender`/`who_race`/
+    /// `who_class`/`who_guild` per column, `who` for the whole stat block).
+    pub restrings: &'a std::collections::HashMap<String, String>,
+    /// Whether to append the `(Linkdead)` marker.
+    pub linkdead: bool,
+    /// Whether to append the `(offline)` marker (wizlist snapshot rows).
+    pub offline: bool,
+}
+
+impl WhoRow<'_> {
+    /// The `LLL G RRRRR CCC GGGGG` stat block: a `who` restring replaces it
+    /// verbatim (followed by a [`WHO_RESET`] colour reset); otherwise each column
+    /// is its restring override (if any, also reset) or its computed default,
+    /// padded/truncated to the column width.
+    fn stat_block(&self) -> String {
+        if let Some(whole) = self.restrings.get("who") {
+            return format!("{whole}{WHO_RESET}");
+        }
+        // Each column is padded/truncated to its width. A restring override may
+        // carry colour, so it gets a trailing reset; the engine default doesn't.
+        let col = |key: &str, default: &str, width: usize, left: bool| -> String {
+            let (text, restrung) = match self.restrings.get(key) {
+                Some(v) => (v.as_str(), true),
+                None => (default, false),
+            };
+            let padded = if left {
+                pad_left(text, width)
+            } else {
+                pad_right(text, width)
+            };
+            if restrung {
+                format!("{padded}{WHO_RESET}")
+            } else {
+                padded
+            }
+        };
+        format!(
+            "{} {} {} {} {}",
+            col("who_level", &self.level, WHO_LEVEL_W, false),
+            col("who_gender", &self.gender, WHO_GENDER_W, true),
+            col("who_race", &self.race, WHO_RACE_W, true),
+            col("who_class", &self.class, WHO_CLASS_W, true),
+            col("who_guild", &self.guild, WHO_GUILD_W, true),
+        )
+    }
+}
+
+/// Render one WHO line: the stat block, the real name, an optional title, and
+/// a trailing `(Linkdead)` / `(offline)` marker.
+pub(crate) fn format_who_row(row: &WhoRow) -> String {
+    let mut line = format!("{} {}", row.stat_block(), row.name);
+    if let Some(title) = &row.title {
+        if !title.is_empty() {
+            line.push(' ');
+            line.push_str(title);
+            line.push_str(WHO_RESET);
+        }
+    }
+    if row.linkdead {
+        line.push_str(" (Linkdead)");
+    }
+    if row.offline {
+        line.push_str(" (offline)");
+    }
+    line
+}
+
+/// Render the full WHO list from already-sorted rows.
+pub(crate) fn format_who_list(rows: &[WhoRow]) -> String {
+    if rows.is_empty() {
+        return "No players online.\n".into();
+    }
+    let mut out = format!("Players online ({}):\n", rows.len());
+    for row in rows {
+        out.push_str(&format_who_row(row));
+        out.push('\n');
+    }
+    out
+}
+
+/// Render the full WIZLIST from already-sorted rows: the same MUD-style rows
+/// as WHO, but every admin — online rows plus `(offline)` snapshot rows.
+pub(crate) fn format_wizlist_list(rows: &[WhoRow]) -> String {
+    if rows.is_empty() {
+        return "No wizards found.\n".into();
+    }
+    let mut out = format!("Wizards ({}):\n", rows.len());
+    for row in rows {
+        out.push_str(&format_who_row(row));
+        out.push('\n');
+    }
+    out
+}
+
 /// The MUD-style `who` list. Each online character renders as
 /// `LLL G RRRRR CCC GGGGG Name Title` (admins show `IMM` for level; restrings
 /// override columns — see [`WhoRow`]). Sort: admins first, alphabetical; then
@@ -63,7 +229,88 @@ pub(crate) fn format_who(
     linkdead: &Query<&Linkdead>,
     res: &SessionRes,
 ) -> String {
-    let mut data: Vec<WhoData> = player_chars
+    let mut data = collect_who_data(player_chars, linkdead, res);
+    data.sort_by(|a, b| who_order(&a.key, &b.key));
+    let rows: Vec<WhoRow> = data.into_iter().map(|d| d.row).collect();
+    format_who_list(&rows)
+}
+
+/// The `wizlist`: every admin-flagged character — online rows (same MUD-style
+/// rows as [`format_who`], linkdead marked) plus the offline admins from the
+/// startup [`WizlistAdmins`] snapshot, marked `(offline)`. Online wins the
+/// name: a snapshot entry also in the world renders once, live. Public like
+/// `who` — admins already head that list. Sorted alphabetical by name.
+pub(crate) fn format_wizlist(
+    player_chars: &PlayerChars,
+    linkdead: &Query<&Linkdead>,
+    res: &SessionRes,
+    admins: &WizlistAdmins,
+) -> String {
+    let mut data = collect_who_data(player_chars, linkdead, res);
+    data.retain(|d| d.key.is_admin);
+    data.extend(offline_admin_rows(player_chars, res, admins));
+    data.sort_by(|a, b| who_order(&a.key, &b.key));
+    let rows: Vec<WhoRow> = data.into_iter().map(|d| d.row).collect();
+    format_wizlist_list(&rows)
+}
+
+/// One [`WhoData`] per snapshot admin absent from the world: the same columns
+/// as a live row (always `IMM`, registry abbrevs resolved the same way),
+/// marked `(offline)` at render. Borrows the snapshot, so the resource must
+/// outlive the returned rows — it does (the whole command answer).
+fn offline_admin_rows<'a>(
+    player_chars: &PlayerChars,
+    res: &SessionRes,
+    admins: &'a WizlistAdmins,
+) -> Vec<WhoData<'a>> {
+    admins
+        .0
+        .iter()
+        .filter(|stored| {
+            !player_chars
+                .iter()
+                .any(|(_, n, _, _, _, _)| n.0.eq_ignore_ascii_case(&stored.name))
+        })
+        .map(|stored| WhoData {
+            key: WhoKey {
+                is_admin: true,
+                level: stored.level,
+                connected_at: stored.created_at,
+                sort_name: stored.name.to_lowercase(),
+            },
+            row: WhoRow {
+                level: "IMM".to_string(),
+                gender: gender_char(stored.gender).to_string(),
+                race: res
+                    .races
+                    .get(&stored.race)
+                    .map(|r| r.abbrev.clone())
+                    .unwrap_or_default(),
+                class: res
+                    .classes
+                    .get(&stored.class)
+                    .map(|c| c.abbrev.clone())
+                    .unwrap_or_default(),
+                guild: String::new(),
+                name: stored.name.clone(),
+                title: stored.title.clone(),
+                restrings: &stored.restrings,
+                linkdead: false,
+                offline: true,
+            },
+        })
+        .collect()
+}
+
+/// One [`WhoData`] per online character: the ordering [`WhoKey`] plus the
+/// fully-computed [`WhoRow`]. Shared by [`format_who`] and [`format_wizlist`]
+/// so both lists build rows — and read restrings — exactly once, one way.
+fn collect_who_data<'a>(
+    player_chars: &'a PlayerChars<'_, '_>,
+    linkdead: &Query<&Linkdead>,
+    res: &SessionRes,
+) -> Vec<WhoData<'a>> {
+    player_chars
         .iter()
         .filter_map(|(e, n, _, actor, character, connected)| {
             let ch = character?;
@@ -104,15 +351,11 @@ pub(crate) fn format_who(
                     title: ch.title.clone(),
                     restrings: &ch.restrings,
                     linkdead: linkdead.get(e).is_ok(),
+                    offline: false,
                 },
             })
         })
-        .collect();
-
-    data.sort_by(|a, b| who_order(&a.key, &b.key));
-
-    let rows: Vec<WhoRow> = data.into_iter().map(|d| d.row).collect();
-    formatter::format_who_list(&rows)
+        .collect()
 }
 
 /// The `where` list: other characters in the actor's current area, by room.
@@ -159,6 +402,7 @@ mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
     use std::cmp::Ordering;
+    use std::collections::HashMap;
 
     fn at(secs: i64) -> DateTime<Utc> {
         Utc.timestamp_opt(secs, 0).unwrap()
@@ -234,5 +478,209 @@ mod tests {
         // Admins alpha (alice, zara), then level-10 by connect (bob<carol), then
         // the level-5 player.
         assert_eq!(order, vec!["alice", "zara", "bob", "carol", "dave"]);
+    }
+
+    // ── WHO column grid ──────────────────────────────────────────
+
+    /// A `WhoRow` builder with sensible defaults for terse tests. `restrings`
+    /// is threaded in by reference so the borrow outlives the row.
+    fn who_row<'a>(
+        level: &str,
+        gender: &str,
+        race: &str,
+        class: &str,
+        name: &str,
+        restrings: &'a HashMap<String, String>,
+    ) -> WhoRow<'a> {
+        WhoRow {
+            level: level.into(),
+            gender: gender.into(),
+            race: race.into(),
+            class: class.into(),
+            guild: String::new(),
+            name: name.into(),
+            title: None,
+            restrings,
+            linkdead: false,
+            offline: false,
+        }
+    }
+
+    #[test]
+    fn pad_left_pads_and_truncates() {
+        assert_eq!(pad_left("Hi", 5), "Hi   ");
+        assert_eq!(pad_left("Human", 5), "Human");
+        assert_eq!(pad_left("Halfling", 5), "Halfl");
+        assert_eq!(pad_left("", 3), "   ");
+    }
+
+    #[test]
+    fn pad_right_pads_and_truncates() {
+        assert_eq!(pad_right("5", 3), "  5");
+        assert_eq!(pad_right("100", 3), "100");
+        assert_eq!(pad_right("IMM", 3), "IMM");
+        assert_eq!(pad_right("1000", 3), "100");
+    }
+
+    #[test]
+    fn who_empty_list() {
+        assert_eq!(format_who_list(&[]), "No players online.\n");
+    }
+
+    #[test]
+    fn wizlist_empty_list() {
+        assert_eq!(format_wizlist_list(&[]), "No wizards found.\n");
+    }
+
+    #[test]
+    fn wizlist_marks_offline_rows() {
+        let rs = HashMap::new();
+        let mut row = who_row("IMM", "M", "Human", "War", "Gandalf", &rs);
+        row.offline = true;
+        let got = format_wizlist_list(&[row]);
+        assert!(got.starts_with("Wizards (1):\n"), "header:\n{got}");
+        assert!(got.contains("Gandalf (offline)\n"), "row:\n{got}");
+    }
+
+    /// Column geometry check: the stat block is always 21 chars, so the name
+    /// begins at index 22 on every non-`who`-override row. Keeps the hand-typed
+    /// exact-string expectations below honest.
+    #[test]
+    fn who_row_name_column_is_fixed() {
+        let rs = HashMap::new();
+        let row = who_row("5", "M", "Human", "War", "Alice", &rs);
+        let line = format_who_row(&row);
+        assert_eq!(&line[..22], "  5 M Human War       ");
+        assert_eq!(&line[22..], "Alice");
+    }
+
+    #[test]
+    fn who_row_numeric_level_and_grid() {
+        let rs = HashMap::new();
+        let row = who_row("5", "M", "Human", "War", "Alice", &rs);
+        // LLL(right) G RRRRR(left) CCC(left) GGGGG(left) Name
+        assert_eq!(format_who_row(&row), "  5 M Human War       Alice");
+    }
+
+    #[test]
+    fn who_row_imm_level_for_admin() {
+        let rs = HashMap::new();
+        let row = who_row("IMM", "F", "Elf", "Mag", "Boss", &rs);
+        assert_eq!(format_who_row(&row), "IMM F Elf   Mag       Boss");
+    }
+
+    #[test]
+    fn who_row_neutral_gender_and_title() {
+        let rs = HashMap::new();
+        let mut row = who_row("3", "N", "Dwarf", "Cle", "Nn", &rs);
+        row.title = Some("the Grey".into());
+        // Title may carry admin colour → trailing {x reset so it can't bleed.
+        assert_eq!(format_who_row(&row), "  3 N Dwarf Cle       Nn the Grey{x");
+    }
+
+    #[test]
+    fn who_row_legacy_blank_race_and_class() {
+        let rs = HashMap::new();
+        let row = who_row("1", "N", "", "", "Old", &rs);
+        // Blank race (5) + blank class (3) + blank guild (5) → all spaces.
+        assert_eq!(format_who_row(&row), "  1 N                 Old");
+    }
+
+    #[test]
+    fn who_row_race_abbrev_truncated_to_five() {
+        let rs = HashMap::new();
+        let row = who_row("1", "M", "TooLongRace", "Warrior", "X", &rs);
+        // race truncates to 5, class truncates to 3.
+        assert_eq!(format_who_row(&row), "  1 M TooLo War       X");
+    }
+
+    #[test]
+    fn who_row_linkdead_marker_appended() {
+        let rs = HashMap::new();
+        let mut row = who_row("2", "M", "Human", "War", "Gone", &rs);
+        row.linkdead = true;
+        assert!(format_who_row(&row).ends_with("Gone (Linkdead)"));
+    }
+
+    #[test]
+    fn who_restring_overrides_each_column() {
+        let mut rs = HashMap::new();
+        rs.insert("who_level".into(), "GOD".into());
+        rs.insert("who_gender".into(), "X".into());
+        rs.insert("who_race".into(), "Deity".into());
+        rs.insert("who_class".into(), "Sun".into());
+        rs.insert("who_guild".into(), "Elite".into());
+        let row = who_row("5", "M", "Human", "War", "Zeus", &rs);
+        // Each restrung column gets a trailing {x reset (padded first, then reset).
+        assert_eq!(format_who_row(&row), "GOD{x X{x Deity{x Sun{x Elite{x Zeus");
+    }
+
+    #[test]
+    fn who_restring_overrides_are_padded_and_truncated() {
+        let mut rs = HashMap::new();
+        rs.insert("who_race".into(), "VeryLongRace".into());
+        rs.insert("who_gender".into(), "MF".into());
+        let row = who_row("5", "M", "Human", "War", "Q", &rs);
+        // race truncated to 5, gender truncated to 1, grid preserved; the two
+        // restrung columns get {x, the engine defaults don't.
+        assert_eq!(format_who_row(&row), "  5 M{x VeryL{x War       Q");
+    }
+
+    #[test]
+    fn who_coloured_restring_keeps_column_alignment() {
+        // A coloured override occupies the same *visible* width as the plain
+        // default (markup is zero-width), so the grid does not shift.
+        let plain_rs = HashMap::new();
+        let plain = format_who_row(&who_row("5", "M", "Human", "War", "Q", &plain_rs));
+        let mut rs = HashMap::new();
+        rs.insert("who_class".into(), "{RWiz".into()); // visible "Wiz" (3) == WHO_CLASS_W
+        let coloured = format_who_row(&who_row("5", "M", "Human", "War", "Q", &rs));
+        assert_eq!(
+            grim_color::visible_width(&coloured),
+            grim_color::visible_width(&plain),
+            "a coloured override must not shift the visible grid"
+        );
+        assert!(
+            coloured.contains("{RWiz{x"),
+            "colour preserved with a trailing reset: {coloured:?}"
+        );
+    }
+
+    #[test]
+    fn who_coloured_restring_truncates_without_splitting_a_token() {
+        // An over-long coloured override trims to the column's visible width and
+        // never cuts the `{R` token in half.
+        let mut rs = HashMap::new();
+        rs.insert("who_race".into(), "{RVeryLongRace".into()); // visible width 5 cap
+        let row = who_row("5", "M", "Human", "War", "Q", &rs);
+        let line = format_who_row(&row);
+        assert!(
+            line.contains("{RVeryL{x"),
+            "kept {{R + 5 visible chars: {line:?}"
+        );
+        assert!(!line.contains("{RVeryLo"), "must stop at 5 visible chars");
+    }
+
+    #[test]
+    fn who_full_block_override_rendered_verbatim() {
+        let mut rs = HashMap::new();
+        rs.insert("who".into(), "[ the Almighty ]".into());
+        let mut row = who_row("5", "M", "Human", "War", "God", &rs);
+        row.title = Some("of Olympus".into());
+        // Whole stat block replaced verbatim (+reset), then ` Name Title` (+reset).
+        assert_eq!(format_who_row(&row), "[ the Almighty ]{x God of Olympus{x");
+    }
+
+    #[test]
+    fn who_list_headers_and_joins_rows() {
+        let rs = HashMap::new();
+        let rows = vec![
+            who_row("5", "M", "Human", "War", "Alice", &rs),
+            who_row("3", "F", "Elf", "Mag", "Bob", &rs),
+        ];
+        let got = format_who_list(&rows);
+        assert!(got.starts_with("Players online (2):\n"));
+        assert!(got.contains("  5 M Human War       Alice\n"));
+        assert!(got.contains("  3 F Elf   Mag       Bob\n"));
     }
 }

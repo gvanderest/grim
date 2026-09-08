@@ -15,7 +15,7 @@ use crate::formatter;
 use crate::params::{PlayerChars, RoomResolver, SessionRes};
 use crate::parser;
 use crate::sockets::{format_sockets, ClientSnapshot};
-use crate::who::{format_areas, format_where, format_who};
+use crate::who::{format_areas, format_where, format_who, format_wizlist};
 
 /// `equipment` stays a dummy (no worn-items system yet). Factored out of
 /// [`handle_ingame`] to hold that dispatch table under the line budget.
@@ -23,6 +23,25 @@ fn answer_equipment(conn: Entity, outputs: &mut MessageWriter<ConnectionOutput>)
     outputs.write(ConnectionOutput {
         echo: None,
         ..ConnectionOutput::new(conn, tr!("equipment.empty"))
+    });
+}
+
+/// Answer the `wizlist` from live characters plus the startup admin snapshot.
+/// Factored out of [`handle_ingame`] to hold that dispatch table under the
+/// line budget (same reason as [`answer_equipment`]).
+fn answer_wizlist(
+    conn: Entity,
+    player_chars: &PlayerChars,
+    linkdead: &Query<&Linkdead>,
+    res: &SessionRes,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+) {
+    outputs.write(ConnectionOutput {
+        echo: None,
+        ..ConnectionOutput::new(
+            conn,
+            format_wizlist(player_chars, linkdead, res, &res.wizlist),
+        )
     });
 }
 
@@ -87,6 +106,9 @@ pub(crate) fn handle_ingame(
                     echo: None,
                     ..ConnectionOutput::new(conn, format_who(player_chars, linkdead, res))
                 });
+            }
+            Command::Wizlist => {
+                answer_wizlist(conn, player_chars, linkdead, res, outputs);
             }
             Command::Where => {
                 outputs.write(ConnectionOutput {

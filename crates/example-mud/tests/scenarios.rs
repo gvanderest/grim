@@ -555,6 +555,35 @@ fn who_list_is_ordered_and_formatted_mud_style() {
 }
 
 #[test]
+fn wizlist_shows_online_and_offline_admins_only() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+    mud.edit_character("Alice", |c| {
+        c.roles.push(Role::Admin);
+    });
+
+    // Online: only the admin appears; the ordinary player is excluded.
+    mud.send(bob, "wizlist")
+        .assert_contains("Wizards (1):")
+        .assert_contains("Alice")
+        .assert_excludes("Bob");
+
+    // Persist both, then reboot: nobody is in the world, but the startup
+    // snapshot reloads Alice from disk — marked offline — and Bob (no admin
+    // flag on disk) stays excluded.
+    mud.disconnect(alice);
+    mud.disconnect(bob);
+    mud.reboot();
+    let carol = create_char(&mut mud, "carol@example.com", "Carol");
+    mud.send(carol, "wizlist")
+        .assert_contains("Wizards (1):")
+        .assert_contains("Alice (offline)")
+        .assert_excludes("Bob")
+        .assert_excludes("Carol");
+}
+
+#[test]
 fn password_must_be_valid() {
     let mut mud = Mud::new();
     let (s, _) = mud.connect();
