@@ -19,7 +19,9 @@ use bevy::prelude::*;
 use grim::components::Name as GrimName;
 use grim::plugins::PersistenceConfig;
 use grim::GrimHeadlessPlugins;
-use grim::{Actor, Character, StoredCharacter};
+use grim::{
+    compile, Actor, Character, CompiledTrigger, ScriptTriggers, StoredCharacter, TriggerKind,
+};
 use grim::{
     Connection, ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,
 };
@@ -289,6 +291,28 @@ impl Mud {
             *actor = new_actor;
             *ch = new_ch;
         }
+    }
+
+    /// Replace a mob's script triggers by mob name. Test-only determinism:
+    /// the seed gates greetings on `rand()`, so scenarios pin unconditional
+    /// scripts and keep asserting on the same speech text.
+    pub fn set_mob_triggers(&mut self, name: &str, scripts: &[(TriggerKind, &str)]) {
+        let mut q = self
+            .app
+            .world_mut()
+            .query::<(&GrimName, &mut ScriptTriggers)>();
+        let world = self.app.world_mut();
+        let (_, mut triggers) = q
+            .iter_mut(world)
+            .find(|(n, _)| n.0 == name)
+            .expect("scripted mob present");
+        triggers.0 = scripts
+            .iter()
+            .map(|(on, src)| CompiledTrigger {
+                on: *on,
+                bytecode: compile(src).expect("valid script"),
+            })
+            .collect();
     }
 
     /// Rewrite a logged-out character's on-disk JSON to look like it was created

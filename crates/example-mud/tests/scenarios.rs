@@ -8,6 +8,7 @@
 mod harness;
 use grim::components::Gender;
 use grim::Role;
+use grim::TriggerKind;
 use harness::{Mud, Session};
 
 /// A password that satisfies validation (short ones are rejected — see
@@ -152,6 +153,10 @@ fn movement_walks_between_seeded_rooms() {
 #[test]
 fn grimmok_greets_after_the_room_loads() {
     let mut mud = Mud::new();
+    mud.set_mob_triggers(
+        "Grimmok Ironhand",
+        &[(TriggerKind::Enter, "self.say(\"Hello there adventurer.\")")],
+    );
     let alice = create_char(&mut mud, "alice@example.com", "Alice");
 
     // Leave Grimmok's room, then come back: the enter trigger is post-state,
@@ -167,6 +172,10 @@ fn grimmok_greets_after_the_room_loads() {
 #[test]
 fn grimmok_farewell_precedes_departure() {
     let mut mud = Mud::new();
+    mud.set_mob_triggers(
+        "Grimmok Ironhand",
+        &[(TriggerKind::AttemptLeave, "self.say(\"See you later.\")")],
+    );
     let alice = create_char(&mut mud, "alice@example.com", "Alice");
     let bob = create_char(&mut mud, "bob@example.com", "Bob");
 
