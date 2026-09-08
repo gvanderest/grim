@@ -18,8 +18,10 @@ the repo workflow (AGENTS.md): push, PR with design link + accepted-P0 reasons
    --show-current`, `gh auth status`. On the wrong branch, switch to the
    packet branch from `grim-code`; branch fresh from `main` only when no
    packet exists.
-2. Assemble the packet: `git diff main...HEAD` (or `git diff` if uncommitted),
-   the originating `.planning/tmp/<slug>/DESIGN.md` or the issue `#N` that
+2. Assemble the packet: `git diff main...HEAD` plus `git diff HEAD` (staged and
+   unstaged tracked changes) and the contents of every intended untracked file
+   — bare `git diff` omits staged changes and untracked files — plus the
+   originating `.planning/tmp/<slug>/DESIGN.md` or the issue `#N` that
    ratified it, and the handoff's verification evidence — spot-check one
    evidence claim yourself before the reviewer grades.
 3. Run the adversarial round below. Fix-or-accept every finding.
