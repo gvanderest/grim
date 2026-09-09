@@ -1,20 +1,17 @@
-//! Ghost-crate guards.
+//! Ghost-crate guard: no `path = …` dependency may point outside the workspace.
 //!
-//! Two traps `cargo` will not catch for us:
+//! Such a dependency compiles and ships, but `cargo clippy/test --workspace`
+//! never selects the target — its tests never run, its lines never count.
+//! (`members = ["crates/*"]` auto-includes in-workspace path deps, so only
+//! outside ones escape. Membership itself and README presence ride on the
+//! glob plus review, per the maintainer's call on #114.)
 //!
-//! * A `path = …` dependency pointing **outside** the workspace compiles and
-//!   ships, but `cargo clippy/test --workspace` never selects the target —
-//!   its tests never run, its lines never count. (`members = ["crates/*"]`
-//!   auto-includes in-workspace path deps, so only outside ones escape.)
-//! * A `crates/*` dir without a `README.md` breaches the per-crate map rule
-//!   (AGENTS.md 7a) silently.
-//!
-//! Both fail here, naming the crate or edge. See issue #114 and
+//! Failure names the `from -> to (path)` edge. See issue #114 and
 //! `.planning/tmp/issue-114-ghost-guard/DESIGN.md`.
 //!
 //! Why a custom test and not `cargo-deny`: same reason as
 //! `dep_direction.rs` — `cargo-deny` cannot express intra-workspace edges.
-//! Both tests read `cargo metadata` directly via the `cargo_metadata` crate.
+//! This test reads `cargo metadata` directly via the `cargo_metadata` crate.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -69,38 +66,5 @@ fn every_path_dep_resolves_inside_the_workspace() {
         outside.is_empty(),
         "path dependencies resolving outside the workspace:\n{}",
         outside.join("\n")
-    );
-}
-
-/// Every `crates/*` dir holding a `Cargo.toml` must hold a `README.md`.
-/// Failure names the dir.
-#[test]
-fn every_crate_dir_has_a_readme() {
-    let metadata = metadata();
-    let crates_dir = metadata.workspace_root.join("crates");
-    let entries =
-        std::fs::read_dir(crates_dir.as_std_path()).expect("workspace crates dir unreadable");
-
-    let mut missing = Vec::new();
-    for entry in entries {
-        let path = entry.expect("crates dir entry unreadable").path();
-        if !path.is_dir() || !path.join("Cargo.toml").is_file() {
-            continue;
-        }
-        if !path.join("README.md").is_file() {
-            missing.push(
-                path.file_name()
-                    .expect("dir has a name")
-                    .to_string_lossy()
-                    .into_owned(),
-            );
-        }
-    }
-    missing.sort();
-
-    assert!(
-        missing.is_empty(),
-        "crates without README.md:\n{}",
-        missing.join("\n")
     );
 }
