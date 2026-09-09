@@ -22,6 +22,8 @@ UNIT_SRC="$APP_DIR/bin/grim.service"          # uploaded by CI alongside the bin
 UNIT_DST=/etc/systemd/system/grim.service
 AREAS_STAGED="$APP_DIR/bin/areas.staged"      # committed world content from CI
 AREAS_DST="$APP_DIR/data/areas"               # WorkingDirectory=/opt/grim, seed reads data/areas
+SOCIALS_STAGED="$APP_DIR/bin/socials.staged"  # committed social overrides from CI
+SOCIALS_DST="$APP_DIR/data/socials"           # WorkingDirectory=/opt/grim, socials load data/socials
 
 log() { echo "[deploy] $*"; }
 
@@ -63,6 +65,28 @@ if [[ -d "$AREAS_STAGED" ]]; then
     rm -rf "$AREAS_STAGED"
 else
     log "no staged area blueprints — leaving $AREAS_DST as-is"
+fi
+
+# Sync committed social overrides into data/socials BEFORE the roll: same
+# full-mirror shape as the area blueprints above (wipe + repopulate, so a
+# removed social doesn't linger). Built-ins keep the server correct when the
+# dir is absent; overrides need the sync. A failed copy leaves the live
+# socials untouched and fails the deploy, like areas.
+if [[ -d "$SOCIALS_STAGED" ]]; then
+    log "replacing social overrides in $SOCIALS_DST"
+    SOCIALS_TMP="${SOCIALS_DST}.new.$$"
+    rm -rf "$SOCIALS_TMP"
+    mkdir -p "$SOCIALS_TMP"
+    if ! cp "$SOCIALS_STAGED"/*.json "$SOCIALS_TMP"/; then
+        log "ERROR: failed to copy staged social overrides — leaving $SOCIALS_DST untouched"
+        rm -rf "$SOCIALS_TMP" "$SOCIALS_STAGED"
+        exit 1
+    fi
+    rm -rf "$SOCIALS_DST"
+    mv "$SOCIALS_TMP" "$SOCIALS_DST"
+    rm -rf "$SOCIALS_STAGED"
+else
+    log "no staged social overrides — leaving $SOCIALS_DST as-is"
 fi
 
 # Sync the systemd unit. Render `User=` to the deploy user so signalling the
