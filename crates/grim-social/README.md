@@ -41,7 +41,7 @@ file reskins two wordings and inherits the other five:
 ```json
 {
   "solo": { "actor": "You grin widely.\n", "room": "%{actor} grins widely.\n" },
-  "self_target": { "actor": "You grin to yourself.\n", "room": "%{actor} grins to themselves.\n" },
+  "self_target": { "actor": "You grin to yourself.\n", "room": "%{actor} grins to %{actor.self}.\n" },
   "with_target": {
     "actor": "You grin at %{target}.\n",
     "target": "%{actor} grins at you.\n",
@@ -50,9 +50,20 @@ file reskins two wordings and inherits the other five:
 }
 ```
 
-Only `%{actor}` / `%{target}` substitute (values are colour-escaped like every
-`tr` value). Copying a file under a new name adds a verb; a bad file is logged
-and skipped. Catalog keys `social.<name>.<case>.<audience>` hold the defaults.
+Only `%{actor}` / `%{target}` (names) plus per-party pronouns substitute
+(values are colour-escaped like every `tr` value). Templates are authored
+male-assumed and translated off each party's `Actor` gender:
+
+| Var | Male | Female | Neutral |
+|---|---|---|---|
+| `%{P.he}` | he | she | they |
+| `%{P.him}` | him | her | them |
+| `%{P.his}` | his | her | their |
+| `%{P.self}` | himself | herself | themselves |
+
+with P in `actor`/`target` (e.g. `%{actor.self}`, `%{target.him}`). Copying a
+file under a new name adds a verb; a bad file is logged and skipped. Catalog
+keys `social.<name>.<case>.<audience>` hold the defaults.
 
 ## Notes
 - Names register **after** the static commands and are deprioritized, so

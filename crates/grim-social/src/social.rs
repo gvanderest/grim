@@ -65,12 +65,12 @@ pub struct SocialFile {
 /// A social's runtime definition: its name plus any file-held overrides.
 /// A `None` override renders the catalog default (`social.<name>.<case>.
 /// <audience>`); a `Some` renders the file text through the same substitution
-/// and escaping.
 #[derive(Debug, Clone)]
 pub struct SocialDef {
     /// Lowercase command name (`grin`).
     pub name: String,
-    overrides: SocialFile,
+    /// File-held overrides (the future in-game editor fills these).
+    pub overrides: SocialFile,
 }
 
 impl SocialDef {

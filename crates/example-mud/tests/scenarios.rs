@@ -446,10 +446,11 @@ fn socials_render_per_audience_from_builtins() {
         .assert_contains("You grin at Bob.");
     mud.recv(bob).assert_contains("Alice grins at you.");
 
-    // Self: the self case, not the targeted one.
+    // Self: the self case, not the targeted one. Alice was created Male,
+    // so the room sees "himself".
     mud.send(alice, "grin self")
         .assert_contains("You grin to yourself.");
-    mud.recv(bob).assert_contains("Alice grins to themselves.");
+    mud.recv(bob).assert_contains("Alice grins to himself.");
 
     // Unknown target explains itself to the actor only.
     mud.send(alice, "grin xyzzy")

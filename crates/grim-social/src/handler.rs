@@ -4,7 +4,8 @@
 //! uses; the future `act()` extraction (#58) absorbs this fan-out.
 
 use bevy::prelude::*;
-use grim_actor::InRoom;
+use grim_actor::{Actor, InRoom};
+use grim_core::character::Gender;
 use grim_core::components::Name;
 use grim_core::events::{Command, EngineCommand, InfoMessage};
 use grim_target::rank_match;
@@ -21,12 +22,14 @@ pub struct SocialPerformed {
     pub target: Option<Entity>,
 }
 
+#[allow(clippy::too_many_arguments)] // reason: Bevy system params; bundling would hide the queries
 pub(crate) fn handle_social(
     mut engine: MessageReader<EngineCommand>,
     registry: Res<SocialRegistry>,
     inroom: Query<&InRoom>,
     occupants: Query<(Entity, &InRoom, &Name)>,
     names: Query<&Name>,
+    beings: Query<&Actor>,
     mut info: MessageWriter<InfoMessage>,
     mut performed: MessageWriter<SocialPerformed>,
 ) {
@@ -49,10 +52,11 @@ pub(crate) fn handle_social(
         let Ok(actor_name) = names.get(actor).map(|n| n.0.clone()) else {
             continue;
         };
+        let actor_gender = gender_of(&beings, actor);
         let here = roommates(&occupants, actor_room);
         let word = target.as_deref().and_then(|t| t.split_whitespace().next());
         let Some(word) = word else {
-            emit_solo(&mut info, def, actor, &actor_name, &here);
+            emit_solo(&mut info, def, actor, &actor_name, actor_gender, &here);
             performed.write(SocialPerformed {
                 actor,
                 name: name.clone(),
@@ -69,7 +73,7 @@ pub(crate) fn handle_social(
             continue;
         };
         if recipient == actor {
-            emit_self(&mut info, def, actor, &actor_name, &here);
+            emit_self(&mut info, def, actor, &actor_name, actor_gender, &here);
         } else {
             let target_name = names
                 .get(recipient)
@@ -80,8 +84,10 @@ pub(crate) fn handle_social(
                 def,
                 actor,
                 &actor_name,
+                actor_gender,
                 recipient,
                 &target_name,
+                gender_of(&beings, recipient),
                 &here,
             );
         }
@@ -123,12 +129,38 @@ fn emit_solo(
     def: &crate::SocialDef,
     actor: Entity,
     actor_name: &str,
+    actor_gender: Gender,
     here: &[(Entity, String)],
 ) {
-    send(info, actor, &render(def, "solo", "actor", actor_name, ""));
+    let target_gender = Gender::default();
+    send(
+        info,
+        actor,
+        &render(
+            def,
+            "solo",
+            "actor",
+            actor_name,
+            actor_gender,
+            "",
+            target_gender,
+        ),
+    );
     for (entity, _) in here {
         if *entity != actor {
-            send(info, *entity, &render(def, "solo", "room", actor_name, ""));
+            send(
+                info,
+                *entity,
+                &render(
+                    def,
+                    "solo",
+                    "room",
+                    actor_name,
+                    actor_gender,
+                    "",
+                    target_gender,
+                ),
+            );
         }
     }
 }
@@ -139,51 +171,163 @@ fn emit_self(
     def: &crate::SocialDef,
     actor: Entity,
     actor_name: &str,
+    actor_gender: Gender,
     here: &[(Entity, String)],
 ) {
-    send(info, actor, &render(def, "self", "actor", actor_name, ""));
+    let target_gender = Gender::default();
+    send(
+        info,
+        actor,
+        &render(
+            def,
+            "self",
+            "actor",
+            actor_name,
+            actor_gender,
+            "",
+            target_gender,
+        ),
+    );
     for (entity, _) in here {
         if *entity != actor {
-            send(info, *entity, &render(def, "self", "room", actor_name, ""));
+            send(
+                info,
+                *entity,
+                &render(
+                    def,
+                    "self",
+                    "room",
+                    actor_name,
+                    actor_gender,
+                    "",
+                    target_gender,
+                ),
+            );
         }
     }
 }
 
 /// Targeted at another: actor, target, and room wordings.
+#[allow(clippy::too_many_arguments)] // reason: per-audience render needs both parties' names + genders
 fn emit_other(
     info: &mut MessageWriter<InfoMessage>,
     def: &crate::SocialDef,
     actor: Entity,
     actor_name: &str,
+    actor_gender: Gender,
     recipient: Entity,
     target_name: &str,
+    target_gender: Gender,
     here: &[(Entity, String)],
 ) {
     send(
         info,
         actor,
-        &render(def, "other", "actor", actor_name, target_name),
+        &render(
+            def,
+            "other",
+            "actor",
+            actor_name,
+            actor_gender,
+            target_name,
+            target_gender,
+        ),
     );
     send(
         info,
         recipient,
-        &render(def, "other", "target", actor_name, target_name),
+        &render(
+            def,
+            "other",
+            "target",
+            actor_name,
+            actor_gender,
+            target_name,
+            target_gender,
+        ),
     );
     for (entity, _) in here {
         if *entity != actor && *entity != recipient {
             send(
                 info,
                 *entity,
-                &render(def, "other", "room", actor_name, target_name),
+                &render(
+                    def,
+                    "other",
+                    "room",
+                    actor_name,
+                    actor_gender,
+                    target_name,
+                    target_gender,
+                ),
             );
         }
     }
 }
 
-fn render(def: &crate::SocialDef, case: &str, audience: &str, actor: &str, target: &str) -> String {
+/// Four pronoun forms for one party, read off their gender. Templates are
+/// authored male-assumed (`%{actor.him}`) and translated here.
+struct Pronouns {
+    subj: &'static str,
+    obj: &'static str,
+    poss: &'static str,
+    refl: &'static str,
+}
+
+fn pronouns(gender: Gender) -> Pronouns {
+    match gender {
+        Gender::Male => Pronouns {
+            subj: "he",
+            obj: "him",
+            poss: "his",
+            refl: "himself",
+        },
+        Gender::Female => Pronouns {
+            subj: "she",
+            obj: "her",
+            poss: "her",
+            refl: "herself",
+        },
+        Gender::Neutral => Pronouns {
+            subj: "they",
+            obj: "them",
+            poss: "their",
+            refl: "themselves",
+        },
+    }
+}
+
+/// A being's gender, or Neutral when it has no `Actor` (fail soft — a missing
+/// being component must never break rendering).
+fn gender_of(beings: &Query<&Actor>, entity: Entity) -> Gender {
+    beings.get(entity).map(|a| a.gender).unwrap_or_default()
+}
+
+fn render(
+    def: &crate::SocialDef,
+    case: &str,
+    audience: &str,
+    actor: &str,
+    actor_gender: Gender,
+    target: &str,
+    target_gender: Gender,
+) -> String {
+    let a = pronouns(actor_gender);
+    let t = pronouns(target_gender);
     grim_text::render(
         &def.template(case, audience),
-        &[("actor", actor), ("target", target)],
+        &[
+            ("actor", actor),
+            ("target", target),
+            ("actor.he", a.subj),
+            ("actor.him", a.obj),
+            ("actor.his", a.poss),
+            ("actor.self", a.refl),
+            ("target.he", t.subj),
+            ("target.him", t.obj),
+            ("target.his", t.poss),
+            ("target.self", t.refl),
+        ],
     )
 }
 
@@ -227,14 +371,14 @@ mod tests {
         }
     }
 
-    fn spawn_being(app: &mut App, name: &str, room: Entity) -> Entity {
+    fn spawn_being(app: &mut App, name: &str, room: Entity, gender: Gender) -> Entity {
         app.world_mut()
             .spawn((
                 Name(name.into()),
                 Actor {
                     race: "human".into(),
                     level: 1,
-                    gender: Gender::Neutral,
+                    gender,
                 },
                 character(),
                 Player {
@@ -253,10 +397,10 @@ mod tests {
         app.world_mut()
             .resource_mut::<SocialRegistry>()
             .insert(crate::SocialDef::new("grin"));
-        let alice = spawn_being(&mut app, "Alice", room);
-        let bob = spawn_being(&mut app, "Bob", room);
-        let carol = spawn_being(&mut app, "Carol", room);
-        let _dave = spawn_being(&mut app, "Dave", elsewhere);
+        let alice = spawn_being(&mut app, "Alice", room, Gender::Neutral);
+        let bob = spawn_being(&mut app, "Bob", room, Gender::Male);
+        let carol = spawn_being(&mut app, "Carol", room, Gender::Female);
+        let _dave = spawn_being(&mut app, "Dave", elsewhere, Gender::Neutral);
         (app, alice, bob, carol)
     }
 
@@ -313,6 +457,56 @@ mod tests {
         assert_eq!(by_target(&app, bob), vec!["Alice grins to themselves.\n"]);
     }
 
+    #[test]
+    fn pronouns_cover_all_genders() {
+        assert_eq!(pronouns(Gender::Male).refl, "himself");
+        assert_eq!(pronouns(Gender::Female).refl, "herself");
+        assert_eq!(pronouns(Gender::Neutral).refl, "themselves");
+        let f = pronouns(Gender::Female);
+        assert_eq!((f.subj, f.obj, f.poss), ("she", "her", "her"));
+        let m = pronouns(Gender::Male);
+        assert_eq!((m.subj, m.obj, m.poss), ("he", "him", "his"));
+    }
+
+    #[test]
+    fn self_room_uses_actor_gender() {
+        let (mut app, _alice, bob, carol) = setup();
+        // Bob is male, Carol female; the room wording follows each actor.
+        emit(&mut app, bob, "grin", Some("self"));
+        emit(&mut app, carol, "grin", Some("self"));
+        assert!(by_target(&app, _alice).contains(&"Bob grins to himself.\n".to_string()));
+        assert!(by_target(&app, _alice).contains(&"Carol grins to herself.\n".to_string()));
+    }
+
+    #[test]
+    fn file_template_target_pronouns_translate() {
+        let (mut app, alice, bob, carol) = setup();
+        app.world_mut()
+            .resource_mut::<SocialRegistry>()
+            .insert(crate::SocialDef {
+                name: "prod".into(),
+                overrides: crate::social::SocialFile {
+                    with_target: crate::social::OtherCase {
+                        room: Some("%{actor} prods %{target.him}.\n".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            });
+        // Bob is male: the bystander sees "him"; retarget Carol for "her".
+        emit(&mut app, alice, "prod", Some("bob"));
+        emit(&mut app, alice, "prod", Some("carol"));
+        let to_carol = by_target(&app, carol);
+        assert!(
+            to_carol.contains(&"Alice prods him.\n".to_string()),
+            "{to_carol:?}"
+        );
+        let to_bob = by_target(&app, bob);
+        assert!(
+            to_bob.contains(&"Alice prods her.\n".to_string()),
+            "{to_bob:?}"
+        );
+    }
     #[test]
     fn own_name_resolves_to_self_case() {
         let (mut app, alice, _bob, _carol) = setup();
