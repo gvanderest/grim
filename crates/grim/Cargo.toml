@@ -19,4 +19,5 @@ grim-channel = { path = "../grim-channel" }
 grim-object = { path = "../grim-object" }
 grim-persistence = { path = "../grim-persistence" }
 grim-script = { path = "../grim-script" }
+grim-social = { path = "../grim-social" }
 bevy = { workspace = true, default-features = false }

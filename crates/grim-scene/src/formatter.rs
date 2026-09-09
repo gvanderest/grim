@@ -183,6 +183,7 @@ pub fn format_commands() -> String {
         "ooc <text>          — Out-of-character global chat",
         "tell <who> <text>   — Private message a player (alias: whisper)",
         "reply <text>        — Reply to the last player who whispered you",
+        "grin / smile / …     — Expressive socials: `<name>` alone, `<name> <who>`, or `<name> self`",
         "title [text]        — Set your WHO title (no text clears it)",
         "north / n           — Move north",
         "east / e            — Move east",
