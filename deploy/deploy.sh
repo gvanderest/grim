@@ -77,10 +77,19 @@ if [[ -d "$SOCIALS_STAGED" ]]; then
     SOCIALS_TMP="${SOCIALS_DST}.new.$$"
     rm -rf "$SOCIALS_TMP"
     mkdir -p "$SOCIALS_TMP"
-    if ! cp "$SOCIALS_STAGED"/*.json "$SOCIALS_TMP"/; then
-        log "ERROR: failed to copy staged social overrides — leaving $SOCIALS_DST untouched"
-        rm -rf "$SOCIALS_TMP" "$SOCIALS_STAGED"
-        exit 1
+    # No nullglob: an empty staged dir leaves the glob unexpanded and `cp`
+    # fails. Removing the last override must wipe (→ built-ins), not abort.
+    shopt -s nullglob
+    social_files=("$SOCIALS_STAGED"/*.json)
+    shopt -u nullglob
+    if ((${#social_files[@]})); then
+        if ! cp "${social_files[@]}" "$SOCIALS_TMP"/; then
+            log "ERROR: failed to copy staged social overrides — leaving $SOCIALS_DST untouched"
+            rm -rf "$SOCIALS_TMP" "$SOCIALS_STAGED"
+            exit 1
+        fi
+    else
+        log "no staged social overrides — built-ins apply"
     fi
     rm -rf "$SOCIALS_DST"
     mv "$SOCIALS_TMP" "$SOCIALS_DST"
