@@ -24,6 +24,7 @@ deferred (ARCHITECTURE.md §8). See CONTEXT.md.
 | `grim-color` | Colour markup, ANSI rendering, palette, `escape_codes`. No Bevy, no serde |
 | `grim-text` | Text catalog: `tr`/`tr!`, inlined defaults. Depends only on `grim-color`. No Bevy |
 | `grim-command` | `CommandRegistry<C>` — generic, resource-ready. Exact-then-prefix resolution, `prioritize`/`deprioritize`, `contested_prefixes`. Bevy-only |
+| `grim-command-events` | Semantic intent events (`MoveIntent`, `LookIntent`, … — one `Message` per player intent). Plain library, no plugin |
 | `grim-networking` | `Connection` component + wire events (`ConnectionInput`/`Output`, `ConnectionEstablished`/`Closed`, `DisconnectRequest`). Bevy-only |
 | `grim-networking-telnet` | `TelnetPlugin`: TCP server, IAC negotiation, tokio↔Bevy bridge, ANSI render |
 | `grim-core` | Game events, components, validation; re-exports `grim-color` |
