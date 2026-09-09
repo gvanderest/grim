@@ -52,6 +52,13 @@ fn load_and_register(
                 })
             });
             reg.deprioritize(name);
+            reg.set_section(name, "social");
+        }
+        // The `socials` lister itself stays in the default section (so
+        // `commands` advertises it) but deprioritized like the verbs.
+        if !reg.contains("socials") {
+            reg.register("socials", |_| Some(Command::SocialList));
+            reg.deprioritize("socials");
         }
         for contest in reg.contested_prefixes() {
             let involves_social = names
@@ -122,6 +129,9 @@ mod tests {
         );
         // Deprioritized: the static keeps its prefix.
         assert!(matches!(reg.resolve("s", "hi"), Some(Command::Say { .. })));
+        // Socials are section-tagged; the `socials` lister resolves too.
+        assert!(reg.names_in_section("social").contains(&"grin".to_string()));
+        assert_eq!(reg.resolve("socials", ""), Some(Command::SocialList));
         // Registry resource is populated for the handler.
         assert!(app
             .world()

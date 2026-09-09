@@ -27,6 +27,9 @@ pub type Factory<C> = Box<dyn Fn(&str) -> Option<C> + Send + Sync>;
 struct Entry<C> {
     name: String,
     factory: Factory<C>,
+    /// Listing section (`commands` vs `socials`). `None` = the default
+    /// section. Data-driven sets tag their names so listings can split.
+    section: Option<String>,
 }
 
 impl<C: Send + Sync + 'static> Default for CommandRegistry<C> {
@@ -60,6 +63,7 @@ impl<C: Send + Sync + 'static> CommandRegistry<C> {
         self.entries.push(Entry {
             name: name.to_ascii_lowercase(),
             factory: Box::new(factory),
+            section: None,
         });
         self.priority.insert(0, idx);
     }
@@ -70,6 +74,28 @@ impl<C: Send + Sync + 'static> CommandRegistry<C> {
     pub fn contains(&self, name: &str) -> bool {
         let name = name.to_ascii_lowercase();
         self.entries.iter().any(|e| e.name == name)
+    }
+
+    /// Tag `name` into a listing section (case-insensitive, no-op when
+    /// unregistered). Sections split listings: `commands` shows the default
+    /// section, `socials` shows the `"social"` section.
+    pub fn set_section(&mut self, name: &str, section: &str) {
+        let name = name.to_ascii_lowercase();
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.name == name) {
+            entry.section = Some(section.to_string());
+        }
+    }
+
+    /// Every registered name in `section`, sorted.
+    pub fn names_in_section(&self, section: &str) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|e| e.section.as_deref() == Some(section))
+            .map(|e| e.name.clone())
+            .collect();
+        names.sort();
+        names
     }
 
     /// Resolve a command `word` (case-insensitive) to a command, passing `rest`
@@ -95,6 +121,14 @@ impl<C: Send + Sync + 'static> CommandRegistry<C> {
             .copied()
             .find(|&i| self.entries[i].name.starts_with(&word))?;
         (self.entries[idx].factory)(rest)
+    }
+
+    /// Every registered name, sorted, for listings (`commands`). Includes
+    /// data-driven names registered at Startup.
+    pub fn names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.entries.iter().map(|e| e.name.clone()).collect();
+        names.sort();
+        names
     }
 
     /// Move a command to the front of the priority ordering (highest). No-op if
@@ -216,6 +250,26 @@ mod resolution_tests {
         assert!(r.contains("say"));
         assert!(r.contains("SAY"));
         assert!(!r.contains("yell"));
+    }
+
+    #[test]
+    fn sections_split_listings() {
+        let mut r = CommandRegistry::new();
+        r.register("say", |_| Some(Cmd::North));
+        r.register("grin", |_| Some(Cmd::North));
+        r.set_section("grin", "social");
+        r.set_section("missing", "social");
+        assert_eq!(r.names_in_section("social"), vec!["grin"]);
+        assert_eq!(r.names(), vec!["grin", "say"]);
+    }
+
+    #[test]
+    fn names_lists_sorted_unique_entries() {
+        let mut r = CommandRegistry::new();
+        r.register("say", |_| Some(Cmd::North));
+        r.register("grin", |_| Some(Cmd::North));
+        r.register("look", look);
+        assert_eq!(r.names(), vec!["grin", "look", "say"]);
     }
 }
 

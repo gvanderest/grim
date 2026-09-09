@@ -164,50 +164,12 @@ pub fn format_sockets_list(rows: &[SocketRow]) -> String {
     out
 }
 
-#[allow(dead_code)]
-/// Format the command list.
-pub fn format_commands() -> String {
-    // Mostly static English, except the catalog-owned `desc` usage below.
-    let mut cmds: Vec<String> = [
-        "look [target]       — Look at the room or a specific target",
-        "l [target]          — Shortcut for look",
-        "finger <name>       — Show a character's sheet, online or off",
-        "inventory / inv       — List what you are carrying",
-        "equipment           — List what you are wearing",
-        "get <keyword>        — Pick up an object in the room",
-        "drop <keyword>       — Drop a carried object",
-        "give <item> <who>    — Give a carried object to someone here",
-        "steal <item> <who>   — Take an object from someone's pack here",
-        "say <text>          — Speak to everyone in the room",
-        "yell <text>         — Shout to everyone in the area",
-        "ooc <text>          — Out-of-character global chat",
-        "tell <who> <text>   — Private message a player (alias: whisper)",
-        "reply <text>        — Reply to the last player who whispered you",
-        "grin / smile / …     — Expressive socials: `<name>` alone, `<name> <who>`, or `<name> self`",
-        "title [text]        — Set your WHO title (no text clears it)",
-        "north / n           — Move north",
-        "east / e            — Move east",
-        "south / s           — Move south",
-        "west / w            — Move west",
-        "up / u              — Move up",
-        "down / d            — Move down",
-        "who                 — List players online",
-        "wizlist             — List wizards (admins) online",
-        "where               — Show who's in your area",
-        "areas               — List all areas in the world",
-        "commands / help     — Show this list",
-        "quit / exit         — Disconnect from the game",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
-    // Third row, after `finger`: the catalog-owned `desc` usage.
-    cmds.insert(3, tr!("commands.desc"));
-    let mut out = "Available commands:\n".to_string();
-    for cmd in &cmds {
-        out.push_str(&format!("  {}\n", cmd));
-    }
-    out
+/// Format the command list: a grid of resolvable keywords, no help text.
+/// Explanations live behind a future `help <command>`; this only shows what
+/// the parser accepts (statics plus data-driven names like socials), packed
+/// row-major into 80 columns.
+pub fn format_commands(names: &[String]) -> String {
+    "Available commands:\n".to_string() + &grim_text::column_grid(names, 80)
 }
 
 /// Format the MOTD.
@@ -522,17 +484,17 @@ mod tests {
     // ── format_commands ──────────────────────────────────────────
 
     #[test]
-    fn commands_contains_known_entries() {
-        let got = format_commands();
-        assert!(got.starts_with("Available commands:\n"));
-        assert!(got.contains("say <text>"));
-        assert!(got.contains("who"));
-        assert!(got.contains("quit / exit"));
-        assert!(got.ends_with("\n"));
+    fn commands_lists_keywords_in_a_grid() {
+        let got = format_commands(&["who".into(), "grin".into(), "say".into(), "look".into()]);
+        // Sorted row-major in one row at this width.
+        assert_eq!(got, "Available commands:\ngrin look say who\n");
+        assert!(!got.contains("—"), "no help text in the grid:\n{got}");
     }
 
-    // ── format_motd ──────────────────────────────────────────────
-
+    #[test]
+    fn commands_grid_empty_is_header_only() {
+        assert_eq!(format_commands(&[]), "Available commands:\n");
+    }
     #[test]
     fn motd_non_empty() {
         let got = format_motd();

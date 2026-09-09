@@ -5,6 +5,7 @@
 
 use bevy::prelude::*;
 use grim_actor::{Actor, InRoom};
+use grim_command::CommandRegistry;
 use grim_core::character::Gender;
 use grim_core::components::Name;
 use grim_core::events::{Command, EngineCommand, InfoMessage};
@@ -26,6 +27,7 @@ pub struct SocialPerformed {
 pub(crate) fn handle_social(
     mut engine: MessageReader<EngineCommand>,
     registry: Res<SocialRegistry>,
+    commands: Option<Res<CommandRegistry<Command>>>,
     inroom: Query<&InRoom>,
     occupants: Query<(Entity, &InRoom, &Name)>,
     names: Query<&Name>,
@@ -34,6 +36,21 @@ pub(crate) fn handle_social(
     mut performed: MessageWriter<SocialPerformed>,
 ) {
     for cmd in engine.read() {
+        if matches!(cmd.command, Command::SocialList) {
+            // Absent registry (a partial composition without ScenePlugin):
+            // header-only rather than a panic. Production always has it.
+            let social_names = commands
+                .as_ref()
+                .map(|r| r.names_in_section("social"))
+                .unwrap_or_default();
+            let grid = grim_text::column_grid(&social_names, 80);
+            send(
+                &mut info,
+                cmd.client,
+                &("Available socials:\n".to_string() + &grid),
+            );
+            continue;
+        }
         let Command::Social { name, target } = &cmd.command else {
             continue;
         };
@@ -354,6 +371,7 @@ mod tests {
         app.add_message::<InfoMessage>();
         app.add_message::<SocialPerformed>();
         app.insert_resource(SocialRegistry::default());
+        app.insert_resource(CommandRegistry::<Cmd>::new());
         app.add_systems(Update, handle_social);
         app
     }
@@ -402,6 +420,23 @@ mod tests {
         let carol = spawn_being(&mut app, "Carol", room, Gender::Female);
         let _dave = spawn_being(&mut app, "Dave", elsewhere, Gender::Neutral);
         (app, alice, bob, carol)
+    }
+
+    #[test]
+    fn social_list_shows_section_grid() {
+        let (mut app, alice, _bob, _carol) = setup();
+        {
+            let mut reg = app.world_mut().resource_mut::<CommandRegistry<Cmd>>();
+            reg.register("say", |_| Some(Cmd::Say { text: "x".into() }));
+            reg.register("grin", |_| None);
+            reg.set_section("grin", "social");
+        }
+        app.world_mut().write_message(EngineCommand {
+            client: alice,
+            command: Cmd::SocialList,
+        });
+        app.update();
+        assert_eq!(by_target(&app, alice), vec!["Available socials:\ngrin\n"]);
     }
 
     fn emit(app: &mut App, actor: Entity, name: &str, target: Option<&str>) {

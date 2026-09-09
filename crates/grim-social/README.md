@@ -11,7 +11,7 @@ None — socials carry no components.
 | System | Schedule | File | Purpose |
 |---|---|---|---|
 | `load_and_register` | `Startup` | `src/plugin.rs` | Loads built-ins + `data/socials/*.json`, registers each name into the shared `CommandRegistry` (deprioritized; exact static collisions skipped). |
-| `handle_social` | `Update` | `src/handler.rs` | Reads `Command::Social`, resolves the target against the actor's roommates, renders per-recipient `InfoMessage`s, emits `SocialPerformed`. |
+| `handle_social` | `Update` | `src/handler.rs` | Reads `Command::Social`/`SocialList`, resolves the target against the actor's roommates, renders per-recipient `InfoMessage`s, emits `SocialPerformed`. |
 
 ## Commands
 Player-facing verbs and where to find their handlers.
@@ -19,7 +19,8 @@ Player-facing verbs and where to find their handlers.
 |---|---|---|
 | `<social>` | `handle_social` (`src/handler.rs`) | Solo wording to the actor, solo room wording to roommates (e.g. `grin` → "You grin." / "Alice grins."). |
 | `<social> <who>` | `handle_social` (`src/handler.rs`) | Actor / target / room wordings (e.g. `grin bob` → "You grin at Bob." / "Alice grins at you." / "Alice grins at Bob."). Target resolves by `grim-target` rank among roommates; `self` (or your own name) uses the self case. |
-| `<social> self` | `handle_social` (`src/handler.rs`) | Self case (e.g. `grin self` → "You grin to yourself." / "Alice grins to themselves."). |
+| `<social> self` | `handle_social` (`src/handler.rs`) | Self case (e.g. `grin self` → "You grin to yourself." / "Alice grins to himself."). |
+| `socials` | `handle_social` (`src/handler.rs`) | Grid of the data-driven socials (the `"social"` registry section). |
 
 Built-ins (14): grin, smile, wave, laugh, nod, bow, chuckle, cry, dance, hug, kiss, shrug, sigh, wink.
 

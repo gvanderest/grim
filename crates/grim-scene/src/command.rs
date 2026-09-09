@@ -59,6 +59,40 @@ fn character_is_admin(
         .unwrap_or(false)
 }
 
+/// Registry names masked as unknown for non-admins (see `dispatch_admin_gated`
+/// and the session-local `sockets` gate). The `commands` grid hides these
+/// from non-admins so the list only shows what the actor can use.
+const ADMIN_GATED_NAMES: &[&str] = &["shutdown", "goto", "gecho", "ban", "sockets"];
+
+/// Answer `commands`: the registry grid minus the `socials` section (listed
+/// by its own lister) and minus admin verbs for non-admins. What remains is
+/// exactly what this actor can type. Factored out of [`handle_ingame`] to
+/// hold that dispatch table under the line budget.
+fn answer_commands(
+    conn: Entity,
+    char_entity: Entity,
+    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
+    res: &SessionRes,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+) {
+    let socials: std::collections::HashSet<String> = res
+        .registry
+        .names_in_section("social")
+        .into_iter()
+        .collect();
+    let is_admin = character_is_admin(characters, char_entity);
+    let names: Vec<String> = res
+        .registry
+        .names()
+        .into_iter()
+        .filter(|n| !socials.contains(n) && (is_admin || !ADMIN_GATED_NAMES.contains(&n.as_str())))
+        .collect();
+    outputs.write(ConnectionOutput {
+        echo: None,
+        ..ConnectionOutput::new(conn, formatter::format_commands(&names))
+    });
+}
+
 /// InGame: parse the line (honouring `!` repeat), answer session-local commands
 /// directly, admin-gate shutdown/goto, and queue everything else for cooldown.
 #[allow(clippy::too_many_arguments)]
@@ -129,12 +163,7 @@ pub(crate) fn handle_ingame(
                 crate::editor::open_desc_edit(client, conn, char_entity, descriptions, outputs);
             }
             Command::Equipment => answer_equipment(conn, outputs),
-            Command::Commands => {
-                outputs.write(ConnectionOutput {
-                    echo: None,
-                    ..ConnectionOutput::new(conn, formatter::format_commands())
-                });
-            }
+            Command::Commands => answer_commands(conn, char_entity, characters, res, outputs),
             Command::Areas => {
                 outputs.write(ConnectionOutput {
                     echo: None,

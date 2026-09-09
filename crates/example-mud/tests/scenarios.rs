@@ -458,6 +458,30 @@ fn socials_render_per_audience_from_builtins() {
 }
 
 #[test]
+fn commands_hides_socials_and_admin_verbs() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    // Socials live under `socials`; admin verbs stay hidden from non-admins.
+    mud.send(alice, "commands")
+        .assert_contains("look")
+        .assert_contains("socials")
+        .assert_excludes("grin")
+        .assert_excludes("shutdown")
+        .assert_excludes("sockets");
+}
+
+#[test]
+fn socials_lists_the_data_driven_verbs() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    mud.send(alice, "socials")
+        .assert_contains("grin")
+        .assert_contains("smile");
+}
+
+#[test]
 fn ooc_is_global_and_reaches_a_distant_player() {
     let mut mud = Mud::new();
     let alice = create_char(&mut mud, "alice@example.com", "Alice");

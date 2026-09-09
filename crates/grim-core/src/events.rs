@@ -35,6 +35,9 @@ pub enum Command {
         name: String,
         target: Option<String>,
     },
+    /// `socials` — list the data-driven socials (registered at startup from
+    /// `grim-social`). Answered from the command registry, like `commands`.
+    SocialList,
     /// `channel <name> <text>` — unified channel command (data-driven).
     Channel { channel: String, text: String },
     /// `title <text>` sets the actor's WHO title (max 60 chars); a bare `title`

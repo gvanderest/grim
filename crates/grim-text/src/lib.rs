@@ -22,8 +22,10 @@
 #[macro_use]
 mod macros;
 mod catalog;
+mod grid;
 
 pub use catalog::{render, tr};
+pub use grid::column_grid;
 
 #[cfg(test)]
 mod tests {
