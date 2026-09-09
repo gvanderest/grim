@@ -92,6 +92,7 @@ When developing new features, start by asking:
 
 ## Workflow
 
+0. **Design** — feature/design work starts with the `grim-design` skill (`.agents/skills/grim-design/SKILL.md`): arch review, ADR conflicts, local iteration in `.planning/tmp/`, publish on request.
 1. **Branch pre-check** — check current branch; if wrong, branch from `main`
 2. **Branch** from `main`
 3. **Commit** incrementally
