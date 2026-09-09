@@ -13,7 +13,7 @@
 //! `dep_direction.rs` — `cargo-deny` cannot express intra-workspace edges.
 //! This test reads `cargo metadata` directly via the `cargo_metadata` crate.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 /// Workspace metadata, leaked so `&str` borrows live for the test binary's
 /// life. Same trick as `dep_direction.rs`: the process is a short-lived test
@@ -38,10 +38,15 @@ fn every_path_dep_resolves_inside_the_workspace() {
     let metadata = metadata();
     let member_ids: BTreeSet<&cargo_metadata::PackageId> =
         metadata.workspace_members.iter().collect();
-    let by_name: BTreeMap<&str, &cargo_metadata::Package> = metadata
+    // Member package directories, by manifest location. Membership resolves
+    // by location, never by package name: with `--no-deps` an outside target
+    // is absent from `packages`, so a same-named member would make a
+    // name lookup wrongly accept the outside dependency.
+    let member_dirs: BTreeSet<_> = metadata
         .packages
         .iter()
-        .map(|pkg| (pkg.name.as_str(), pkg))
+        .filter(|pkg| member_ids.contains(&pkg.id))
+        .filter_map(|pkg| pkg.manifest_path.parent())
         .collect();
 
     let mut outside = Vec::new();
@@ -51,15 +56,10 @@ fn every_path_dep_resolves_inside_the_workspace() {
         }
         for dep in &pkg.dependencies {
             if let Some(path) = dep.path.as_ref() {
-                // `dep.name` is the target package name; `dep.rename` is only
-                // the local alias (`alias = { package = "real" }`), so the
-                // membership lookup must use `name` — the alias never matches
-                // `by_name` and would false-positive.
-                let target = dep.name.as_str();
-                let inside = by_name
-                    .get(target)
-                    .is_some_and(|found| member_ids.contains(&found.id));
-                if !inside {
+                if !member_dirs.contains(path.as_path()) {
+                    // `dep.name`/`dep.rename` are diagnostics only here: the
+                    // verdict above already came from the path.
+                    let target = dep.name.as_str();
                     let effective = dep.rename.as_deref().unwrap_or(target);
                     outside.push(format!("{} -> {effective} ({path})", pkg.name));
                 }
