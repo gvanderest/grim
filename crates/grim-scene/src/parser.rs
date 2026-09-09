@@ -163,16 +163,6 @@ fn build_registry() -> CommandRegistry<Command> {
             })
         }
     });
-    r.register("'", |rest| {
-        if rest.is_empty() {
-            None
-        } else {
-            Some(Command::Channel {
-                channel: "say".to_string(),
-                text: rest.to_string(),
-            })
-        }
-    });
     r.register("yell", |rest| {
         if rest.is_empty() {
             None
@@ -228,16 +218,6 @@ fn build_registry() -> CommandRegistry<Command> {
 
     // ── Game actions ─────────────────────────────────────────────
     r.register("look", |rest| {
-        if rest.is_empty() {
-            Some(Command::Look { target: None })
-        } else {
-            Some(Command::Look {
-                target: Some(rest.to_string()),
-            })
-        }
-    });
-    // 'l' shorthand for look
-    r.register("l", |rest| {
         if rest.is_empty() {
             Some(Command::Look { target: None })
         } else {
@@ -520,14 +500,10 @@ mod tests {
     }
 
     #[test]
-    fn test_say_shorthand() {
-        assert_eq!(
-            parse("' hello"),
-            Some(Command::Channel {
-                channel: "say".to_string(),
-                text: "hello".to_string()
-            })
-        );
+    fn test_say_quote_is_not_a_command() {
+        // The `'` shorthand is gone: not a registered name, and no command
+        // starts with it, so it resolves to nothing.
+        assert_eq!(parse("' hello"), None);
         assert_eq!(parse("'"), None);
     }
 
@@ -621,6 +597,7 @@ mod tests {
     }
 
     // ── Look ──────────────────────────────────────────────────────
+    // `l` is not a registered name; it reaches `look` by prefix.
     #[test]
     fn test_look_without_target() {
         assert_eq!(parse("look"), Some(Command::Look { target: None }));

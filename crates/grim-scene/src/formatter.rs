@@ -487,7 +487,7 @@ mod tests {
     fn commands_lists_keywords_in_a_grid() {
         let got = format_commands(&["who".into(), "grin".into(), "say".into(), "look".into()]);
         // Sorted row-major in one row at this width.
-        assert_eq!(got, "Available commands:\ngrin look say who\n");
+        assert_eq!(got, "Available commands:\ngrin    look    say     who\n");
         assert!(!got.contains("—"), "no help text in the grid:\n{got}");
     }
 
