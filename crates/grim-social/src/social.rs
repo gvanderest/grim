@@ -29,8 +29,10 @@ pub const BUILTIN_SOCIALS: &[&str] = &[
 ];
 
 /// One file-held case with actor + room wordings (`solo`, `self_target`).
-/// Every field is optional: a missing key inherits the built-in default.
+/// Every field is optional: a missing key inherits the catalog default (which
+/// exists for built-ins; new verbs must fill every key — see `is_complete`).
 #[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CasePair {
     #[serde(default)]
     pub actor: Option<String>,
@@ -40,6 +42,7 @@ pub struct CasePair {
 
 /// The file-held `with_target` case: actor, target, and room wordings.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OtherCase {
     #[serde(default)]
     pub actor: Option<String>,
@@ -53,6 +56,7 @@ pub struct OtherCase {
 /// (minus `.json`, lowercased) is the command name, so builders add a verb by
 /// copying a file.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SocialFile {
     #[serde(default)]
     pub solo: CasePair,
@@ -136,6 +140,19 @@ impl SocialDef {
     }
 }
 
+/// Whether a file fills every wording. Only new verbs need this: built-ins
+/// inherit missing keys from the catalog, but a new name has no catalog
+/// defaults to inherit.
+fn is_complete(file: &SocialFile) -> bool {
+    file.solo.actor.is_some()
+        && file.solo.room.is_some()
+        && file.self_target.actor.is_some()
+        && file.self_target.room.is_some()
+        && file.with_target.actor.is_some()
+        && file.with_target.target.is_some()
+        && file.with_target.room.is_some()
+}
+
 /// Load the registry: built-ins first, then every `*.json` file in `dir`
 /// overlaid (new names included — copying a file adds a verb). A missing dir
 /// means built-ins only; an unreadable or unparsable file is logged and
@@ -181,6 +198,17 @@ pub fn load_socials(dir: &Path) -> SocialRegistry {
         };
         match serde_json::from_str::<SocialFile>(&text) {
             Ok(file) => {
+                // A new verb has no catalog defaults: every wording must come
+                // from the file, or rendering would leak raw
+                // `social.<name>.*` keys. Reject it whole (fail closed) rather
+                // than serve half a verb. Built-ins inherit per key.
+                if !BUILTIN_SOCIALS.contains(&stem.as_str()) && !is_complete(&file) {
+                    warn!(
+                        "social: skipping '{}': new verbs need all seven wordings",
+                        path.display()
+                    );
+                    continue;
+                }
                 registry.defs.insert(
                     stem.clone(),
                     SocialDef {
@@ -246,11 +274,48 @@ mod tests {
         let dir = fixture_dir("newverb");
         std::fs::write(
             dir.join("smirk.json"),
+            r#"{"solo": {"actor": "You smirk.\n", "room": "%{actor} smirks.\n"},
+                "self_target": {"actor": "You smirk to yourself.\n", "room": "%{actor} smirks to %{actor.self}.\n"},
+                "with_target": {"actor": "You smirk at %{target}.\n", "target": "%{actor} smirks at you.\n", "room": "%{actor} smirks at %{target}.\n"}}"#,
+        )
+        .unwrap();
+        let registry = load_socials(&dir);
+        let smirk = registry.get("smirk").unwrap();
+        assert_eq!(
+            smirk.template("other", "target"),
+            "%{actor} smirks at you.\n"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn incomplete_new_verb_is_skipped() {
+        // A new name has no catalog defaults: a partial file would render raw
+        // `social.<name>.*` keys, so it is rejected whole. Built-ins inherit.
+        let dir = fixture_dir("halfverb");
+        std::fs::write(
+            dir.join("smirk.json"),
             r#"{"solo": {"actor": "You smirk.\n"}}"#,
         )
         .unwrap();
         let registry = load_socials(&dir);
-        assert!(registry.get("smirk").is_some());
+        assert!(registry.get("smirk").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn misspelled_field_skips_the_file() {
+        let dir = fixture_dir("typo");
+        std::fs::write(
+            dir.join("grin.json"),
+            r#"{"solo": {"actor": "You beam.\n"}, "self_taret": {}}"#,
+        )
+        .unwrap();
+        let registry = load_socials(&dir);
+        assert_eq!(
+            registry.get("grin").unwrap().template("solo", "actor"),
+            "You grin.\n"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

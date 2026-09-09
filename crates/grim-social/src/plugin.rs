@@ -35,12 +35,25 @@ fn load_and_register(
 ) {
     let socials = load_socials(&dir.0);
     if let Some(mut reg) = registry {
+        // Exact static collisions and names that would hijack a static
+        // abbreviation (`l` → `look` works by prefix) are skipped: statics
+        // win, fail closed, no shadow. Snapshot before registering — fellow
+        // socials don't count, only statics.
+        let statics: Vec<String> = reg.names();
         let mut names: Vec<String> = socials.names().map(str::to_string).collect();
         names.sort();
         for name in &names {
-            if reg.contains(name) {
+            // The lister keyword is reserved like a static: a file verb may
+            // never take it, or `socials` would stop listing.
+            if name == "socials" || reg.contains(name) {
                 warn!(
                     "social '{name}' collides with a static command; static wins, social skipped"
+                );
+                continue;
+            }
+            if statics.iter().any(|s| s != name && s.starts_with(name)) {
+                warn!(
+                    "social '{name}' is a prefix of a static command; static wins, social skipped"
                 );
                 continue;
             }
@@ -158,7 +171,9 @@ mod tests {
         let dir = fixture_dir("disk");
         std::fs::write(
             dir.join("smirk.json"),
-            r#"{"solo": {"actor": "You smirk.\n"}}"#,
+            r#"{"solo": {"actor": "You smirk.\n", "room": "X smirks.\n"},
+                "self_target": {"actor": "You smirk to yourself.\n", "room": "X smirks to Xself.\n"},
+                "with_target": {"actor": "You smirk at T.\n", "target": "X smirks at you.\n", "room": "X smirks at T.\n"}}"#,
         )
         .unwrap();
         let mut app = test_app();
@@ -169,6 +184,38 @@ mod tests {
             reg.resolve("smirk", ""),
             Some(Command::Social { .. })
         ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn social_prefix_of_static_is_skipped() {
+        // A file-defined `l` must not hijack the `look` abbreviation: exact
+        // matches beat prefixes, so it is skipped at registration.
+        let dir = fixture_dir("prefix");
+        std::fs::write(
+            dir.join("l.json"),
+            r#"{"solo": {"actor": "You ell.\n", "room": "X ells.\n"},
+                "self_target": {"actor": "You ell yourself.\n", "room": "X ells Xself.\n"},
+                "with_target": {"actor": "You ell T.\n", "target": "X ells you.\n", "room": "X ells T.\n"}}"#,
+        )
+        .unwrap();
+        let mut app = test_app();
+        app.world_mut()
+            .resource_mut::<CommandRegistry<Command>>()
+            .register("look", |rest| {
+                Some(Command::Look {
+                    target: (!rest.is_empty()).then(|| rest.to_string()),
+                })
+            });
+        app.world_mut().insert_resource(SocialDir(dir.clone()));
+        app.update();
+        let reg = app.world().resource::<CommandRegistry<Command>>();
+        assert_eq!(
+            reg.resolve("l", "statue"),
+            Some(Command::Look {
+                target: Some("statue".into())
+            })
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
