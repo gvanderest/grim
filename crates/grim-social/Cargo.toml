@@ -1,0 +1,17 @@
+[package]
+name = "grim-social"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+grim-core = { path = "../grim-core" }
+grim-actor = { path = "../grim-actor" }
+grim-text = { path = "../grim-text" }
+grim-target = { path = "../grim-target" }
+grim-command = { path = "../grim-command" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+bevy = { workspace = true, default-features = false }
+
+[dev-dependencies]
+chrono = { workspace = true }
