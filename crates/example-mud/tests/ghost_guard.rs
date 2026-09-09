@@ -51,11 +51,16 @@ fn every_path_dep_resolves_inside_the_workspace() {
         }
         for dep in &pkg.dependencies {
             if let Some(path) = dep.path.as_ref() {
-                let effective = dep.rename.as_deref().unwrap_or(dep.name.as_str());
+                // `dep.name` is the target package name; `dep.rename` is only
+                // the local alias (`alias = { package = "real" }`), so the
+                // membership lookup must use `name` — the alias never matches
+                // `by_name` and would false-positive.
+                let target = dep.name.as_str();
                 let inside = by_name
-                    .get(effective)
-                    .is_some_and(|target| member_ids.contains(&target.id));
+                    .get(target)
+                    .is_some_and(|found| member_ids.contains(&found.id));
                 if !inside {
+                    let effective = dep.rename.as_deref().unwrap_or(target);
                     outside.push(format!("{} -> {effective} ({path})", pkg.name));
                 }
             }
