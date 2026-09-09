@@ -27,6 +27,17 @@ pub enum Command {
     Tell { target: String, text: String },
     /// `reply <text>` — private message to the last player who whispered you.
     Reply { text: String },
+    /// `<social> [target]` — a data-driven social (`grin`, `smile`, …,
+    /// registered at startup from `grim-social`). `target` is the first word
+    /// of the rest of the line, when present; the handler resolves it against
+    /// the actor's roommates (`self` targets the sender).
+    Social {
+        name: String,
+        target: Option<String>,
+    },
+    /// `socials` — list the data-driven socials (registered at startup from
+    /// `grim-social`). Answered from the command registry, like `commands`.
+    SocialList,
     /// `channel <name> <text>` — unified channel command (data-driven).
     Channel { channel: String, text: String },
     /// `title <text>` sets the actor's WHO title (max 60 chars); a bare `title`

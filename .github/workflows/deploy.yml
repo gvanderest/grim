@@ -92,6 +92,10 @@ jobs:
           # Staged next to the binary; deploy.sh syncs it into data/areas.
           ssh -i ~/.ssh/id_deploy "$TARGET" 'rm -rf /opt/grim/bin/areas.staged'
           scp -i ~/.ssh/id_deploy -r data/areas "$TARGET:/opt/grim/bin/areas.staged"
+          # Committed social overrides, read from disk at startup.
+          # Staged next to the binary; deploy.sh syncs it into data/socials.
+          ssh -i ~/.ssh/id_deploy "$TARGET" 'rm -rf /opt/grim/bin/socials.staged'
+          scp -i ~/.ssh/id_deploy -r data/socials "$TARGET:/opt/grim/bin/socials.staged"
 
       - name: Run deploy
         env:

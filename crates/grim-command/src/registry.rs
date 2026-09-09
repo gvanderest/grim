@@ -19,9 +19,17 @@ pub struct CommandRegistry<C: Send + Sync + 'static> {
     priority: Vec<usize>,
 }
 
+/// A command factory: the rest of the line in, the command (or a rejection)
+/// out. Boxed so data-driven commands (socials) can close over their name;
+/// static commands pass the same non-capturing closures as before.
+pub type Factory<C> = Box<dyn Fn(&str) -> Option<C> + Send + Sync>;
+
 struct Entry<C> {
     name: String,
-    factory: fn(&str) -> Option<C>,
+    factory: Factory<C>,
+    /// Listing section (`commands` vs `socials`). `None` = the default
+    /// section. Data-driven sets tag their names so listings can split.
+    section: Option<String>,
 }
 
 impl<C: Send + Sync + 'static> Default for CommandRegistry<C> {
@@ -44,13 +52,50 @@ impl<C: Send + Sync + 'static> CommandRegistry<C> {
     /// command, or `None` to reject the input (e.g. `say` with no text).
     ///
     /// The new command starts at the front of the priority ordering.
-    pub fn register(&mut self, name: &str, factory: fn(&str) -> Option<C>) {
+    /// Call [`CommandRegistry::deprioritize`] after registering a bulk
+    /// data-driven set (socials) so static commands keep their prefixes.
+    pub fn register(
+        &mut self,
+        name: &str,
+        factory: impl Fn(&str) -> Option<C> + Send + Sync + 'static,
+    ) {
         let idx = self.entries.len();
         self.entries.push(Entry {
             name: name.to_ascii_lowercase(),
-            factory,
+            factory: Box::new(factory),
+            section: None,
         });
         self.priority.insert(0, idx);
+    }
+
+    /// Whether `name` is already registered (case-insensitive). Data-driven
+    /// sets check this first so a dynamic name can never shadow a static
+    /// command's exact match.
+    pub fn contains(&self, name: &str) -> bool {
+        let name = name.to_ascii_lowercase();
+        self.entries.iter().any(|e| e.name == name)
+    }
+
+    /// Tag `name` into a listing section (case-insensitive, no-op when
+    /// unregistered). Sections split listings: `commands` shows the default
+    /// section, `socials` shows the `"social"` section.
+    pub fn set_section(&mut self, name: &str, section: &str) {
+        let name = name.to_ascii_lowercase();
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.name == name) {
+            entry.section = Some(section.to_string());
+        }
+    }
+
+    /// Every registered name in `section`, sorted.
+    pub fn names_in_section(&self, section: &str) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|e| e.section.as_deref() == Some(section))
+            .map(|e| e.name.clone())
+            .collect();
+        names.sort();
+        names
     }
 
     /// Resolve a command `word` (case-insensitive) to a command, passing `rest`
@@ -76,6 +121,14 @@ impl<C: Send + Sync + 'static> CommandRegistry<C> {
             .copied()
             .find(|&i| self.entries[i].name.starts_with(&word))?;
         (self.entries[idx].factory)(rest)
+    }
+
+    /// Every registered name, sorted, for listings (`commands`). Includes
+    /// data-driven names registered at Startup.
+    pub fn names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.entries.iter().map(|e| e.name.clone()).collect();
+        names.sort();
+        names
     }
 
     /// Move a command to the front of the priority ordering (highest). No-op if
@@ -176,6 +229,47 @@ mod resolution_tests {
         let mut r = CommandRegistry::new();
         r.register("north", |_| Some(Cmd::North));
         assert_eq!(r.resolve("xyzzy", ""), None);
+    }
+
+    #[test]
+    fn capturing_closure_factory_resolves() {
+        let mut r = CommandRegistry::new();
+        for name in ["grin", "smile"] {
+            let owned = name.to_string();
+            r.register(name, move |rest| Some(Cmd::Note(format!("{owned}:{rest}"))));
+            r.deprioritize(name);
+        }
+        assert_eq!(r.resolve("grin", "bob"), Some(Cmd::Note("grin:bob".into())));
+        assert_eq!(r.resolve("SMILE", ""), Some(Cmd::Note("smile:".into())));
+    }
+
+    #[test]
+    fn contains_is_case_insensitive() {
+        let mut r = CommandRegistry::new();
+        r.register("say", |_| Some(Cmd::North));
+        assert!(r.contains("say"));
+        assert!(r.contains("SAY"));
+        assert!(!r.contains("yell"));
+    }
+
+    #[test]
+    fn sections_split_listings() {
+        let mut r = CommandRegistry::new();
+        r.register("say", |_| Some(Cmd::North));
+        r.register("grin", |_| Some(Cmd::North));
+        r.set_section("grin", "social");
+        r.set_section("missing", "social");
+        assert_eq!(r.names_in_section("social"), vec!["grin"]);
+        assert_eq!(r.names(), vec!["grin", "say"]);
+    }
+
+    #[test]
+    fn names_lists_sorted_unique_entries() {
+        let mut r = CommandRegistry::new();
+        r.register("say", |_| Some(Cmd::North));
+        r.register("grin", |_| Some(Cmd::North));
+        r.register("look", look);
+        assert_eq!(r.names(), vec!["grin", "look", "say"]);
     }
 }
 

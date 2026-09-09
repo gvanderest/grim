@@ -21,6 +21,9 @@ impl bevy::app::PluginGroup for GrimHeadlessPlugins {
             .add(grim_script::ScriptPlugin)
             .add(grim_persistence::PersistencePlugin)
             .add(grim_scene::ScenePlugin)
+            // Data-driven socials register into the scene's command registry;
+            // added after it so the registry resource exists at Startup.
+            .add(grim_social::SocialPlugin)
             // The pre-game flow layers on the scene core; added after it so the
             // in-game input set it orders against is registered.
             .add(grim_auth::AuthPlugin)

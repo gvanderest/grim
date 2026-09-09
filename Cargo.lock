@@ -980,6 +980,7 @@ dependencies = [
  "grim-persistence",
  "grim-scene",
  "grim-script",
+ "grim-social",
  "grim-target",
  "grim-text",
  "grim-world",
@@ -1150,6 +1151,21 @@ dependencies = [
  "grim-text",
  "mlua",
  "rand 0.10.2",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "grim-social"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "chrono",
+ "grim-actor",
+ "grim-command",
+ "grim-core",
+ "grim-target",
+ "grim-text",
  "serde",
  "serde_json",
 ]
