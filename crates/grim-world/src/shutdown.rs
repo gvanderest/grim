@@ -1,8 +1,8 @@
 //! Graceful server shutdown, triggered four ways sharing one countdown:
 //!
-//! - **In-game:** `shutdown <seconds>` (halt), `reboot <seconds>` (cold
+//! - **In-game:** `shutdown [seconds]` (halt), `reboot [seconds]` (cold
 //!   restart: non-zero exit so the service manager brings the server back),
-//!   or `copyover <seconds>` (hot restart: hands sockets to a successor via
+//!   or `copyover [seconds]` (hot restart: hands sockets to a successor via
 //!   [`grim_core::events::CopyoverDue`]) from an admin character. Those
 //!   handlers read a being (the actor's `Character`), so they live in
 //!   `grim-actor` and slot into [`ShutdownSet::Command`]; everything else

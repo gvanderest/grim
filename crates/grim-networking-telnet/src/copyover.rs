@@ -290,10 +290,26 @@ pub(crate) fn poll_copyover_signal(
         "copyover requested: handing off {} connection(s)",
         list.len()
     );
-    let _ = bridge
+    match bridge
         .to_network
-        .try_send(NetworkCommand::Copyover { conns: list });
-    *started = true;
+        .try_send(NetworkCommand::Copyover { conns: list })
+    {
+        Ok(()) => *started = true,
+        Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+            // Bounded bridge momentarily full: keep the flag raised so the
+            // next tick retries instead of dropping the handoff. Don't latch
+            // `started` until the request is actually queued.
+            warn!("copyover handoff deferred: bridge full, retrying");
+            signal.0.store(true, Ordering::SeqCst);
+        }
+        Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+            // Network thread gone: the handoff can never proceed. Stay up
+            // rather than strand players on a false promise, and say so
+            // loudly. Latch `started` — retrying a closed bridge is futile.
+            error!("copyover handoff failed: network bridge closed");
+            *started = true;
+        }
+    }
 }
 
 /// Once the tokio thread reports the successor has taken over, exit cleanly so
@@ -467,6 +483,126 @@ mod tests {
                 .0
                 .load(Ordering::SeqCst),
             "no CopyoverDue must leave the flag down"
+        );
+    }
+
+    /// A full bridge must not drop the handoff: the flag stays raised and a
+    /// later tick retries with the session list intact.
+    #[test]
+    fn full_bridge_rearms_and_retries_handoff() {
+        use crate::bridge::NetworkEvent;
+        use grim_core::components::{Client, ClientState, Name as GrimName};
+        use grim_core::GrimId;
+        use grim_networking::Connection;
+        use std::sync::Mutex;
+
+        let mut app = App::new();
+        let signal = CopyoverSignal::default();
+        signal.0.store(true, Ordering::SeqCst);
+        app.insert_resource(signal);
+        // Capacity 1, prefilled: the handoff send fails Full.
+        let (to_net_tx, mut to_net_rx) = tokio::sync::mpsc::channel::<NetworkCommand>(1);
+        to_net_tx
+            .try_send(NetworkCommand::Copyover { conns: Vec::new() })
+            .unwrap();
+        let (_from_tx, from_rx) = std::sync::mpsc::channel::<NetworkEvent>();
+        app.insert_resource(NetworkBridge {
+            to_network: to_net_tx,
+            from_network: std::sync::Arc::new(Mutex::new(from_rx)),
+        });
+        app.add_systems(Update, poll_copyover_signal);
+
+        // One in-game session so the retried request has a manifest to carry.
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 7,
+                addr: ([127, 0, 0, 1], 40007).into(),
+                echo_hidden: false,
+            })
+            .id();
+        let character = app
+            .world_mut()
+            .spawn((
+                GrimName("Hero".into()),
+                Character {
+                    id: GrimId::new(),
+                    account_id: GrimId::new(),
+                    created_at: chrono::Utc::now(),
+                    last_room: None,
+                    roles: Vec::new(),
+                    class: String::new(),
+                    title: None,
+                    restrings: std::collections::HashMap::new(),
+                },
+                Player { connection: conn },
+            ))
+            .id();
+        app.world_mut().spawn(Client {
+            state: ClientState::InGame,
+            character: Some(character),
+            ..Client::new(conn)
+        });
+
+        app.update();
+
+        // Request preserved, not latched: flag re-armed, prefill untouched.
+        assert!(
+            app.world()
+                .resource::<CopyoverSignal>()
+                .0
+                .load(Ordering::SeqCst),
+            "Full bridge must re-arm the flag for a retry"
+        );
+        assert!(
+            matches!(to_net_rx.try_recv(), Ok(NetworkCommand::Copyover { .. })),
+            "only the prefill is queued; the handoff was not sent"
+        );
+
+        // Capacity freed: the retry queues the handoff with its session.
+        app.update();
+        let cmd = to_net_rx.try_recv().expect("handoff queued after retry");
+        let NetworkCommand::Copyover { conns } = cmd else {
+            panic!("expected NetworkCommand::Copyover");
+        };
+        assert_eq!(conns.len(), 1, "retried handoff carries the session");
+        assert_eq!(conns[0].conn_id, 7);
+    }
+
+    /// A closed bridge can never hand off: latch `started` (no futile
+    /// retry loop) and stay up. Observed via the flag: re-raising it is
+    /// consumed by the early return instead of re-armed by a retry.
+    #[test]
+    fn closed_bridge_latches_without_retry() {
+        use crate::bridge::NetworkEvent;
+        use std::sync::Mutex;
+
+        let mut app = App::new();
+        let signal = CopyoverSignal::default();
+        signal.0.store(true, Ordering::SeqCst);
+        app.insert_resource(signal);
+        let (to_net_tx, to_net_rx) = tokio::sync::mpsc::channel::<NetworkCommand>(16);
+        drop(to_net_rx);
+        let (_from_tx, from_rx) = std::sync::mpsc::channel::<NetworkEvent>();
+        app.insert_resource(NetworkBridge {
+            to_network: to_net_tx,
+            from_network: std::sync::Arc::new(Mutex::new(from_rx)),
+        });
+        app.add_systems(Update, poll_copyover_signal);
+        app.update();
+
+        // Re-raise: a latched poll consumes the flag without re-arming.
+        app.world()
+            .resource::<CopyoverSignal>()
+            .0
+            .store(true, Ordering::SeqCst);
+        app.update();
+        assert!(
+            !app.world()
+                .resource::<CopyoverSignal>()
+                .0
+                .load(Ordering::SeqCst),
+            "closed bridge must latch, not re-arm the flag"
         );
     }
 }

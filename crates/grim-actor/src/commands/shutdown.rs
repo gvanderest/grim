@@ -17,7 +17,7 @@ use grim_world::ShutdownSet;
 
 use crate::character::Character;
 
-/// `shutdown|reboot|copyover <seconds>`: admin-gated (defense in depth — the
+/// `shutdown|reboot|copyover [seconds]`: admin-gated (defense in depth — the
 /// client gates first). Non-admins are ignored silently; a second request
 /// while one is pending is rejected. Exactly one countdown runs at a time no
 /// matter which of the three (or SIGTERM) scheduled it.

@@ -84,14 +84,14 @@ pub enum Command {
     /// including the sender. Other admins see it attributed (`Name> text`);
     /// everyone else sees the raw text.
     Gecho { text: String },
-    /// `shutdown <seconds>` — admin-only. Schedules a graceful server shutdown
+    /// `shutdown [seconds]` — admin-only. Schedules a graceful server shutdown
     /// after a countdown, broadcasting warnings to all connected players.
     Shutdown { seconds: u64 },
-    /// `reboot <seconds>` — admin-only. Like `shutdown`, but the process exits
+    /// `reboot [seconds]` — admin-only. Like `shutdown`, but the process exits
     /// non-zero at expiry so the service manager restarts it (cold restart:
     /// connections drop, the world reloads from disk).
     Reboot { seconds: u64 },
-    /// `copyover <seconds>` — admin-only. Warns like `shutdown`, then hands the
+    /// `copyover [seconds]` — admin-only. Warns like `shutdown`, then hands the
     /// live listener + player sockets to a successor process (hot restart:
     /// players stay connected). The telnet transport performs the handoff.
     Copyover { seconds: u64 },

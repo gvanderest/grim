@@ -128,8 +128,9 @@ existence is not disclosed.
 - `copyover [seconds]` (default 30) — warned countdown, then the same
   in-place handoff a deploy `SIGUSR2` performs: players stay connected.
   One countdown runs at a time across all three verbs and `SIGTERM`.
-  A copyover implicitly cancels a pending countdown (the successor boots
-  with fresh state), so don't schedule one and then copy over.
+  An in-game `copyover` is rejected while a countdown is active.
+  A deploy `SIGUSR2` copyover ends any pending countdown when the successor
+  process starts with fresh state.
 
 ## Caveats
 
