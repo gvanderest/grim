@@ -101,8 +101,8 @@ pub fn render_map(
     // ── Layout: BFS claiming grid cells ──
     // `seen` marks every discovered room (so a later path can never move it);
     // `placed`/`cells` hold only rooms that won a cell. A room whose cell is
-    // taken — or lies past `±range`, or shares its cell via an `Up`/`Down`
-    // link — stays visited but unplaced: a deterministic dead end.
+    // taken or lies past `±range` stays visited but unplaced: a deterministic
+    // dead end. (`Up`/`Down` links skip BFS entirely — markers only.)
     let mut seen: HashSet<Entity> = HashSet::from([center]);
     let mut placed: HashMap<Entity, (i32, i32)> = HashMap::from([(center, (0, 0))]);
     let mut cells: HashMap<(i32, i32), Entity> = HashMap::from([((0, 0), center)]);
@@ -113,6 +113,14 @@ pub fn render_map(
             None => continue,
         };
         for dir in DIRS {
+            // `Up`/`Down` never travel: they render as markers in the draw
+            // phase. Skipping them here keeps their targets out of `seen`, so
+            // a room that is *also* cardinal-reachable still places (and an
+            // up-only room stays invisible, markers aside, with no cycle risk
+            // — unplaced rooms never enqueue).
+            if matches!(dir, Cardinal::Up | Cardinal::Down) {
+                continue;
+            }
             let Some(next) = links.get(&dir) else {
                 continue;
             };
@@ -301,5 +309,33 @@ mod tests {
         link(&mut exits, e(2), Cardinal::South, e(4));
         let first = render_map(center, &exits, &MapConfig::MAP);
         assert_eq!(first, render_map(center, &exits, &MapConfig::MAP));
+    }
+
+    #[test]
+    fn up_link_does_not_hide_cardinal_reachable_room() {
+        // X is up-linked from center but also walkable via center -E-> a -N-> X:
+        // the marker-only Up link must not poison BFS, so X still places.
+        let (center, a, x) = (e(1), e(2), e(3));
+        let mut exits = HashMap::new();
+        link(&mut exits, center, Cardinal::Up, x);
+        link(&mut exits, center, Cardinal::East, a);
+        link(&mut exits, a, Cardinal::North, x);
+        let rows = render_map(center, &exits, &MapConfig::MAP);
+        assert_eq!(rows[10], format!("{:40}@--#", ""));
+        assert_eq!(rows[8], format!("{:43}#", ""));
+        assert_eq!(rows[9], format!("{:39},   |", ""));
+    }
+    #[test]
+    fn minimap_canvas_renders_neighbors() {
+        // The real P2 canvas shares the P1 code path: lock its geometry now.
+        let center = e(1);
+        let mut exits = HashMap::new();
+        link(&mut exits, center, Cardinal::East, e(2));
+        link(&mut exits, center, Cardinal::North, e(3));
+        let rows = render_map(center, &exits, &MapConfig::MINIMAP);
+        assert_eq!(rows.len(), 7);
+        assert_eq!(rows[3], "    @--#");
+        assert_eq!(rows[2], "    |");
+        assert_eq!(rows[1], "    #");
     }
 }

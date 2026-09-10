@@ -52,7 +52,7 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | `commands` | `handle_ingame` → `format_commands` (`src/formatter.rs`) | Show the command list. |
 | `help` | `handle_ingame` → `format_commands` (`src/command.rs`) | Alias for `commands` (parser maps `help` → `Command::Commands`). |
 
-Other verbs (`look`, `move`, `say`, `shutdown`, …) are parsed here then routed: most enqueue via `process_command_queue`; engine-queued admin verbs (`shutdown`/`reboot`/`copyover`/`goto`/`gecho`/`ban`) go through `dispatch_admin_gated` (masked as unknown for non-admins). `sockets` is also admin-gated + masked, but answered session-locally from a per-tick `ClientSnapshot` (a second `Client` query would conflict with the dispatcher's `&mut` borrow).
+Other verbs (`look`, `map`, `move`, `say`, `shutdown`, …) are parsed here then routed: most enqueue via `process_command_queue`; engine-queued admin verbs (`shutdown`/`reboot`/`copyover`/`goto`/`gecho`/`ban`) go through `dispatch_admin_gated` (masked as unknown for non-admins). `sockets` is also admin-gated + masked, but answered session-locally from a per-tick `ClientSnapshot` (a second `Client` query would conflict with the dispatcher's `&mut` borrow).
 
 ## Resources & Events
 
