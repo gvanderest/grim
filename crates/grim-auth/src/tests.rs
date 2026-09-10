@@ -149,6 +149,7 @@ mod reconnect {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         };
         let (name, actor, character) = stored.into_components();
@@ -296,6 +297,7 @@ mod reconnect {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         };
         let (name, actor, character) = stored.into_components();
@@ -430,6 +432,7 @@ mod reconnect {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         };
 
@@ -548,6 +551,7 @@ mod reconnect {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         };
 
@@ -655,6 +659,7 @@ mod reconnect {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         };
         write_disk_char(&dir, &ch);
@@ -1216,6 +1221,7 @@ mod character_select {
                 level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
+                config: std::collections::HashMap::new(),
                 inventory: Vec::new(),
             }
             .into_components();
@@ -1307,6 +1313,7 @@ mod character_select {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         }
         .into_components();
@@ -1381,6 +1388,7 @@ mod character_select {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         }
         .into_components();
@@ -1575,6 +1583,7 @@ mod disk_lifecycle {
                 level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
+                config: std::collections::HashMap::new(),
                 inventory: Vec::new(),
             },
         );
@@ -1648,6 +1657,7 @@ mod disk_lifecycle {
                 level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
+                config: std::collections::HashMap::new(),
                 inventory: Vec::new(),
             },
         );
@@ -1735,6 +1745,7 @@ mod disk_lifecycle {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         }
         .into_components();
@@ -1960,6 +1971,7 @@ mod character_creation {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         };
         std::fs::create_dir_all(dir.join("characters")).unwrap();
@@ -2060,6 +2072,7 @@ mod legacy_backfill {
                 level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
+                config: std::collections::HashMap::new(),
                 inventory: Vec::new(),
             },
         );
@@ -2170,6 +2183,7 @@ mod legacy_backfill {
                 level: 1,
                 title: None,
                 restrings: std::collections::HashMap::new(),
+                config: std::collections::HashMap::new(),
                 inventory: Vec::new(),
             },
         );
@@ -2221,6 +2235,7 @@ mod legacy_backfill {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         };
         write_disk_char(&dir, &legacy);
@@ -2304,6 +2319,7 @@ mod transition_guard {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         };
         let (name, actor, character) = stored.into_components();
@@ -2490,6 +2506,7 @@ mod bans {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         };
         let char_id = stored.id;
@@ -2569,6 +2586,7 @@ mod bans {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         };
         let (name, actor, character) = stored.into_components();

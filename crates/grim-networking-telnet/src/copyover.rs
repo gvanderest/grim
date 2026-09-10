@@ -382,6 +382,7 @@ mod tests {
                     class: String::new(),
                     title: None,
                     restrings: std::collections::HashMap::new(),
+                    config: std::collections::HashMap::new(),
                 },
                 Player {
                     connection: conn_new,
@@ -534,6 +535,7 @@ mod tests {
                     class: String::new(),
                     title: None,
                     restrings: std::collections::HashMap::new(),
+                    config: std::collections::HashMap::new(),
                 },
                 Player { connection: conn },
             ))

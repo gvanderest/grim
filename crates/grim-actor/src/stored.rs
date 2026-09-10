@@ -63,6 +63,10 @@ pub struct StoredCharacter {
     /// Per-character display overrides. `#[serde(default)]` keeps old JSON loading.
     #[serde(default)]
     pub restrings: HashMap<String, String>,
+    /// Per-character config choices. `#[serde(default)]` keeps pre-config JSON
+    /// loading with an empty map (all registry defaults).
+    #[serde(default)]
+    pub config: HashMap<String, String>,
     /// Full snapshot of every carried object instance, taken at save and
     /// re-spawned on login. `#[serde(default)]` keeps pre-inventory JSON
     /// loading with an empty pack. Ground objects are never stored here —
@@ -109,6 +113,7 @@ impl StoredCharacter {
             class: self.class,
             title: self.title,
             restrings: self.restrings,
+            config: self.config,
         };
         (name, actor, character)
     }
@@ -128,6 +133,7 @@ impl StoredCharacter {
             level: actor.level,
             title: character.title.clone(),
             restrings: character.restrings.clone(),
+            config: character.config.clone(),
             // Built from live components, which never carry a pack — saves
             // attach the snapshot afterwards (see `grim-object::persist`).
             inventory: Vec::new(),
@@ -154,6 +160,7 @@ mod tests {
         assert_eq!(stored.level, 1);
         assert!(stored.title.is_none());
         assert!(stored.restrings.is_empty());
+        assert!(stored.config.is_empty());
     }
 
     #[test]
@@ -169,6 +176,7 @@ mod tests {
         stored.title = Some("the Bold".into());
         stored.roles = vec![Role::Admin];
         stored.restrings.insert("who_class".into(), "God".into());
+        stored.config.insert("minimap".into(), "off".into());
         stored.last_room = Some(RoomLocation {
             area: "haven".into(),
             room: "square".into(),
@@ -184,6 +192,7 @@ mod tests {
         assert_eq!(character.class, "mage");
         assert!(character.is_admin());
         assert_eq!(character.title.as_deref(), Some("the Bold"));
+        assert_eq!(character.config.get("minimap"), Some(&"off".to_string()));
 
         let rebuilt = StoredCharacter::from_components(&name, &actor, &character);
         // Re-serializing yields the same JSON as the original DTO.

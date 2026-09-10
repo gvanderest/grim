@@ -281,6 +281,7 @@ mod tests {
                     class: String::new(),
                     title: None,
                     restrings: Default::default(),
+                    config: Default::default(),
                 },
                 Actor {
                     race: "human".into(),
@@ -344,6 +345,7 @@ mod tests {
                     class: String::new(),
                     title: None,
                     restrings: Default::default(),
+                    config: Default::default(),
                 },
                 Actor {
                     race: "human".into(),
