@@ -58,4 +58,7 @@ get a verification re-read against the finding, not a fresh round.
 - Push the branch; create the PR per step 4: design/issue link, accepted-P0
   reasons, `Deferred: #M` references.
 - CI (build, lint, test per AGENTS.md — the `check` job plus the `integration`
-  copyover job) must be green before requesting human review.
+  copyover job) must be green before requesting human review. After the PR is
+  open, continue via `grim-babysit-pr` — it owns the PR to merge. Do not stop
+  at green CI with checks still pending or threads untriaged: that is the
+  babysit loop's work, not a handoff point.
