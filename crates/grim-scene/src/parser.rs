@@ -246,6 +246,9 @@ fn build_registry() -> CommandRegistry<Command> {
             })
         }
     });
+    // `map` — bare only (`map <anything>` is unknown, like `sockets`). The `m`
+    // prefix is uncontested, so this steals no abbreviation.
+    r.register("map", |rest| rest.trim().is_empty().then_some(Command::Map));
     r.register("who", |_| Some(Command::Who));
     r.register("wizlist", |_| Some(Command::Wizlist));
     r.register("where", |_| Some(Command::Where));
@@ -1092,6 +1095,16 @@ mod tests {
                 direction: Cardinal::South
             })
         );
+    }
+
+    #[test]
+    fn test_map_bare_and_abbreviation() {
+        // The `m` prefix is uncontested: both the word and the abbreviation
+        // reach `map`, while anything with arguments is unknown.
+        assert_eq!(parse("map"), Some(Command::Map));
+        assert_eq!(parse("m"), Some(Command::Map));
+        assert_eq!(parse("ma"), Some(Command::Map));
+        assert_eq!(parse("map foo"), None);
     }
 
     // ── Prefix matching / registration order ────────────────────────────

@@ -53,6 +53,7 @@ Player-facing verbs and where to find their handlers.
 | Command | Handler | Summary |
 |---|---|---|
 | `look [target]` | `src/commands/look.rs` | Describe the current room, or a named entity within it (`self` = you; exact name beats prefix, shortest prefix name wins; `2.goblin` takes the second, `"two words"` needs every word). |
+| `map` | `src/commands/map.rs` | Render the area around your room as ASCII (`@` you, `#` rooms, `--`/`\|` exits, `,`/`'` up/down); answers only you. |
 | `desc [clear\|+\|-\|edit]` | `src/commands/desc.rs` | View or edit your description paragraphs (`clear` empties, `+ <line>` appends, `-` drops the last, `edit` opens the line editor). |
 | `move` — `n`/`e`/`s`/`w`/`u`/`d` (+ `north`…) | `src/commands/movement.rs` | Walk through an exit; emits `MoveEvent`. Direction aliases parsed in `grim-scene`. |
 | `goto <address>` | `src/commands/movement.rs` | Admin teleport to a room by address. |
