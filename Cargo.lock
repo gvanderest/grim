@@ -973,6 +973,7 @@ dependencies = [
  "grim-channel",
  "grim-command",
  "grim-command-events",
+ "grim-config",
  "grim-core",
  "grim-networking",
  "grim-networking-telnet",
@@ -993,6 +994,7 @@ dependencies = [
  "bevy",
  "chrono",
  "grim-color",
+ "grim-config",
  "grim-core",
  "grim-networking",
  "grim-target",
@@ -1052,6 +1054,13 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "grim-core",
+]
+
+[[package]]
+name = "grim-config"
+version = "0.1.0"
+dependencies = [
+ "bevy",
 ]
 
 [[package]]
@@ -1130,6 +1139,7 @@ dependencies = [
  "grim-channel",
  "grim-color",
  "grim-command",
+ "grim-config",
  "grim-core",
  "grim-networking",
  "grim-object",

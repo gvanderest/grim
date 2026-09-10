@@ -138,6 +138,7 @@ plugin registering five scenes. That is correct and not a violation.
 | `grim-world` | `WorldPlugin` (+ `ShutdownPlugin`) | rooms, areas, exits, room-address lookups, `RoomLocation` (being-free) |
 | `grim-actor` | `ActorPlugin` | the beings — `Actor` base + PC `Character` + `Creature` mob marker + `Player`/`InRoom`/… and the `StoredCharacter` disk DTO — plus the being-reading verbs (`look`/`move`/`goto`/`quit`/`title`/`shutdown`) |
 | `grim-channel` | `ChannelPlugin` | channel registry, audience, eligibility (§7) |
+| `grim-config` | — (plain library + resource) | player settings registry (`ConfigDef` key/valid/default/scope + fail-safe `resolve`); seeded by `grim-actor`, read by `grim-actor` + `grim-scene` |
 | `grim-object` | `ObjectPlugin` | things — `Object` marker + `CarriedBy` carrier link and the carrying verbs (`get`/`drop`/`inventory`/`give`/`steal`, all resolved through `grim-target`); sits above `grim-actor`, never the reverse |
 | `grim-persistence` | `PersistencePlugin` | account/character save and load, player aliases, channel toggles |
 | `grim-script` | `ScriptPlugin` | sandboxed Lua triggers: scripted mob reactions on room entry/exit; layers on `grim-actor` (transition events) + `grim-channel` (mob speech), never the reverse |
