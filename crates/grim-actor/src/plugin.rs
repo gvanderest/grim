@@ -9,6 +9,7 @@
 
 use bevy::prelude::*;
 
+use crate::commands::config;
 use crate::commands::desc;
 use crate::commands::look;
 use crate::commands::map;
@@ -17,15 +18,28 @@ use crate::commands::quit;
 use crate::commands::shutdown;
 use crate::commands::title;
 
-/// Registers the actor command verbs: `look`, `map`, `desc`, `move`/`goto`,
-/// `quit`, `title`, and the admin `shutdown` gate.
+/// Registers the actor command verbs: `look`, `map`, `config`, `desc`,
+/// `move`/`goto`, `quit`, `title`, and the admin `shutdown` gate. Also seeds
+/// the player-config registry (`minimap`, default on) — the `config` verb and
+/// the look minimap resolve through it.
 pub struct ActorPlugin;
 
 impl Plugin for ActorPlugin {
     fn build(&self, app: &mut App) {
+        // Player settings (read by the `config` verb and the look minimap).
+        app.init_resource::<grim_config::ConfigRegistry>();
+        app.world_mut()
+            .resource_mut::<grim_config::ConfigRegistry>()
+            .register(grim_config::ConfigDef {
+                key: "minimap".into(),
+                valid: vec!["on".into(), "off".into()],
+                default: "on".into(),
+                scope: grim_config::Scope::Character,
+            });
         look::register(app);
         map::register(app);
         desc::register(app);
+        config::register(app);
         movement::register(app);
         quit::register(app);
         title::register(app);

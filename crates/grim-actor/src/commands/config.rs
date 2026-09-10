@@ -1,10 +1,10 @@
 //! The `config` command: list, show, and set registered player settings.
 
+use crate::character::Character;
 use bevy::prelude::*;
 use grim_config::ConfigRegistry;
 use grim_core::events::{Command, EngineCommand, InfoMessage};
 use grim_text::tr;
-use crate::character::Character;
 
 /// `config` lists every registered setting with its resolved value and valid
 /// values; `config <key>` cycles to the next valid value (wrapping around);
