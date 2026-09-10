@@ -1,25 +1,30 @@
-//! Graceful server shutdown, triggered two ways:
+//! Graceful server shutdown, triggered four ways sharing one countdown:
 //!
-//! - **In-game:** `shutdown <seconds>` from an admin character. That handler
-//!   reads a being (the actor's `Character`), so it lives in `grim-actor` and
-//!   slots into [`ShutdownSet::Command`]; everything else here is being-free.
+//! - **In-game:** `shutdown <seconds>` (halt), `reboot <seconds>` (cold
+//!   restart: non-zero exit so the service manager brings the server back),
+//!   or `copyover <seconds>` (hot restart: hands sockets to a successor via
+//!   [`grim_core::events::CopyoverDue`]) from an admin character. Those
+//!   handlers read a being (the actor's `Character`), so they live in
+//!   `grim-actor` and slot into [`ShutdownSet::Command`]; everything else
+//!   here is being-free.
 //! - **Out-of-band:** `SIGTERM` to the process — this is what `systemctl stop`
 //!   sends, so a stop/restart warns players instead of terminating abruptly. No
-//!   login or admin credentials are involved. (Copyover, a *hot* restart that
-//!   keeps players connected, uses `SIGUSR2` instead — see `grim-networking-telnet`.)
+//!   login or admin credentials are involved. (Out-of-band copyover, a *hot*
+//!   restart that keeps players connected, uses `SIGUSR2` instead — see
+//!   `grim-networking-telnet`.)
 //!
-//! Either path schedules the same countdown: every connected player is warned
-//! at decreasing intervals, and when it expires the app writes
-//! [`AppExit::Success`] (exit code 0). The systemd unit uses `Restart=on-failure`,
-//! so a clean exit stays down and lets the deploy swap the binary before
-//! restarting — see `docs/DEPLOY.md`.
+//! Every path warns every connected player at decreasing intervals. At expiry
+//! the tick halts (`AppExit::Success`, exit 0 — the systemd unit uses
+//! `Restart=on-failure`, so a clean exit stays down and lets the deploy swap
+//! the binary before restarting — see `docs/DEPLOY.md`), exits non-zero for a
+//! `reboot`, or emits `CopyoverDue` for a `copyover` instead of exiting.
 //!
 //! Player state is **not** flushed on shutdown: characters save on disconnect
 //! and on `quit`, and the project currently tolerates losing in-flight position
 //! changes across a restart.
 
 use bevy::prelude::*;
-use grim_core::events::ServerBroadcast;
+use grim_core::events::{CopyoverDue, ServerBroadcast};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -90,19 +95,33 @@ impl ShutdownCountdown {
 #[derive(Resource, Debug)]
 pub struct ActiveShutdown(pub ShutdownCountdown);
 
-/// Ordering seam for the shutdown pipeline within `Update`. The admin `shutdown`
-/// command handler lives in `grim-actor` (it reads a being — the actor's
-/// `Character`); it slots into [`ShutdownSet::Command`], between this crate's
-/// SIGTERM poll and countdown tick. Chaining the three sets means a SIGTERM and
-/// an admin `shutdown` arriving in the same tick still schedule exactly one
-/// countdown: the sync point between `Poll` and `Command` makes the command see
-/// the poll's `ActiveShutdown` insert (and vice-versa) rather than both
-/// observing "none pending" and scheduling conflicting countdowns.
+/// Present when the active countdown must cold-restart at expiry (an admin
+/// `reboot`) instead of halting: the tick exits non-zero so the service
+/// manager brings the server back. Absence at expiry means a clean halt.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RebootShutdown;
+
+/// Present when the active countdown must hand off to a successor process at
+/// expiry (an admin `copyover`) instead of exiting: the tick emits
+/// [`grim_core::events::CopyoverDue`] for the telnet transport and clears the
+/// countdown with no exit of its own.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CopyoverShutdown;
+
+/// Ordering seam for the shutdown pipeline within `Update`. The admin
+/// `shutdown`/`reboot`/`copyover` command handler lives in `grim-actor` (it
+/// reads a being — the actor's `Character`); it slots into
+/// [`ShutdownSet::Command`], between this crate's SIGTERM poll and countdown
+/// tick. Chaining the three sets means a SIGTERM and an admin command
+/// arriving in the same tick still schedule exactly one countdown: the sync
+/// point between `Poll` and `Command` makes the command see the poll's
+/// `ActiveShutdown` insert (and vice-versa) rather than both observing "none
+/// pending" and scheduling conflicting countdowns.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ShutdownSet {
     /// SIGTERM poll — may start a countdown.
     Poll,
-    /// Admin `shutdown` command (in `grim-actor`) — may start a countdown.
+    /// Admin shutdown verbs (in `grim-actor`) — may start a countdown.
     Command,
     /// Advance the active countdown.
     Tick,
@@ -126,6 +145,7 @@ pub struct ShutdownPlugin;
 impl Plugin for ShutdownPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<ServerBroadcast>()
+            .add_message::<CopyoverDue>()
             .init_resource::<ShutdownSignal>()
             .add_systems(Startup, install_signal_handler)
             // Chain the three phases so the sync point between them applies each
@@ -181,12 +201,19 @@ pub fn warn_text(seconds: u64) -> String {
     format!("{{R[SERVER]{{x The server is restarting in {{Y{seconds}{{x seconds.\n")
 }
 
-/// Ticks the active countdown, emitting warnings and finally `AppExit`.
+/// Ticks the active countdown, emitting warnings and finally exiting — or, for
+/// a `copyover`, emitting [`CopyoverDue`] for the telnet transport instead of
+/// exiting at all.
+#[allow(clippy::too_many_arguments)]
 fn tick_shutdown(
     time: Res<Time>,
     active: Option<ResMut<ActiveShutdown>>,
+    reboot: Option<Res<RebootShutdown>>,
+    copyover: Option<Res<CopyoverShutdown>>,
     mut broadcast: MessageWriter<ServerBroadcast>,
+    mut due: MessageWriter<CopyoverDue>,
     mut exit: MessageWriter<AppExit>,
+    mut commands: Commands,
 ) {
     let Some(mut active) = active else {
         return;
@@ -201,7 +228,25 @@ fn tick_shutdown(
         broadcast.write(ServerBroadcast {
             text: "{R[SERVER]{x The server is restarting now.\n".into(),
         });
-        exit.write(AppExit::Success);
+        if copyover.is_some() {
+            // Hot restart: the transport takes it from here. Clear the whole
+            // countdown state so a later tick cannot re-fire (or leak a
+            // stale marker into a future countdown) — and exit nothing.
+            due.write(CopyoverDue);
+            commands.remove_resource::<ActiveShutdown>();
+            commands.remove_resource::<CopyoverShutdown>();
+            commands.remove_resource::<RebootShutdown>();
+        } else if reboot.is_some() {
+            // Cold restart: non-zero so the service manager brings us back.
+            // Fire once like the copyover: clear the countdown so the
+            // sticky-expired state cannot re-fire as a clean halt below.
+            exit.write(AppExit::from_code(1));
+            commands.remove_resource::<ActiveShutdown>();
+            commands.remove_resource::<RebootShutdown>();
+            commands.remove_resource::<CopyoverShutdown>();
+        } else {
+            exit.write(AppExit::Success);
+        }
     }
 }
 
@@ -331,7 +376,44 @@ mod tests {
         app.update();
 
         let exits = drain::<AppExit>(&app);
-        assert_eq!(exits.len(), 1);
+        assert_eq!(exits, vec![format!("{:?}", AppExit::Success)]);
+        assert!(drain::<CopyoverDue>(&app).is_empty());
+        let casts = drain::<ServerBroadcast>(&app);
+        assert!(casts.iter().any(|c| c.contains("now")));
+    }
+
+    #[test]
+    fn expiry_with_reboot_marker_exits_nonzero_once() {
+        let mut app = test_app();
+        app.world_mut()
+            .insert_resource(ActiveShutdown(ShutdownCountdown::new(0)));
+        app.world_mut().insert_resource(RebootShutdown);
+        app.update();
+
+        let exits = drain::<AppExit>(&app);
+        assert_eq!(exits, vec![format!("{:?}", AppExit::from_code(1))]);
+        // Fire-once: the whole countdown state clears, so a later tick
+        // cannot re-fire (a sticky-expired countdown without its marker
+        // would fall through to a clean halt).
+        assert!(app.world().get_resource::<ActiveShutdown>().is_none());
+        assert!(app.world().get_resource::<RebootShutdown>().is_none());
+        assert!(drain::<CopyoverDue>(&app).is_empty());
+    }
+
+    #[test]
+    fn expiry_with_copyover_marker_emits_due_without_exit() {
+        let mut app = test_app();
+        app.world_mut()
+            .insert_resource(ActiveShutdown(ShutdownCountdown::new(0)));
+        app.world_mut().insert_resource(CopyoverShutdown);
+        app.update();
+
+        // The transport takes it from here: one handoff request, no exit, and
+        // the countdown cleared so a later tick cannot re-fire it.
+        assert_eq!(drain::<CopyoverDue>(&app).len(), 1);
+        assert!(drain::<AppExit>(&app).is_empty());
+        assert!(app.world().get_resource::<ActiveShutdown>().is_none());
+        assert!(app.world().get_resource::<CopyoverShutdown>().is_none());
         let casts = drain::<ServerBroadcast>(&app);
         assert!(casts.iter().any(|c| c.contains("now")));
     }
