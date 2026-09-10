@@ -434,6 +434,12 @@ mod tests {
         cursor.read(messages).map(|m| m.text.clone()).collect()
     }
 
+    fn move_event_count(app: &App) -> usize {
+        let messages = app.world().resource::<Messages<MoveEvent>>();
+        let mut cursor = messages.get_cursor();
+        cursor.read(messages).count()
+    }
+
     // ── walking an exit ──────────────────────────────────────────────
     mod walking {
         use super::*;
@@ -1088,6 +1094,8 @@ mod tests {
             send_recall(&mut app, actor);
             assert_eq!(room_of(&app, actor), square);
             assert_eq!(look_room_count(&app), 1);
+            // Teleports greet rooms but never walk: no `MoveEvent` narrative.
+            assert_eq!(move_event_count(&app), 0);
             let loc = app
                 .world()
                 .get::<Character>(actor)
@@ -1111,6 +1119,7 @@ mod tests {
             app.update();
             app.update();
             assert_eq!(super::walking::transition_events(&app), (0, 1, 1, 1, 1));
+            assert_eq!(move_event_count(&app), 0);
         }
 
         #[test]
@@ -1123,6 +1132,19 @@ mod tests {
             assert_eq!(info_texts(&app), vec!["You are already there.\n"]);
             assert_eq!(look_room_count(&app), 0);
             assert_eq!(super::walking::transition_events(&app), (0, 0, 0, 0, 0));
+        }
+
+        #[test]
+        fn recall_without_in_room_is_ignored() {
+            // No placement, no recall: skipped silently, like `handle_move` —
+            // no `last_room` rewrite, no look at a room the actor is not in.
+            let mut app = test_app();
+            spawn_room(&mut app, "haven", "square", Exits::default());
+            let actor = app.world_mut().spawn_empty().id();
+            send_recall(&mut app, actor);
+            assert!(info_texts(&app).is_empty());
+            assert_eq!(look_room_count(&app), 0);
+            assert_eq!(move_event_count(&app), 0);
         }
 
         #[test]

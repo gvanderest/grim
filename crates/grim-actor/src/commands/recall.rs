@@ -51,8 +51,13 @@ pub(crate) fn handle_recall(
             });
             continue;
         };
-        let from = inroom.get(actor).map(|ir| ir.room).ok();
-        if from == Some(to) {
+        // No placement, no recall — like `handle_move`, skip rather than
+        // erroring (a `place_actor` here would rewrite `last_room` and show
+        // a room the actor is not in).
+        let Some(from) = inroom.get(actor).map(|ir| ir.room).ok() else {
+            continue;
+        };
+        if from == to {
             info.write(InfoMessage {
                 target: actor,
                 text: tr!("recall.already"),
@@ -65,24 +70,20 @@ pub(crate) fn handle_recall(
                 .ok()
                 .map(|(_, a)| persisted_location(r, a))
         });
-        if let Some(from) = from.filter(|from| *from != to) {
-            // Greetings, not veto: recall always works, so the attempts fire
-            // (deferred) but denial is never consulted.
-            commands.trigger(AttemptLeave {
-                actor,
-                room: from,
-                denied: false,
-            });
-            commands.trigger(AttemptEnter {
-                actor,
-                room: to,
-                denied: false,
-            });
-        }
+        // Greetings, not veto: recall always works, so the attempts fire
+        // (deferred) but denial is never consulted.
+        commands.trigger(AttemptLeave {
+            actor,
+            room: from,
+            denied: false,
+        });
+        commands.trigger(AttemptEnter {
+            actor,
+            room: to,
+            denied: false,
+        });
         place_actor(actor, to, loc, &mut inroom, &mut characters);
-        if let Some(from) = from.filter(|from| *from != to) {
-            pending.incoming.push(RoomFact { actor, from, to });
-        }
+        pending.incoming.push(RoomFact { actor, from, to });
         look_room.write(LookRoom {
             target: actor,
             room: to,
