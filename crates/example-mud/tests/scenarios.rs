@@ -720,3 +720,27 @@ fn map_centers_self_repeats_stably_and_recenters_on_move() {
     assert_eq!(rows[11], format!("{:40}|", ""));
     assert_eq!(rows[12], format!("{:40}#", ""));
 }
+
+#[test]
+fn look_staples_minimap_left_of_room_text() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    // Tavern minimap (9x7): the square `#--#` with the forge east two rows up,
+    // `@` centered on the looker's row, 9-wide gutter + two spaces throughout.
+    let out = mud.send(alice, "look");
+    let lines: Vec<&str> = out.text().lines().collect();
+    assert_eq!(lines[0], "           The Rusted Anvil");
+    assert!(
+        lines[1].starts_with("    #--#  "),
+        "square row:\n{}",
+        lines[1]
+    );
+    assert!(lines[3].starts_with("    @  "), "self row:\n{}", lines[3]);
+    // Past the 7-row canvas the gutter runs blank (11 spaces).
+    let exits = lines
+        .iter()
+        .find(|l| l.contains("Exits: north"))
+        .expect("exits line");
+    assert!(exits.starts_with("           "), "blank gutter:\n{exits}");
+}

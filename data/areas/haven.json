@@ -9,7 +9,7 @@
       "id": "C7Ee6NQVAfBr",
       "slug": "tavern",
       "name": "The Rusted Anvil",
-      "description": "Smoke and the clang of hammer on steel fill the air. Sawdust covers the floor of this cozy tavern. A staircase leads up to the second floor, and a door leads north to the town square.",
+      "description": "Smoke and the clang of hammer on steel fill the air.\nSawdust covers the floor of this cozy tavern. A staircase leads up\nto the second floor, and a door leads north to the town square.",
       "exits": { "north": "y0vjzSNtWQo3" },
       "npcs": [
         {
@@ -36,14 +36,14 @@
       "id": "y0vjzSNtWQo3",
       "slug": "square",
       "name": "Town Square",
-      "description": "The cobblestone square bustles with activity. A fountain marks the center. The tavern is to the south, and the smithy is to the east.",
+      "description": "The cobblestone square bustles with activity.\nA fountain marks the center. The tavern is to the south, and the\nsmithy is to the east.",
       "exits": { "south": "C7Ee6NQVAfBr", "east": "dSWS6Y77CtwJ" }
     },
     {
       "id": "dSWS6Y77CtwJ",
       "slug": "forge",
       "name": "Grimmok's Forge",
-      "description": "The heat from the forge is intense. Weapons and armor hang from the walls. The town square is to the west.",
+      "description": "The heat from the forge is intense.\nWeapons and armor hang from the walls.\nThe town square is to the west.",
       "exits": { "west": "y0vjzSNtWQo3" }
     }
   ]

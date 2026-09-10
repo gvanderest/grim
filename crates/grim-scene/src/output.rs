@@ -2,6 +2,8 @@
 //! events (look/say/yell/ooc/move/info + announces) into `ConnectionOutput`,
 //! captures output for linkdead replay, and fans server broadcasts out.
 
+use std::collections::HashMap;
+
 use bevy::prelude::*;
 use grim_actor::{Character, InRoom, OutputHistory, Player};
 use grim_channel::{ChannelMessage, ChannelRegistry};
@@ -12,7 +14,7 @@ use grim_core::events::{
 use grim_networking::ConnectionOutput;
 use grim_object::Object;
 use grim_text::tr;
-use grim_world::{Exits, Room};
+use grim_world::{render_map, Exits, MapConfig, Room};
 
 use crate::channel_output::emit_channel;
 use crate::formatter;
@@ -44,7 +46,7 @@ pub(crate) fn format_output(
     channel_registry: Res<ChannelRegistry>,
     rooms: Query<(Entity, &Room, &GrimName)>,
     room_occupants: Occupants,
-    room_exits: Query<&Exits>,
+    room_exits: Query<(Entity, &Exits)>,
     names: Query<&GrimName>,
     descriptions: Query<&Description>,
     characters: Query<&Character>,
@@ -124,7 +126,7 @@ fn emit_look_room(
     ev: &LookRoom,
     rooms: &Query<(Entity, &Room, &GrimName)>,
     room_occupants: &Occupants,
-    room_exits: &Query<&Exits>,
+    room_exits: &Query<(Entity, &Exits)>,
     characters: &Query<&Character>,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
@@ -134,7 +136,7 @@ fn emit_look_room(
     let exits = room_exits
         .get(ev.room)
         .ok()
-        .map(|e| {
+        .map(|(_, e)| {
             let mut dirs: Vec<String> = e.exits.keys().map(|d| d.to_string()).collect();
             dirs.sort();
             dirs
@@ -198,12 +200,17 @@ fn emit_look_room(
         }),
     );
     let conn = find_conn(ev.target, room_occupants);
+    let body = formatter::format_room(&title, &room.description, &exits, &presence);
+    // Minimap: the same renderer as `map` on the small canvas, stapled left.
+    // Always on in P2; the per-character toggle arrives with `config` in P3.
+    let mut snapshot = HashMap::new();
+    for (room_entity, links) in room_exits.iter() {
+        snapshot.insert(room_entity, links.exits.clone());
+    }
+    let map_rows = render_map(ev.room, &snapshot, &MapConfig::MINIMAP);
     outputs.write(ConnectionOutput {
         echo: None,
-        ..ConnectionOutput::new(
-            conn,
-            formatter::format_room(&title, &room.description, &exits, &presence),
-        )
+        ..ConnectionOutput::new(conn, formatter::staple_minimap(&map_rows, &body))
     });
 }
 
