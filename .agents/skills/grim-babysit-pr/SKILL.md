@@ -22,9 +22,18 @@ the design or the standards stops for user input — never assumptions.**
    - CI red → read the failing job log, fix the source (never the gate),
      confirm `make precommit` green, commit, push, re-poll.
    - New review threads → hand the unanswered set to the `fix` skill flow
-     (green per commit, grouped pushes), then re-poll.
+     (green per commit, grouped pushes), then re-poll. Bot threads get the
+     same flow as human ones — triage, fix-or-accept with a reason, reply,
+     resolve.
+   - Checks pending (CI jobs or bot reviewers such as CodeRabbit) → keep
+     polling; **pending is not passing**. NEVER declare a check "not a gate"
+     without evidence: consult the repo's required-checks list or a completed
+     pass, never the check's name. A `rate limited` / skipped bot pass after
+     its threads were triaged counts as complete; an unreviewed push does not.
    - Approvals with no threads → report and keep polling for the human
      squash-merge; do not merge (merging is the human's call per AGENTS.md).
+     Green CI with checks still pending is not done — the loop exits only on
+     `MERGED` / `CLOSED`, the user saying stop, or a conflict stop below.
 3. Poll concretely: `gh pr checks --watch --interval 60` while CI runs;
    thread polls every 120–300s with backoff when quiet. Never spin.
    Announce each push with what changed and what is still pending.

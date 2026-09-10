@@ -13,7 +13,7 @@ branch. It does NOT open a PR — that belongs to `grim-review-and-pr`.
 1. Preflight: `git status` clean, `git branch --show-current`. Take the packet:
    `.planning/tmp/<slug>/DESIGN.md` (tasks + verdicts + `Deferred:` list) or the
    ratifying issue `#N`. No packet → stop and ask; never invent scope.
-2. `git checkout -b <slug> main`. Branch name matches the design slug.
+2. `git fetch origin && git checkout -b <slug> origin/main`. Branch name matches the design slug. Always base on the latest `origin/main` — a stale local `main` silently forks behind landed work — unless the design or the user names another base explicitly.
 3. Work the design's Tasks in order, one slice per commit. Between slices,
    re-read the design — it is the spec; drift from it is a design change that
    goes back through `grim-design`, not a judgment call at the keyboard.
