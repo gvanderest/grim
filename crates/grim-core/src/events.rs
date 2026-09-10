@@ -95,9 +95,17 @@ pub enum Command {
     /// including the sender. Other admins see it attributed (`Name> text`);
     /// everyone else sees the raw text.
     Gecho { text: String },
-    /// `shutdown <seconds>` — admin-only. Schedules a graceful server shutdown
+    /// `shutdown [seconds]` — admin-only. Schedules a graceful server shutdown
     /// after a countdown, broadcasting warnings to all connected players.
     Shutdown { seconds: u64 },
+    /// `reboot [seconds]` — admin-only. Like `shutdown`, but the process exits
+    /// non-zero at expiry so the service manager restarts it (cold restart:
+    /// connections drop, the world reloads from disk).
+    Reboot { seconds: u64 },
+    /// `copyover [seconds]` — admin-only. Warns like `shutdown`, then hands the
+    /// live listener + player sockets to a successor process (hot restart:
+    /// players stay connected). The telnet transport performs the handoff.
+    Copyover { seconds: u64 },
     /// `ban list [type]` — admin-only. List bans, optionally filtered by
     /// `ip` / `account` / `character`.
     /// `ban add <type> <pattern>` — admin-only. Block an IP (exact or
@@ -360,3 +368,9 @@ pub struct LinkdeadAnnounce {
 pub struct ServerBroadcast {
     pub text: String,
 }
+
+/// A scheduled `copyover` countdown has expired: the telnet transport should
+/// begin the fd handoff to a successor process now. Written by the
+/// being-free shutdown tick (`grim-world`), read by `grim-networking-telnet`.
+#[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CopyoverDue;

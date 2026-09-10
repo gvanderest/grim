@@ -113,11 +113,11 @@ Also open **TCP 4000** inbound in the instance's security group.
 
 The binary itself reads no configuration — port `4000` is compiled in.
 
-## Admin role (for the in-game `shutdown` command)
+## Admin role (for the in-game `shutdown` / `reboot` / `copyover` commands)
 
 The deploy does not need this — it uses `SIGUSR2` (copyover) / `SIGTERM`
-(shutdown). But the in-game `shutdown` command is gated on an `admin` role. Roles
-live on the character JSON
+(shutdown). But the in-game shutdown verbs are gated on an `admin` role.
+Roles live on the character JSON
 (`/opt/grim/data/characters/<name>.json`):
 
 ```json
@@ -129,8 +129,20 @@ live on the character JSON
 ```
 
 Granting is a manual JSON edit; a `data/` wipe drops it. A non-admin running
-`shutdown` gets the ordinary unknown-command response — the command's existence
-is not disclosed.
+any of them gets the ordinary unknown-command response — the commands'
+existence is not disclosed.
+
+- `shutdown [seconds]` (default 30) — warned countdown, then a clean halt
+  (stays down so a deploy can swap the binary).
+- `reboot [seconds]` (default 30) — warned countdown, then a non-zero exit,
+  so systemd (`Restart=on-failure`) restarts the server cold. Connections
+  drop; the world reloads from disk.
+- `copyover [seconds]` (default 30) — warned countdown, then the same
+  in-place handoff a deploy `SIGUSR2` performs: players stay connected.
+  One countdown runs at a time across all three verbs and `SIGTERM`.
+  An in-game `copyover` is rejected while a countdown is active.
+  A deploy `SIGUSR2` copyover ends any pending countdown when the successor
+  process starts with fresh state.
 
 ## Caveats
 

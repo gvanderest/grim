@@ -1509,6 +1509,179 @@ mod ingame_commands {
         );
     }
 
+    /// A non-admin `reboot` is masked exactly like an unknown command and never
+    /// forwarded to the engine.
+    #[test]
+    fn ingame_reboot_masked_for_non_admin() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        spawn_ingame(&mut app, conn, make_character(Vec::new()));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "reboot 10".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == conn)
+            .expect("expected a response");
+        assert_eq!(out.text, "Unknown command. Type 'commands' for a list.\n");
+        assert!(!out.prepend_newline, "must match unknown-command framing");
+
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        assert_eq!(engine.get_cursor().read(engine).count(), 0);
+    }
+
+    /// An admin `reboot` is accepted (queued), never masked.
+    #[test]
+    fn ingame_reboot_allowed_for_admin() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        spawn_ingame(&mut app, conn, make_character(vec![Role::Admin]));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "reboot 10".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        assert!(
+            !cursor
+                .read(msgs)
+                .any(|o| o.connection == conn && o.text.contains("Unknown command")),
+            "admin reboot must not be masked"
+        );
+
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        let dispatched = engine
+            .get_cursor()
+            .read(engine)
+            .any(|e| matches!(e.command, Command::Reboot { seconds: 10 }));
+        let mut clients = app.world_mut().query::<&Client>();
+        let queued = clients
+            .iter(app.world())
+            .find(|c| c.connection == conn)
+            .is_some_and(|c| {
+                matches!(c.input_queue.front(), Some(Command::Reboot { seconds: 10 }))
+            });
+        assert!(
+            queued || dispatched,
+            "admin reboot should be queued or dispatched, not dropped"
+        );
+    }
+
+    /// A non-admin `copyover` is masked exactly like an unknown command and
+    /// never forwarded to the engine.
+    #[test]
+    fn ingame_copyover_masked_for_non_admin() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        spawn_ingame(&mut app, conn, make_character(Vec::new()));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "copyover 10".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == conn)
+            .expect("expected a response");
+        assert_eq!(out.text, "Unknown command. Type 'commands' for a list.\n");
+        assert!(!out.prepend_newline, "must match unknown-command framing");
+
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        assert_eq!(engine.get_cursor().read(engine).count(), 0);
+    }
+
+    /// An admin `copyover` is accepted (queued), never masked.
+    #[test]
+    fn ingame_copyover_allowed_for_admin() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        spawn_ingame(&mut app, conn, make_character(vec![Role::Admin]));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "copyover 10".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        assert!(
+            !cursor
+                .read(msgs)
+                .any(|o| o.connection == conn && o.text.contains("Unknown command")),
+            "admin copyover must not be masked"
+        );
+
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        let dispatched = engine
+            .get_cursor()
+            .read(engine)
+            .any(|e| matches!(e.command, Command::Copyover { seconds: 10 }));
+        let mut clients = app.world_mut().query::<&Client>();
+        let queued = clients
+            .iter(app.world())
+            .find(|c| c.connection == conn)
+            .is_some_and(|c| {
+                matches!(
+                    c.input_queue.front(),
+                    Some(Command::Copyover { seconds: 10 })
+                )
+            });
+        assert!(
+            queued || dispatched,
+            "admin copyover should be queued or dispatched, not dropped"
+        );
+    }
+
     /// A non-admin `gecho` is masked exactly like an unknown command and never
     /// forwarded to the engine.
     #[test]

@@ -654,3 +654,43 @@ fn password_must_be_valid() {
         .assert_contains("create an account")
         .assert_excludes("Password");
 }
+
+#[test]
+fn admin_reboot_expires_to_nonzero_exit() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    mud.edit_character("Alice", |c| {
+        c.roles.push(Role::Admin);
+    });
+
+    // Warned countdown expires at once (`0s`); the exit must be exactly one
+    // non-zero request, so the service manager restarts the server cold.
+    let outcome = mud.send_shutdown(alice, "reboot 0");
+    outcome.output.assert_contains("restarting now");
+    assert_eq!(
+        outcome.exits,
+        vec![grim::AppExit::from_code(1)],
+        "reboot must fire one cold-restart exit"
+    );
+    assert_eq!(outcome.copyover_due, 0, "reboot must not ask for a handoff");
+}
+
+#[test]
+fn admin_copyover_expires_to_handoff_without_exit() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    mud.edit_character("Alice", |c| {
+        c.roles.push(Role::Admin);
+    });
+
+    // Same warnings, but expiry asks the transport to hand off instead of
+    // exiting (headless has no transport, so assert the request itself: fired
+    // exactly once, with no exit alongside).
+    let outcome = mud.send_shutdown(alice, "copyover 0");
+    outcome.output.assert_contains("restarting now");
+    assert_eq!(
+        outcome.copyover_due, 1,
+        "copyover must fire exactly one handoff"
+    );
+    assert!(outcome.exits.is_empty(), "copyover must not exit");
+}

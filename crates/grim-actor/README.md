@@ -45,7 +45,7 @@ creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the
 | `movement::handle_goto` | `Update` | `src/commands/movement.rs` | Admin teleport to a room by address (entity/grim id/slug, `area:room`); fires attempt triggers deferred (denial ignored — admin override) and queues facts the same way. Skipped when source == destination. |
 | `quit::handle_quit` | `Update` | `src/commands/quit.rs` | Reads `Command::Quit`; emits `DisconnectRequest` for the player's connection. |
 | `title::handle_title` | `Update` | `src/commands/title.rs` | Reads `Command::Title`; sets/clears the actor's title (≤60 chars). |
-| `shutdown::handle_shutdown_command` | `Update` (`grim_world::ShutdownSet::Command`) | `src/commands/shutdown.rs` | Reads `Command::Shutdown`; admin-gates the graceful countdown (state/tick stay in `grim-world`). |
+| `shutdown::handle_shutdown_command` | `Update` (`grim_world::ShutdownSet::Command`) | `src/commands/shutdown.rs` | Reads `Command::Shutdown`/`Reboot`/`Copyover`; admin-gates the warned countdown (halt / cold restart / hot restart at expiry; state/tick stay in `grim-world`). |
 
 ## Commands
 Player-facing verbs and where to find their handlers.
@@ -58,7 +58,9 @@ Player-facing verbs and where to find their handlers.
 | `goto <address>` | `src/commands/movement.rs` | Admin teleport to a room by address. |
 | `quit` | `src/commands/quit.rs` | Request a clean disconnect (save + despawn happen in `grim-scene`). |
 | `title [text]` | `src/commands/title.rs` | Set (or, bare, clear) the actor's title; rejected over 60 chars. |
-| `shutdown <seconds>` | `src/commands/shutdown.rs` | Admin-only graceful server-shutdown countdown. |
+| `shutdown [seconds]` | `src/commands/shutdown.rs` | Admin-only graceful server-shutdown countdown (halt at expiry; default 30s). |
+| `reboot [seconds]` | `src/commands/shutdown.rs` | Admin-only warned countdown ending in a non-zero exit, so the service manager restarts the server cold (default 30s). |
+| `copyover [seconds]` | `src/commands/shutdown.rs` | Admin-only warned countdown ending in a `CopyoverDue` handoff to a successor process (default 30s). |
 
 ## Resources & Events
 

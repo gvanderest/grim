@@ -10,7 +10,8 @@ use grim_networking::{
 
 use crate::bridge::{drain_network_events, send_network_commands, TelnetPort};
 use crate::copyover::{
-    finish_copyover, install_copyover_signal, poll_copyover_signal, CopyoverDone, CopyoverSignal,
+    finish_copyover, install_copyover_signal, poll_copyover_signal, trigger_copyover_on_due,
+    CopyoverDone, CopyoverSignal,
 };
 use crate::server::start_telnet_server;
 
@@ -32,6 +33,7 @@ impl Plugin for TelnetPlugin {
             .add_message::<ConnectionOutput>()
             .add_message::<ConnectionResumed>()
             .add_message::<DisconnectRequest>()
+            .add_message::<grim_core::events::CopyoverDue>()
             .insert_resource(TelnetPort(self.port))
             .init_resource::<CopyoverSignal>()
             .init_resource::<CopyoverDone>()
@@ -41,6 +43,10 @@ impl Plugin for TelnetPlugin {
                 (
                     drain_network_events,
                     send_network_commands,
+                    // Bridge an expired in-game `copyover` countdown into the
+                    // same latched flag `SIGUSR2` raises; `poll` picks it up
+                    // below (order is non-critical — the flag latches).
+                    trigger_copyover_on_due,
                     poll_copyover_signal,
                     finish_copyover,
                 )
