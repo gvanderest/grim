@@ -440,6 +440,17 @@ mod tests {
         cursor.read(messages).count()
     }
 
+    fn recall_events(app: &App) -> Vec<(Entity, Entity, Entity)> {
+        let messages = app
+            .world()
+            .resource::<Messages<grim_core::events::RecallEvent>>();
+        let mut cursor = messages.get_cursor();
+        cursor
+            .read(messages)
+            .map(|e| (e.actor, e.from, e.to))
+            .collect()
+    }
+
     // ── walking an exit ──────────────────────────────────────────────
     mod walking {
         use super::*;
@@ -1094,7 +1105,8 @@ mod tests {
             send_recall(&mut app, actor);
             assert_eq!(room_of(&app, actor), square);
             assert_eq!(look_room_count(&app), 1);
-            // Teleports greet rooms but never walk: no `MoveEvent` narrative.
+            // The room echoes render from this event, not from a `MoveEvent`.
+            assert_eq!(recall_events(&app), vec![(actor, start, square)]);
             assert_eq!(move_event_count(&app), 0);
             let loc = app
                 .world()
@@ -1132,6 +1144,7 @@ mod tests {
             assert_eq!(info_texts(&app), vec!["You are already there.\n"]);
             assert_eq!(look_room_count(&app), 0);
             assert_eq!(super::walking::transition_events(&app), (0, 0, 0, 0, 0));
+            assert!(recall_events(&app).is_empty());
         }
 
         #[test]
@@ -1145,6 +1158,7 @@ mod tests {
             assert!(info_texts(&app).is_empty());
             assert_eq!(look_room_count(&app), 0);
             assert_eq!(move_event_count(&app), 0);
+            assert!(recall_events(&app).is_empty());
         }
 
         #[test]
