@@ -14,6 +14,7 @@ use bevy::log::{error, info, warn};
 use bevy::prelude::*;
 use grim_actor::{Character, Linkdead, Player};
 use grim_core::components::{Client, ClientState, Name as GrimName};
+use grim_core::events::CopyoverDue;
 use grim_networking::{Connection, HandoverEntry, HandoverManifest};
 use sendfd::{RecvWithFd, SendWithFd};
 
@@ -200,6 +201,23 @@ pub(crate) fn install_copyover_signal(signal: Res<CopyoverSignal>) {
     match signal_hook::flag::register(signal_hook::consts::SIGUSR2, signal.0.clone()) {
         Ok(_) => info!("SIGUSR2 will trigger a copyover (hot restart)"),
         Err(e) => warn!("failed to register SIGUSR2 handler: {e}"),
+    }
+}
+/// An in-game `copyover` countdown has expired: flip the handoff flag so
+/// `poll_copyover_signal` snapshots sessions on the next tick, exactly as if
+/// `SIGUSR2` had fired. The countdown, warnings, and admin gate all ran
+/// upstream; this only bridges the engine message to the latched flag.
+pub(crate) fn trigger_copyover_on_due(
+    mut due: MessageReader<CopyoverDue>,
+    signal: Res<CopyoverSignal>,
+) {
+    let mut fire = false;
+    for _ in due.read() {
+        fire = true;
+    }
+    if fire {
+        info!("copyover countdown expired: handing off to a successor");
+        signal.0.store(true, Ordering::SeqCst);
     }
 }
 
@@ -412,5 +430,43 @@ mod tests {
         let (tx, rx) = StdUnix::pair().unwrap();
         write_handoff(&tx, &HandoverManifest::default(), &[]).unwrap();
         assert!(read_handoff(&rx).is_err(), "no listener fd → error");
+    }
+
+    /// An expired in-game `copyover` countdown raises the handoff flag, exactly
+    /// like `SIGUSR2` — the next `poll_copyover_signal` performs the handoff.
+    #[test]
+    fn copyover_due_fires_handoff_flag() {
+        let mut app = App::new();
+        app.insert_resource(CopyoverSignal::default());
+        app.add_message::<CopyoverDue>();
+        app.add_systems(Update, trigger_copyover_on_due);
+        app.world_mut().write_message(CopyoverDue);
+        app.update();
+
+        assert!(
+            app.world()
+                .resource::<CopyoverSignal>()
+                .0
+                .load(Ordering::SeqCst),
+            "CopyoverDue must latch the handoff flag"
+        );
+    }
+
+    /// Silence upstream means silence here: no message, no flag.
+    #[test]
+    fn no_due_leaves_flag_down() {
+        let mut app = App::new();
+        app.insert_resource(CopyoverSignal::default());
+        app.add_message::<CopyoverDue>();
+        app.add_systems(Update, trigger_copyover_on_due);
+        app.update();
+
+        assert!(
+            !app.world()
+                .resource::<CopyoverSignal>()
+                .0
+                .load(Ordering::SeqCst),
+            "no CopyoverDue must leave the flag down"
+        );
     }
 }
