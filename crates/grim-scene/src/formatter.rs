@@ -264,6 +264,7 @@ pub fn format_linkdead(name: &str, reconnecting: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use grim_world::MapConfig;
 
     // ── format_areas_list ────────────────────────────────────────
 
@@ -343,6 +344,13 @@ mod tests {
     }
 
     // ── staple_minimap ───────────────────────────────────────────
+
+    #[test]
+    fn minimap_gutter_matches_canvas_width() {
+        // The gutter must equal the canvas it staples: a width change on
+        // either side without the other silently misaligns rows.
+        assert_eq!(MINIMAP_WIDTH, MapConfig::MINIMAP.width);
+    }
 
     #[test]
     fn staple_zips_map_and_text() {
