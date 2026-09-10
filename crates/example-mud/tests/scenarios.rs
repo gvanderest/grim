@@ -694,3 +694,29 @@ fn admin_copyover_expires_to_handoff_without_exit() {
     );
     assert!(outcome.exits.is_empty(), "copyover must not exit");
 }
+
+#[test]
+fn map_centers_self_repeats_stably_and_recenters_on_move() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    // The tavern's only exit runs north to the square, which opens east to
+    let first_out = mud.send(alice, "map");
+    let first = first_out.text();
+    let second_out = mud.send(alice, "map");
+    assert_eq!(first, second_out.text(), "map must not flicker");
+    let rows: Vec<&str> = first.lines().collect();
+    assert_eq!(rows.len(), 20);
+    assert_eq!(rows[10], format!("{:40}@", ""));
+    assert_eq!(rows[9], format!("{:40}|", ""));
+    assert_eq!(rows[8], format!("{:40}#--#", ""));
+
+    // Walking north recenters the canvas on the square: the forge east, the
+    // tavern south.
+    mud.send(alice, "north").assert_contains("Town Square");
+    let moved_out = mud.send(alice, "map");
+    let rows: Vec<&str> = moved_out.text().lines().collect();
+    assert_eq!(rows[10], format!("{:40}@--#", ""));
+    assert_eq!(rows[11], format!("{:40}|", ""));
+    assert_eq!(rows[12], format!("{:40}#", ""));
+}
