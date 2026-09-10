@@ -158,6 +158,29 @@ fn movement_walks_between_seeded_rooms() {
 }
 
 #[test]
+fn recall_returns_to_the_town_square() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    // Walk north into the Town Square; recall there is a no-op with a reply.
+    mud.send(alice, "north").assert_contains("Town Square");
+    mud.send(alice, "recall")
+        .assert_contains("You are already there.");
+    // Walk away, then recall back: the arrival room shows, not the tavern.
+    mud.send(alice, "east").assert_contains("Grimmok's Forge");
+    let back = mud.send(alice, "recall");
+    let text = back.text();
+    assert!(
+        text.contains("Town Square"),
+        "recall should arrive in the Town Square:\n{text}"
+    );
+    assert!(
+        !text.contains("Rusted Anvil"),
+        "recall should leave the tavern:\n{text}"
+    );
+}
+
+#[test]
 fn can_walk_from_tavern_to_bear_cavern() {
     let mut mud = Mud::new();
     let alice = create_char(&mut mud, "alice@example.com", "Alice");
