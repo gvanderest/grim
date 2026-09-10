@@ -14,6 +14,9 @@
 //! inherits the same environment, so it lands in the same data dir and adopts
 //! the handed-over listener rather than binding the port afresh.
 
+use std::time::Duration;
+
+use bevy::app::ScheduleRunnerPlugin;
 use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use example_mud::seed::{self, AreaBlueprintDir};
@@ -35,7 +38,13 @@ fn main() {
     }
 
     let mut app = App::new();
-    app.add_plugins(MinimalPlugins);
+    // Same 60 Hz headless cap as `src/main.rs` (issue #121): this binary also
+    // `app.run()`s a real server.
+    app.add_plugins(
+        MinimalPlugins.set(ScheduleRunnerPlugin::run_loop(Duration::from_secs_f64(
+            1.0 / 60.0,
+        ))),
+    );
     app.add_plugins(LogPlugin {
         filter: "info".into(),
         ..Default::default()

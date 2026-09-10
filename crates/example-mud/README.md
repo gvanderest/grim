@@ -28,8 +28,8 @@ Player-facing verbs and where to find their handlers.
 ## Binaries
 | Binary | File | Purpose |
 |---|---|---|
-| `example-mud` (default-run) | `src/main.rs` | The MUD server: `MinimalPlugins` + `LogPlugin` + `GrimDefaultPlugins { telnet_port: 4000 }`, seeded with `seed::seed_world`. |
-| `copyover_fixture` | `src/bin/copyover_fixture.rs` | Lightest real server for the copyover integration test; port / data dir / areas dir come from env (`GRIM_TEST_PORT`, `GRIM_TEST_DATA`, `GRIM_AREAS_DIR`) so the test isolates state and re-execs itself on `SIGUSR2`. |
+| `example-mud` (default-run) | `src/main.rs` | The MUD server: `MinimalPlugins` (frame loop capped at 60 Hz via `ScheduleRunnerPlugin::run_loop` — bare `MinimalPlugins` spins idle at 99% CPU, issue #121) + `LogPlugin` + `GrimDefaultPlugins { telnet_port: 4000 }`, seeded with `seed::seed_world`. |
+| `copyover_fixture` | `src/bin/copyover_fixture.rs` | Lightest real server for the copyover integration test; same 60 Hz cap; port / data dir / areas dir come from env (`GRIM_TEST_PORT`, `GRIM_TEST_DATA`, `GRIM_AREAS_DIR`) so the test isolates state and re-execs itself on `SIGUSR2`. |
 
 ## Tests
 | Test | File | Purpose |
