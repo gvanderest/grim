@@ -9,7 +9,8 @@ use grim_world::{render_map, Exits, MapConfig};
 use crate::placement::InRoom;
 
 /// `map`: show the area around the actor's room (`@` self, `#` rooms,
-/// `--`/`|` exits, `,`/`'` up/down markers). Reads [`InRoom`] plus the world
+/// `--`/`|` exits, `,`/`'` up/down markers, coloured per
+/// [`grim_world::render_map`]). Reads [`InRoom`] plus the world
 /// topology and answers only the actor via [`InfoMessage`]. An actor with no
 /// room is silently ignored (fail closed, like `look`).
 pub(crate) fn handle_map(
@@ -87,9 +88,9 @@ mod tests {
         // Self centered on row 10, the northern room two rows above.
         let rows: Vec<&str> = texts[0].lines().collect();
         assert_eq!(rows.len(), 20);
-        assert_eq!(rows[10], format!("{:40}@", ""));
-        assert_eq!(rows[9], format!("{:40}|", ""));
-        assert_eq!(rows[8], format!("{:40}#", ""));
+        assert_eq!(rows[10], format!("{:40}{{R@@{{x", ""));
+        assert_eq!(rows[9], format!("{:40}{{8|{{x", ""));
+        assert_eq!(rows[8], format!("{:40}{{w#{{x", ""));
     }
 
     #[test]

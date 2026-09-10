@@ -1,4 +1,4 @@
-use grim_color::escape_codes;
+use grim_color::{escape_codes, visible_width};
 use grim_text::tr;
 
 /// Room identity ids appended to a room title for admins only.
@@ -64,8 +64,15 @@ pub fn staple_minimap(map_rows: &[String], text: &str) -> String {
         let line = text_rows.get(i).copied().unwrap_or("");
         if line.is_empty() {
             out.push_str(map);
+        } else if map.is_empty() {
+            out.push_str(&format!("{:MINIMAP_WIDTH$}  {line}", ""));
         } else {
-            out.push_str(&format!("{map:<MINIMAP_WIDTH$}  {line}"));
+            // Pad on *visible* columns: colour markup rides along in map rows
+            // and byte-count padding would silently stop firing on them.
+            let pad = MINIMAP_WIDTH.saturating_sub(visible_width(map));
+            out.push_str(map);
+            out.push_str(&" ".repeat(pad + 2));
+            out.push_str(line);
         }
         if i + 1 < height {
             out.push('\n');
@@ -371,6 +378,15 @@ mod tests {
         assert_eq!(got, "@          One\n|");
         // Trailing newline survives with no trailing spaces.
         assert_eq!(staple_minimap(&[], "One\n"), "           One\n");
+    }
+
+    #[test]
+    fn staple_pads_coloured_rows_on_visible_width() {
+        // Colour markup rides along in map rows: the gutter must measure
+        // visible columns, not bytes, or room text drifts left.
+        let got = staple_minimap(&["    {R@@{x".into()], "Hall");
+        assert_eq!(got, "    {R@@{x      Hall");
+        assert_eq!(visible_width("    {R@@{x"), 5);
     }
 
     // ── format_entity ────────────────────────────────────────────
