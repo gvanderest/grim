@@ -92,7 +92,10 @@ fn put(canvas: &mut [Vec<char>], x: i32, y: i32, glyph: char) {
 /// Render the area around `center` as one [`String`] per canvas row.
 /// `exits` is the live topology (room → its direction links); rooms absent
 /// from the snapshot are dead ends. A room with no snapshot entry still
-/// renders as a lone `@`.
+/// renders as a lone `@`. Glyphs carry transport-independent `{`-family colour
+/// markup (`@` `{R`, `#` `{w`, links `{8`, up `,` `{Y`, down `'` `{y`), each
+/// reset with `{x` so colour never bleeds into neighbouring text. The `@`
+/// glyph is escaped (`@@`) — a bare `@` is a markup introducer.
 pub fn render_map(
     center: Entity,
     exits: &HashMap<Entity, HashMap<Cardinal, Entity>>,
@@ -178,13 +181,34 @@ pub fn render_map(
     }
     canvas
         .into_iter()
-        .map(|row| row.into_iter().collect::<String>().trim_end().to_owned())
+        .map(|row| {
+            let mut out = String::with_capacity(row.len());
+            for glyph in row {
+                match glyph {
+                    '@' => out.push_str("{R@@{x"),
+                    '#' => out.push_str("{w#{x"),
+                    '-' => out.push_str("{8-{x"),
+                    '|' => out.push_str("{8|{x"),
+                    ',' => out.push_str("{Y,{x"),
+                    '\'' => out.push_str("{y'{x"),
+                    _ => out.push(glyph),
+                }
+            }
+            out.trim_end().to_owned()
+        })
         .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const ME: &str = "{R@@{x";
+    const RM: &str = "{w#{x";
+    const HL: &str = "{8-{x";
+    const VL: &str = "{8|{x";
+    const UP: &str = "{Y,{x";
+    const DN: &str = "{y'{x";
 
     fn e(n: u64) -> Entity {
         Entity::from_bits(n)
@@ -202,8 +226,7 @@ mod tests {
     #[test]
     fn lone_room_centers_self() {
         let rows = render_map(e(1), &HashMap::new(), &MapConfig::MAP);
-        assert_eq!(rows.len(), 20);
-        assert_eq!(rows[10], format!("{:40}@", ""));
+        assert_eq!(rows[10], format!("{:40}{ME}", ""));
         assert!(rows
             .iter()
             .enumerate()
@@ -220,11 +243,11 @@ mod tests {
         link(&mut exits, center, Cardinal::West, e(5));
         let rows = render_map(center, &exits, &MapConfig::MAP);
         let pad = " ".repeat(37);
-        assert_eq!(rows[10], format!("{pad}#--@--#"));
-        assert_eq!(rows[9], format!("{:40}|", ""));
-        assert_eq!(rows[8], format!("{:40}#", ""));
-        assert_eq!(rows[11], format!("{:40}|", ""));
-        assert_eq!(rows[12], format!("{:40}#", ""));
+        assert_eq!(rows[10], format!("{pad}{RM}{HL}{HL}{ME}{HL}{HL}{RM}"));
+        assert_eq!(rows[9], format!("{:40}{VL}", ""));
+        assert_eq!(rows[8], format!("{:40}{RM}", ""));
+        assert_eq!(rows[11], format!("{:40}{VL}", ""));
+        assert_eq!(rows[12], format!("{:40}{RM}", ""));
     }
 
     #[test]
@@ -236,8 +259,8 @@ mod tests {
         link(&mut exits, center, Cardinal::Down, e(4));
         let rows = render_map(center, &exits, &MapConfig::MAP);
         // `,` sits up-one/left-one beside the north `|`; `'` down-one/right-one.
-        assert_eq!(rows[9], format!("{:39},|", ""));
-        assert_eq!(rows[11], format!("{:41}'", ""));
+        assert_eq!(rows[9], format!("{:39}{UP}{VL}", ""));
+        assert_eq!(rows[11], format!("{:41}{DN}", ""));
         // Up/down targets share the room's cell, so they never place.
         assert_eq!(rows.iter().filter(|r| r.contains('#')).count(), 1);
     }
@@ -255,9 +278,9 @@ mod tests {
         link(&mut exits, c, Cardinal::North, center);
         let rows = render_map(center, &exits, &MapConfig::MAP);
         let pad = " ".repeat(40);
-        assert_eq!(rows[10], format!("{pad}@--#"));
-        assert_eq!(rows[11], format!("{pad}|  |"));
-        assert_eq!(rows[12], format!("{pad}#--#"));
+        assert_eq!(rows[10], format!("{pad}{ME}{HL}{HL}{RM}"));
+        assert_eq!(rows[11], format!("{pad}{VL}  {VL}"));
+        assert_eq!(rows[12], format!("{pad}{RM}{HL}{HL}{RM}"));
     }
 
     #[test]
@@ -270,7 +293,7 @@ mod tests {
         link(&mut exits, c, Cardinal::East, d);
         link(&mut exits, a, Cardinal::North, b);
         let rows = render_map(center, &exits, &MapConfig::MAP);
-        assert_eq!(rows[8], format!("{:40}#--#", ""));
+        assert_eq!(rows[8], format!("{:40}{RM}{HL}{HL}{RM}", ""));
         // center + a + c + d place; the loser leaves no glyph behind.
         assert_eq!(
             rows.iter()
@@ -297,7 +320,7 @@ mod tests {
         assert_eq!(rows.len(), 5);
         // a's cell (x=6) fits; b's (x=9) clips with its gaps, leaving the
         // in-bounds `--` stub from center as the visible trace.
-        assert_eq!(rows[2], "   @--#");
+        assert_eq!(rows[2], format!("   {ME}{HL}{HL}{RM}"));
     }
 
     #[test]
@@ -321,9 +344,9 @@ mod tests {
         link(&mut exits, center, Cardinal::East, a);
         link(&mut exits, a, Cardinal::North, x);
         let rows = render_map(center, &exits, &MapConfig::MAP);
-        assert_eq!(rows[10], format!("{:40}@--#", ""));
-        assert_eq!(rows[8], format!("{:43}#", ""));
-        assert_eq!(rows[9], format!("{:39},   |", ""));
+        assert_eq!(rows[10], format!("{:40}{ME}{HL}{HL}{RM}", ""));
+        assert_eq!(rows[8], format!("{:43}{RM}", ""));
+        assert_eq!(rows[9], format!("{:39}{UP}   {VL}", ""));
     }
     #[test]
     fn minimap_canvas_renders_neighbors() {
@@ -334,8 +357,29 @@ mod tests {
         link(&mut exits, center, Cardinal::North, e(3));
         let rows = render_map(center, &exits, &MapConfig::MINIMAP);
         assert_eq!(rows.len(), 7);
-        assert_eq!(rows[3], "    @--#");
-        assert_eq!(rows[2], "    |");
-        assert_eq!(rows[1], "    #");
+        assert_eq!(rows[3], format!("    {ME}{HL}{HL}{RM}"));
+        assert_eq!(rows[2], format!("    {VL}"));
+        assert_eq!(rows[1], format!("    {RM}"));
+    }
+
+    #[test]
+    fn every_glyph_colour_is_reset() {
+        // Each coloured glyph must close with `{x`, or map colours bleed into
+        // neighbouring text (the minimap is stapled left of room prose).
+        let center = e(1);
+        let mut exits = HashMap::new();
+        link(&mut exits, center, Cardinal::North, e(2));
+        link(&mut exits, center, Cardinal::East, e(3));
+        link(&mut exits, center, Cardinal::South, e(4));
+        link(&mut exits, center, Cardinal::West, e(5));
+        link(&mut exits, center, Cardinal::Up, e(6));
+        link(&mut exits, center, Cardinal::Down, e(7));
+        let text = render_map(center, &exits, &MapConfig::MAP).join("\n");
+        let openers = ["{R", "{w", "{8", "{Y", "{y"]
+            .iter()
+            .map(|op| text.matches(op).count())
+            .sum::<usize>();
+        assert!(openers > 0, "map must carry colour");
+        assert_eq!(text.matches("{x").count(), openers);
     }
 }
