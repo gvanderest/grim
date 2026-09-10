@@ -32,7 +32,8 @@ marker belongs in the actor layer, not the being-free world.)
 | `tick_shutdown` | `Update` (`ShutdownSet::Tick`) | `src/shutdown.rs` | Advances `ActiveShutdown`, broadcasts warnings; at zero halts (`AppExit::Success`), exits non-zero for a `reboot`, or emits `CopyoverDue` for a `copyover` (clearing the countdown, no exit). |
 
 `WorldPlugin` (`src/world/plugin.rs`) has no systems; it registers the
-world-happening event vocabulary (`LookRoom`/`LookEntity`/`MoveEvent`) the actor
+world-happening event vocabulary
+(`LookRoom`/`LookEntity`/`MoveEvent`/`RecallEvent`) the actor
 verbs emit.
 
 ## Commands
@@ -57,7 +58,7 @@ stay here.
 | `ShutdownSet` | `SystemSet` (Poll → Command → Tick ordering seam) | `src/shutdown.rs` |
 | `ShutdownSignal` | Resource (private; SIGTERM flag) | `src/shutdown.rs` |
 | `ServerBroadcast` | Message (shutdown warnings) | `src/shutdown.rs` |
-| `LookRoom` / `LookEntity` / `MoveEvent` | Message (registered by `WorldPlugin`; emitted by `grim-actor`) | `src/world/plugin.rs` |
+| `LookRoom` / `LookEntity` / `MoveEvent` / `RecallEvent` | Message (registered by `WorldPlugin`; emitted by `grim-actor`) | `src/world/plugin.rs` |
 
 ## Types
 Non-component types this crate defines.

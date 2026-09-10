@@ -19,6 +19,7 @@ mod output;
 mod params;
 mod parser;
 mod plugin;
+mod recall_output;
 mod resume;
 mod scene_stack;
 mod session;

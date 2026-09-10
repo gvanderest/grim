@@ -47,6 +47,7 @@ This crate owns no `Resource`s — `StartingRoom` moved to `grim-world` in Place
 | `OocEvent` | Message | `src/events.rs` |
 | `GlobalEcho` | Message | `src/events.rs` |
 | `MoveEvent` | Message | `src/events.rs` |
+| `RecallEvent` | Message | `src/events.rs` |
 | `InfoMessage` | Message | `src/events.rs` |
 | `LoginAnnounce` | Message | `src/events.rs` |
 | `LogoutAnnounce` | Message | `src/events.rs` |

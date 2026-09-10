@@ -5,7 +5,7 @@
 
 use bevy::log::warn;
 use bevy::prelude::*;
-use grim_core::events::{Command, EngineCommand, InfoMessage, LookRoom};
+use grim_core::events::{Command, EngineCommand, InfoMessage, LookRoom, RecallEvent};
 use grim_text::tr;
 use grim_world::{resolve_room_address, Area, Room, RoomLookup};
 
@@ -35,6 +35,7 @@ pub(crate) fn handle_recall(
     areas: Query<(Entity, &Area)>,
     mut characters: Query<&mut Character>,
     mut look_room: MessageWriter<LookRoom>,
+    mut recall_event: MessageWriter<RecallEvent>,
     mut info: MessageWriter<InfoMessage>,
     mut pending: ResMut<PendingFacts>,
 ) {
@@ -84,6 +85,9 @@ pub(crate) fn handle_recall(
         });
         place_actor(actor, to, loc, &mut inroom, &mut characters);
         pending.incoming.push(RoomFact { actor, from, to });
+        // Room echoes render from this (the origin sees the attempt, then
+        // the disappearance; the destination a recall-marked arrival).
+        recall_event.write(RecallEvent { actor, from, to });
         look_room.write(LookRoom {
             target: actor,
             room: to,

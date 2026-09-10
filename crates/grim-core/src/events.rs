@@ -347,6 +347,16 @@ pub struct MoveEvent {
     pub direction: Cardinal,
 }
 
+/// A character recalled to the Town Square. Rendered per-recipient in both
+/// rooms: the room left sees the attempt then the disappearance; the room
+/// entered sees a recall-marked arrival (never a plain walk-in `MoveEvent`).
+#[derive(Message, Debug)]
+pub struct RecallEvent {
+    pub actor: Entity,
+    pub from: Entity,
+    pub to: Entity,
+}
+
 /// Direct text message to a specific client (via their character entity).
 #[derive(Message, Debug)]
 pub struct InfoMessage {

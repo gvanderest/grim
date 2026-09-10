@@ -227,6 +227,9 @@ fn default_string(key: &str) -> String {
         "config.bad_value" => "Invalid value \"%{value}\" for %{name}. Valid values: %{options}.\n",
         "recall.already" => "You are already there.\n",
         "recall.failed" => "Nothing happens.\n",
+        "recall.leave.attempt" => "%{name} closes their eyes and concentrates.\n",
+        "recall.leave.vanish" => "%{name} disappears.\n",
+        "recall.arrive" => "%{name} appears in a flash of light.\n",
         other => return other.to_string(),
     }
     .to_string()

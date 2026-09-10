@@ -7,7 +7,7 @@ use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::prelude::*;
 use grim_core::events::{
     EngineCommand, GlobalEcho, InfoMessage, ItemEvent, LinkdeadAnnounce, LookEntity, LookRoom,
-    MoveEvent, OocEvent, SayEvent, ServerBroadcast, TransferEvent, YellEvent,
+    MoveEvent, OocEvent, RecallEvent, SayEvent, ServerBroadcast, TransferEvent, YellEvent,
 };
 use grim_core::events::{LoginAnnounce, LogoutAnnounce};
 use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
@@ -18,6 +18,7 @@ use crate::input::handle_ingame_input;
 use crate::item_output::{format_item_events, format_look_pack, format_transfer_events};
 use crate::output::{capture_output, format_output, format_server_broadcast};
 use crate::parser;
+use crate::recall_output::format_recall;
 use crate::resume::handle_connection_resumed;
 use crate::session::JustEnteredWorld;
 
@@ -77,6 +78,7 @@ impl Plugin for ScenePlugin {
             .add_message::<OocEvent>()
             .add_message::<GlobalEcho>()
             .add_message::<MoveEvent>()
+            .add_message::<RecallEvent>()
             .add_message::<ItemEvent>()
             .add_message::<TransferEvent>()
             .add_message::<InfoMessage>()
@@ -97,6 +99,7 @@ impl Plugin for ScenePlugin {
                     // just wrote for the same `LookEntity`.
                     format_look_pack.after(format_output),
                     format_server_broadcast,
+                    format_recall,
                     capture_output,
                 ),
             );

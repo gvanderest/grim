@@ -43,6 +43,7 @@ creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the
 | `desc::handle_editor_done` | `Update` | `src/commands/desc.rs` | Reads `EditorDone` for `EditorKind::Description`; replaces the actor's paragraphs on `@save`, confirms the discard on `@exit`. |
 | `movement::handle_move` | `Update` | `src/commands/movement.rs` | Reads `Command::Move`; validates the exit, then runs the phased pipeline in a queued closure: sync vetoable `AttemptWalk`/`AttemptLeave`/`AttemptEnter` triggers, then placement, `MoveEvent`, auto-look. `Leave`/`Enter` facts queue into `PendingFacts` and fire next tick via `fire_pending_facts` (chained). Refreshes `last_room`. |
 | `movement::handle_goto` | `Update` | `src/commands/movement.rs` | Admin teleport to a room by address (entity/grim id/slug, `area:room`); fires attempt triggers deferred (denial ignored — admin override) and queues facts the same way. Skipped when source == destination. |
+| `recall::handle_recall` | `Update` | `src/commands/recall.rs` | Player teleport to the Town Square (`haven:square`); like `goto` but ungated, skipping silently with no `InRoom`. Emits `RecallEvent` for the room echoes plus `LookRoom`; no `MoveEvent`. |
 | `quit::handle_quit` | `Update` | `src/commands/quit.rs` | Reads `Command::Quit`; emits `DisconnectRequest` for the player's connection. |
 | `title::handle_title` | `Update` | `src/commands/title.rs` | Reads `Command::Title`; sets/clears the actor's title (≤60 chars). |
 | `config::handle_config` | `Update` | `src/commands/config.rs` | Reads `Command::Config`; lists registered settings, cycles one, or validates + stores one on `Character.config`. Replies via `InfoMessage`; ignores non-characters. |
@@ -58,7 +59,7 @@ Player-facing verbs and where to find their handlers.
 | `config [key] [value]` | `src/commands/config.rs` | List settings with values + valid options; bare key cycles to the next value (naming the previous); key + value sets it (validated against `grim-config`, stored on `Character.config`). |
 | `desc [clear\|+\|-\|edit]` | `src/commands/desc.rs` | View or edit your description paragraphs (`clear` empties, `+ <line>` appends, `-` drops the last, `edit` opens the line editor). |
 | `move` — `n`/`e`/`s`/`w`/`u`/`d` (+ `north`…) | `src/commands/movement.rs` | Walk through an exit; emits `MoveEvent`. Direction aliases parsed in `grim-scene`. |
-| `recall` | `src/commands/recall.rs` | Return to the Town Square (`haven:square`); no-op with a reply when already there. Available to every player. |
+| `recall` | `src/commands/recall.rs` | Return to the Town Square (`haven:square`); emits `RecallEvent` (attempt + disappearance left, recall-marked arrival right). No-op with a reply when already there. Available to every player. |
 | `goto <address>` | `src/commands/movement.rs` | Admin teleport to a room by address. |
 | `quit` | `src/commands/quit.rs` | Request a clean disconnect (save + despawn happen in `grim-scene`). |
 | `title [text]` | `src/commands/title.rs` | Set (or, bare, clear) the actor's title; rejected over 60 chars. |
@@ -71,8 +72,8 @@ Player-facing verbs and where to find their handlers.
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
 | `EngineCommand` | Message (input, from `grim-core`) | each `src/commands/*.rs` |
-| `InfoMessage` | Message (output, from `grim-core`) | `look`/`map`/`config`/`desc`/`movement`/`title`/`shutdown` |
-| `LookRoom` / `LookEntity` / `MoveEvent` | Message (world-happening events, **registered by `grim_world::WorldPlugin`**) | emitted by `look`/`movement`/`desc` (`Show`) |
+| `InfoMessage` | Message (output, from `grim-core`) | `look`/`map`/`config`/`desc`/`movement`/`recall`/`title`/`shutdown` |
+| `LookRoom` / `LookEntity` / `MoveEvent` / `RecallEvent` | Message (world-happening events, **registered by `grim_world::WorldPlugin`**) | emitted by `look`/`movement`/`recall`/`desc` (`Show`) |
 | `AttemptLeave` / `AttemptEnter` / `Leave` / `Enter` | Trigger events (**no registration**) | `src/transition.rs`; phased movement vocabulary (Pre attempts, Post facts). Attempts carry a denial latch; consumed by `grim-script` observers. |
 | `DisconnectRequest` | Message (from `grim-networking`) | `src/commands/quit.rs` |
 | `OpenEditor` / `EditorDone` | Message (output/input, from `grim-core`) | `desc` (`Edit` opens preloaded; `handle_editor_done` applies `@save`) |
@@ -91,7 +92,7 @@ Non-component types this crate defines.
   `pub(crate) fn register(app)` — the per-command convention: one file per
   command under `src/commands/`, each owning its systems + the messages it
   registers. `commands.rs` and `lib.rs` are declarations + re-exports only.
-- The world-happening events (`LookRoom`/`LookEntity`/`MoveEvent`) are owned by
+- The world-happening events (`LookRoom`/`LookEntity`/`MoveEvent`/`RecallEvent`) are owned by
   `grim_world::WorldPlugin`; the shutdown countdown/signal machinery by
   `grim_world::ShutdownPlugin`. A full stack composes those alongside
   `ActorPlugin` (see `GrimHeadlessPlugins`).
