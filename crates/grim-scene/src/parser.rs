@@ -295,6 +295,16 @@ fn build_registry() -> CommandRegistry<Command> {
     });
     r.register("quit", |_| Some(Command::Quit));
     r.register("exit", |_| Some(Command::Quit));
+    // `recall` — return to the Town Square. Bare only (`recall <anything>`
+    // is unknown, like `map`/`sockets`).
+    r.register("recall", |rest| {
+        rest.trim().is_empty().then_some(Command::Recall)
+    });
+    // Bare-only factories reject the rest line, and resolution never falls
+    // through to the next prefix candidate — so a new bare verb must sink
+    // below the older verbs sharing its prefixes (`reboot`/`copyover` do the
+    // same): short `r`/`re` keep reaching `reply`, only `rec…` reaches recall.
+    r.deprioritize("recall");
     // `get <keyword>` / `drop <keyword>` — need a target, so a bare `get` or
     // `drop` is unknown. Registered before the admin verbs so the `ge` prefix
     // still resolves to `gecho` (later registrations win prefix ties).
@@ -350,36 +360,7 @@ fn build_registry() -> CommandRegistry<Command> {
     // extra args) is unknown, like the other admin verbs.
     r.register("ban", crate::ban::parse_ban);
     // ── Cardinal directions (last = highest priority for single-char) ─
-    r.register("north", |_| {
-        Some(Command::Move {
-            direction: grim_core::cardinal::Cardinal::North,
-        })
-    });
-    r.register("east", |_| {
-        Some(Command::Move {
-            direction: grim_core::cardinal::Cardinal::East,
-        })
-    });
-    r.register("south", |_| {
-        Some(Command::Move {
-            direction: grim_core::cardinal::Cardinal::South,
-        })
-    });
-    r.register("west", |_| {
-        Some(Command::Move {
-            direction: grim_core::cardinal::Cardinal::West,
-        })
-    });
-    r.register("up", |_| {
-        Some(Command::Move {
-            direction: grim_core::cardinal::Cardinal::Up,
-        })
-    });
-    r.register("down", |_| {
-        Some(Command::Move {
-            direction: grim_core::cardinal::Cardinal::Down,
-        })
-    });
+    crate::directions::register(&mut r);
 
     // `goto` and `gecho` share the `g` prefix. `register` front-loads priority,
     // so `gecho` (registered later) would otherwise win the bare `g`
@@ -716,6 +697,22 @@ mod tests {
     fn test_goto_without_target_is_none() {
         assert_eq!(parse("goto"), None);
         assert_eq!(parse("goto   "), None);
+    }
+
+    #[test]
+    fn test_recall() {
+        assert_eq!(parse("recall"), Some(Command::Recall));
+        // Unambiguous prefix resolves; an argument rejects (bare verb only).
+        assert_eq!(parse("rec"), Some(Command::Recall));
+        assert_eq!(parse("recall tavern"), None);
+        // The bare-only factory rejects, with no fall-through — so recall is
+        // deprioritized and short `re` still reaches the older `reply`.
+        assert_eq!(
+            parse("re hello"),
+            Some(Command::Reply {
+                text: "hello".into()
+            })
+        );
     }
 
     #[test]

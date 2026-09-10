@@ -58,6 +58,9 @@ pub enum Command {
     Desc { op: DescOp },
     /// Movement via cardinal direction
     Move { direction: Cardinal },
+    /// `recall` — return to the Town Square (`haven:square`). No-op with a
+    /// reply when already there. Available to every player.
+    Recall,
     /// `quit` — clean disconnect
     Quit,
     /// `who` — list connected players
