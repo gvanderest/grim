@@ -1,0 +1,10 @@
+[package]
+name = "grim-config"
+version = "0.1.0"
+edition = "2021"
+
+# Player config registry: named settings (valid values + default) that plugins
+# register and the `config` verb reads/writes against per-character choices.
+# Bevy only for the `Resource` derive; no systems, no plugin.
+[dependencies]
+bevy = { workspace = true, default-features = false }

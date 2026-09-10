@@ -56,6 +56,11 @@ pub struct Character {
     /// `who_class`, `who_guild` (each overrides one stat column) and `who`
     /// (replaces the whole stat block). No in-game setter yet — edited on disk.
     pub restrings: HashMap<String, String>,
+    /// Per-character config choices, keyed by registered option (`grim-config`).
+    /// Only registered + valid values apply at read (via
+    /// `ConfigRegistry::resolve`); anything else falls back to the default.
+    /// Empty for older characters — which therefore run all defaults.
+    pub config: HashMap<String, String>,
 }
 
 impl Character {
@@ -79,6 +84,7 @@ mod tests {
             class: String::new(),
             title: None,
             restrings: HashMap::new(),
+            config: HashMap::new(),
         }
     }
 

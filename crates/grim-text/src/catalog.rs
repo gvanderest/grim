@@ -219,6 +219,12 @@ fn default_string(key: &str) -> String {
         "ban.save_failed" => "Ban could not be saved; nothing changed.\n",
         "script.trigger.failed" => "Script error in %{name} (%{trigger}): %{error}\n",
         "ban.invalid_pattern" => "Invalid pattern for %{scope} ban.\n",
+        "config.list.header" => "Config options:\n",
+        "config.list.row" => "  %{name}: %{value} - [%{options}]\n",
+        "config.set" => "%{name} set to %{value}.\n",
+        "config.cycled" => "%{name} set to %{value}. (was previously %{old})\n",
+        "config.unknown_key" => "Unknown config option: %{name}.\n",
+        "config.bad_value" => "Invalid value \"%{value}\" for %{name}. Valid values: %{options}.\n",
         other => return other.to_string(),
     }
     .to_string()

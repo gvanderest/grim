@@ -300,6 +300,7 @@ mod tests {
             level: 1,
             title: None,
             restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
             inventory: Vec::new(),
         }
     }

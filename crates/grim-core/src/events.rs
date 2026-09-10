@@ -16,6 +16,12 @@ pub enum Command {
     /// `look` or `look <target>` — the target is a `grim-target` being spec
     /// (`2.goblin` looks at the second; `"two words"` needs every word).
     Look { target: Option<String> },
+    /// `config` — list registered settings, show one (`config minimap`), or
+    /// set one (`config minimap off`). Handled in `grim-actor`.
+    Config {
+        key: Option<String>,
+        value: Option<String>,
+    },
     /// `map` — render the area around the actor's room as ASCII (`@` self,
     /// `#` rooms, `--`/`|` exits, `,`/`'` up/down markers).
     Map,

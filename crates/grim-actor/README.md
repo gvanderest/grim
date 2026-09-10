@@ -28,7 +28,7 @@ creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the
 |---|---|---|
 | `Actor` | `src/actor.rs` | Shared "alive thing" base carried by every being (PC + creature): `race`, `level`, `gender`. Movement/perception/WHO read build data here. |
 | `Creature` | `src/actor.rs` | Marks a being as a non-player mob (replaces the former `grim_world::Npc`). |
-| `Character` | `src/character.rs` | PC-only being belonging to an account; carries `id`, `account_id`, `created_at`, roles, `class`, `title`, `restrings`, `last_room`. No `name`/`race`/`level`/`gender` (→ `Name`/`Actor`). |
+| `Character` | `src/character.rs` | PC-only being belonging to an account; carries `id`, `account_id`, `created_at`, roles, `class`, `title`, `restrings`, `config` (per-character setting choices, resolved via `grim-config`), `last_room`. No `name`/`race`/`level`/`gender` (→ `Name`/`Actor`). |
 | `Player` | `src/player.rs` | Present **only while connected**; links to the live `Connection`. Absence (with `Character`) = linkdead. |
 | `OutputHistory` | `src/player.rs` | Bounded ring buffer of recent output lines, for reconnect. |
 | `Linkdead` | `src/player.rs` | Character is in-world but its player disconnected (no `Player`). |
@@ -45,6 +45,7 @@ creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the
 | `movement::handle_goto` | `Update` | `src/commands/movement.rs` | Admin teleport to a room by address (entity/grim id/slug, `area:room`); fires attempt triggers deferred (denial ignored — admin override) and queues facts the same way. Skipped when source == destination. |
 | `quit::handle_quit` | `Update` | `src/commands/quit.rs` | Reads `Command::Quit`; emits `DisconnectRequest` for the player's connection. |
 | `title::handle_title` | `Update` | `src/commands/title.rs` | Reads `Command::Title`; sets/clears the actor's title (≤60 chars). |
+| `config::handle_config` | `Update` | `src/commands/config.rs` | Reads `Command::Config`; lists registered settings, cycles one, or validates + stores one on `Character.config`. Replies via `InfoMessage`; ignores non-characters. |
 | `shutdown::handle_shutdown_command` | `Update` (`grim_world::ShutdownSet::Command`) | `src/commands/shutdown.rs` | Reads `Command::Shutdown`/`Reboot`/`Copyover`; admin-gates the warned countdown (halt / cold restart / hot restart at expiry; state/tick stay in `grim-world`). |
 
 ## Commands
@@ -54,6 +55,7 @@ Player-facing verbs and where to find their handlers.
 |---|---|---|
 | `look [target]` | `src/commands/look.rs` | Describe the current room, or a named entity within it (`self` = you; exact name beats prefix, shortest prefix name wins; `2.goblin` takes the second, `"two words"` needs every word). |
 | `map` | `src/commands/map.rs` | Render the area around your room as ASCII (`@` you, `#` rooms, `--`/`\|` exits, `,`/`'` up/down); answers only you. |
+| `config [key] [value]` | `src/commands/config.rs` | List settings with values + valid options; bare key cycles to the next value (naming the previous); key + value sets it (validated against `grim-config`, stored on `Character.config`). |
 | `desc [clear\|+\|-\|edit]` | `src/commands/desc.rs` | View or edit your description paragraphs (`clear` empties, `+ <line>` appends, `-` drops the last, `edit` opens the line editor). |
 | `move` — `n`/`e`/`s`/`w`/`u`/`d` (+ `north`…) | `src/commands/movement.rs` | Walk through an exit; emits `MoveEvent`. Direction aliases parsed in `grim-scene`. |
 | `goto <address>` | `src/commands/movement.rs` | Admin teleport to a room by address. |
@@ -68,7 +70,7 @@ Player-facing verbs and where to find their handlers.
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
 | `EngineCommand` | Message (input, from `grim-core`) | each `src/commands/*.rs` |
-| `InfoMessage` | Message (output, from `grim-core`) | `look`/`desc`/`movement`/`title`/`shutdown` |
+| `InfoMessage` | Message (output, from `grim-core`) | `look`/`map`/`config`/`desc`/`movement`/`title`/`shutdown` |
 | `LookRoom` / `LookEntity` / `MoveEvent` | Message (world-happening events, **registered by `grim_world::WorldPlugin`**) | emitted by `look`/`movement`/`desc` (`Show`) |
 | `AttemptLeave` / `AttemptEnter` / `Leave` / `Enter` | Trigger events (**no registration**) | `src/transition.rs`; phased movement vocabulary (Pre attempts, Post facts). Attempts carry a denial latch; consumed by `grim-script` observers. |
 | `DisconnectRequest` | Message (from `grim-networking`) | `src/commands/quit.rs` |

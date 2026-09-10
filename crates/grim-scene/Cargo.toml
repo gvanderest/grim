@@ -18,6 +18,8 @@ grim-world = { path = "../grim-world" }
 grim-actor = { path = "../grim-actor" }
 grim-channel = { path = "../grim-channel" }
 grim-object = { path = "../grim-object" }
+# Player settings the look minimap resolves (`minimap` on/off).
+grim-config = { path = "../grim-config" }
 bevy = { workspace = true, default-features = false }
 chrono = { workspace = true }
 serde_json = { workspace = true }

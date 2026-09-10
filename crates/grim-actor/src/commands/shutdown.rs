@@ -118,6 +118,7 @@ mod tests {
                 class: String::new(),
                 title: None,
                 restrings: std::collections::HashMap::new(),
+                config: std::collections::HashMap::new(),
             })
             .id()
     }

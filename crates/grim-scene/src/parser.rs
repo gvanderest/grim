@@ -45,6 +45,21 @@ fn parse_tell(rest: &str) -> Option<Command> {
     })
 }
 
+/// Parse `config [key] [value]`: bare lists settings, one word shows one,
+/// two words set one. More words are unknown — values are single tokens.
+fn parse_config(rest: &str) -> Option<Command> {
+    let mut words = rest.split_whitespace();
+    let key = words.next();
+    let value = words.next();
+    if words.next().is_some() {
+        return None;
+    }
+    Some(Command::Config {
+        key: key.map(str::to_string),
+        value: value.map(str::to_string),
+    })
+}
+
 /// Split `<item> <target>` for `give`/`steal`. Tokens are shell-like: an
 /// optional `N*`/`N.` selector prefix plus a bare word or a `"quoted phrase"`.
 /// Usually the item is the first token and the being everything after it
@@ -264,6 +279,11 @@ fn build_registry() -> CommandRegistry<Command> {
     r.register("inv", |_| Some(Command::Inventory));
     r.register("eq", |_| Some(Command::Equipment));
     r.register("areas", |_| Some(Command::Areas));
+    // `config [key] [value]` — list settings, cycle one, or set one.
+    // Registered BEFORE `commands` so the shared `c`/`co` abbreviations keep
+    // reaching the older verb (`con` never matched `commands` — `com` vs
+    // `con` — so it and longer prefixes reach `config`); exact words match.
+    r.register("config", parse_config);
     r.register("commands", |_| Some(Command::Commands));
     r.register("help", |_| Some(Command::Commands));
     // `sockets` — admin-only, session-local (masked at dispatch, see
@@ -1105,6 +1125,57 @@ mod tests {
         assert_eq!(parse("m"), Some(Command::Map));
         assert_eq!(parse("ma"), Some(Command::Map));
         assert_eq!(parse("map foo"), None);
+    }
+
+    #[test]
+    fn test_config_list_show_set() {
+        assert_eq!(
+            parse("config"),
+            Some(Command::Config {
+                key: None,
+                value: None
+            })
+        );
+        assert_eq!(
+            parse("config minimap"),
+            Some(Command::Config {
+                key: Some("minimap".into()),
+                value: None
+            })
+        );
+        assert_eq!(
+            parse("config minimap off"),
+            Some(Command::Config {
+                key: Some("minimap".into()),
+                value: Some("off".into())
+            })
+        );
+        // Values are single tokens: a third word is unknown.
+        assert_eq!(parse("config minimap off now"), None);
+    }
+
+    #[test]
+    fn test_config_keeps_older_c_prefixes() {
+        // `config` registers before `commands`, so the shared `c`/`co`
+        // abbreviations still reach the older verb. `con` is not a prefix of
+        // `commands` at all (`com` vs `con`) — it unambiguously reaches
+        // `config`, as does `conf`.
+        assert_eq!(parse("c"), Some(Command::Commands));
+        assert_eq!(parse("co"), Some(Command::Commands));
+        assert_eq!(
+            parse("con"),
+            Some(Command::Config {
+                key: None,
+                value: None
+            })
+        );
+        assert_eq!(
+            parse("conf"),
+            Some(Command::Config {
+                key: None,
+                value: None
+            })
+        );
     }
 
     // ── Prefix matching / registration order ────────────────────────────

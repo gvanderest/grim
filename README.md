@@ -43,6 +43,7 @@ Everything is a Bevy plugin unless noted. GRIM core is light on purpose: types, 
 | [`grim-text`](./crates/grim-text) | Text catalog today (static `tr`/`tr!` with inlined defaults — interim; confirmed target is files + `Catalog` resource per ARCHITECTURE.md §5.4). Colour-safe `%{var}` substitution. Depends only on `grim-color`. |
 | [`grim-command`](./crates/grim-command) | `CommandRegistry<C>` — generic exact-then-prefix resolution with explicit, reorderable priority. Bevy-only. |
 | [`grim-core`](./crates/grim-core) | Transitional shared-types box (dissolving over time — each type moves to its owner; see ARCHITECTURE.md §8). Today: `GrimId`, `Cardinal`, `Name`, `Description`, `Gender`, `Command`, engine `Message` types. |
+| [`grim-config`](./crates/grim-config) | Player settings registry (`ConfigDef` key/valid/default/scope + fail-safe `resolve`). Plain library + `Resource`, no plugin; seeded and read by `grim-actor`, read by `grim-scene`. |
 
 ### Transport
 
