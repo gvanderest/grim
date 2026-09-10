@@ -322,12 +322,9 @@ fn build_registry() -> CommandRegistry<Command> {
     });
 
     // ── Admin ────────────────────────────────────────────────────
-    // `shutdown [seconds]` — defaults to 30s when no/invalid count given.
-    // Admin-gated at dispatch (grim::plugins::ShutdownPlugin), not here.
-    r.register("shutdown", |rest| {
-        let seconds = rest.trim().parse::<u64>().unwrap_or(30);
-        Some(Command::Shutdown { seconds })
-    });
+    // Warned-countdown verbs (`shutdown|reboot|copyover`) live in
+    // `countdown.rs` (factories + priority); register them here with the rest.
+    crate::countdown::register(&mut r);
     // `goto <address>` — admin-gated + masked at dispatch (see grim-scene
     // dispatcher). Rejected with no argument so a bare `goto` is unknown.
     r.register("goto", |rest| {
@@ -1030,6 +1027,57 @@ mod tests {
             parse("shutdown abc"),
             Some(Command::Shutdown { seconds: 30 })
         );
+    }
+
+    // ── Reboot / copyover (admin; same countdown shape as shutdown) ──
+    #[test]
+    fn test_reboot_with_count() {
+        assert_eq!(parse("reboot 10"), Some(Command::Reboot { seconds: 10 }));
+    }
+
+    #[test]
+    fn test_reboot_defaults_to_30() {
+        assert_eq!(parse("reboot"), Some(Command::Reboot { seconds: 30 }));
+        assert_eq!(parse("reboot abc"), Some(Command::Reboot { seconds: 30 }));
+    }
+
+    #[test]
+    fn test_copyover_with_count() {
+        assert_eq!(
+            parse("copyover 10"),
+            Some(Command::Copyover { seconds: 10 })
+        );
+    }
+
+    #[test]
+    fn test_copyover_defaults_to_30() {
+        assert_eq!(parse("copyover"), Some(Command::Copyover { seconds: 30 }));
+        assert_eq!(
+            parse("copyover abc"),
+            Some(Command::Copyover { seconds: 30 })
+        );
+    }
+
+    #[test]
+    fn test_new_admin_verbs_do_not_steal_prefixes() {
+        // `reboot`/`copyover` are deprioritized: short prefixes still reach
+        // the older verbs; only long unambiguous prefixes reach the new ones.
+        assert_eq!(
+            parse("r hello"),
+            Some(Command::Reply {
+                text: "hello".into()
+            })
+        );
+        assert_eq!(
+            parse("re hello"),
+            Some(Command::Reply {
+                text: "hello".into()
+            })
+        );
+        assert_eq!(parse("reb 10"), Some(Command::Reboot { seconds: 10 }));
+        assert_eq!(parse("c"), Some(Command::Commands));
+        assert_eq!(parse("co"), Some(Command::Commands));
+        assert_eq!(parse("copy 10"), Some(Command::Copyover { seconds: 10 }));
     }
 
     // ── Edge cases ────────────────────────────────────────────────

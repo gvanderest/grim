@@ -60,7 +60,7 @@ fn character_is_admin(
 }
 
 /// InGame: parse the line (honouring `!` repeat), answer session-local commands
-/// directly, admin-gate shutdown/goto, and queue everything else for cooldown.
+/// directly, admin-gate + mask the admin verbs, and queue everything else.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_ingame(
     client: &mut Client,
@@ -162,6 +162,8 @@ pub(crate) fn handle_ingame(
                 }
             }
             Command::Shutdown { .. }
+            | Command::Reboot { .. }
+            | Command::Copyover { .. }
             | Command::Goto { .. }
             | Command::Gecho { .. }
             | Command::Ban { .. } => {
