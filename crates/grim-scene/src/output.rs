@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 use grim_actor::{Character, InRoom, OutputHistory, Player};
 use grim_channel::{ChannelMessage, ChannelRegistry};
+use grim_config::ConfigRegistry;
 use grim_core::components::{Description, Name as GrimName, RoomDescription};
 use grim_core::events::{
     GlobalEcho, InfoMessage, LookEntity, LookRoom, MoveEvent, ServerBroadcast,
@@ -44,6 +45,7 @@ pub(crate) fn format_output(
     mut gecho_events: MessageReader<GlobalEcho>,
     mut announces: AnnounceReaders,
     channel_registry: Res<ChannelRegistry>,
+    config_registry: Res<ConfigRegistry>,
     rooms: Query<(Entity, &Room, &GrimName)>,
     room_occupants: Occupants,
     room_exits: Query<(Entity, &Exits)>,
@@ -97,6 +99,7 @@ pub(crate) fn format_output(
             &room_occupants,
             &room_exits,
             &characters,
+            &config_registry,
             &mut outputs,
         );
     }
@@ -128,6 +131,7 @@ fn emit_look_room(
     room_occupants: &Occupants,
     room_exits: &Query<(Entity, &Exits)>,
     characters: &Query<&Character>,
+    config_registry: &ConfigRegistry,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
     let Ok((_, room, name)) = rooms.get(ev.room) else {
@@ -201,16 +205,32 @@ fn emit_look_room(
     );
     let conn = find_conn(ev.target, room_occupants);
     let body = formatter::format_room(&title, &room.description, &exits, &presence);
-    // Minimap: the same renderer as `map` on the small canvas, stapled left.
-    // Always on in P2; the per-character toggle arrives with `config` in P3.
-    let mut snapshot = HashMap::new();
-    for (room_entity, links) in room_exits.iter() {
-        snapshot.insert(room_entity, links.exits.clone());
-    }
-    let map_rows = render_map(ev.room, &snapshot, &MapConfig::MINIMAP);
+    // Minimap: the same renderer as `map` on the small canvas, stapled left
+    // when the looker's resolved `minimap` setting is on. Actors without a
+    // `Character` and unseeded registries (unit tests) keep the map, matching
+    // the pre-toggle behavior.
+    let minimap_on = characters
+        .get(ev.target)
+        .map(|c| {
+            config_registry
+                .resolve(&c.config, "minimap")
+                .unwrap_or("on")
+                == "on"
+        })
+        .unwrap_or(true);
+    let text = if minimap_on {
+        let mut snapshot = HashMap::new();
+        for (room_entity, links) in room_exits.iter() {
+            snapshot.insert(room_entity, links.exits.clone());
+        }
+        let map_rows = render_map(ev.room, &snapshot, &MapConfig::MINIMAP);
+        formatter::staple_minimap(&map_rows, &body)
+    } else {
+        body
+    };
     outputs.write(ConnectionOutput {
         echo: None,
-        ..ConnectionOutput::new(conn, formatter::staple_minimap(&map_rows, &body))
+        ..ConnectionOutput::new(conn, text)
     });
 }
 

@@ -744,3 +744,61 @@ fn look_staples_minimap_left_of_room_text() {
         .expect("exits line");
     assert!(exits.starts_with("           "), "blank gutter:\n{exits}");
 }
+
+#[test]
+fn config_minimap_toggles_look_map_persists_and_rejects() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    // On by default: the stapled self row is in the look output.
+    let out = mud.send(alice, "look");
+    assert!(
+        out.text().lines().any(|l| l.starts_with("    @  ")),
+        "minimap on by default:\n{}",
+        out.text()
+    );
+    // Bare `config` lists the setting with its valid values.
+    mud.send(alice, "config")
+        .assert_contains("minimap: on - [on|off]");
+    // Bare key cycles off, naming the previous value.
+    mud.send(alice, "config minimap")
+        .assert_contains("minimap set to off. (was previously on)");
+
+    // Look loses the map: title unguttered, no self row anywhere.
+    let out = mud.send(alice, "look");
+    let lines: Vec<&str> = out.text().lines().collect();
+    assert_eq!(lines[0], "The Rusted Anvil");
+    assert!(
+        !lines.iter().any(|l| l.starts_with("    @")),
+        "no minimap rows:\n{}",
+        out.text()
+    );
+
+    // Rejections name the valid options; nothing is stored.
+    mud.send(alice, "config minimap sideways")
+        .assert_contains("Invalid value")
+        .assert_contains("on, off");
+    mud.send(alice, "config frobnicate")
+        .assert_contains("Unknown config option");
+
+    // The off choice survives logout and login.
+    let _ = mud.send(alice, "quit");
+    mud.disconnect(alice);
+    let (again, _) = mud.connect();
+    let _ = mud.send(again, "alice@example.com");
+    let _ = mud.send(again, PW);
+    let _ = mud.send(again, "1"); // select → MOTD
+    mud.send(again, "").assert_contains("Exits:"); // enter the world
+    let out = mud.send(again, "look");
+    assert_eq!(out.text().lines().next(), Some("The Rusted Anvil"));
+
+    // And back on again through the explicit set.
+    mud.send(again, "config minimap on")
+        .assert_contains("minimap set to on.");
+    let out = mud.send(again, "look");
+    assert!(
+        out.text().lines().any(|l| l.starts_with("    @  ")),
+        "minimap back on:\n{}",
+        out.text()
+    );
+}

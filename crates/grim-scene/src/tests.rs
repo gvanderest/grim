@@ -7,7 +7,9 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
-use grim_actor::{InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter};
+use grim_actor::{
+    Actor, Character, InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter,
+};
 use grim_channel::{Channel, ChannelMessage, ChannelPlugin};
 use grim_core::components::Name as GrimName;
 use grim_core::components::*;
@@ -114,6 +116,7 @@ fn make_character(roles: Vec<Role>) -> StoredCharacter {
         level: 1,
         title: None,
         restrings: std::collections::HashMap::new(),
+        config: std::collections::HashMap::new(),
         inventory: Vec::new(),
     }
 }
@@ -471,6 +474,40 @@ mod output_format {
         );
     }
 
+    /// Spawn bundle for an in-world character in output-format tests.
+    fn char_bundle(
+        name: &str,
+        conn: Entity,
+        room: Entity,
+        roles: Vec<Role>,
+    ) -> (GrimName, Actor, Character, InRoom, Player, OutputHistory) {
+        let (gname, actor, character) = StoredCharacter {
+            id: GrimId::new(),
+            account_id: GrimId::new(),
+            name: name.into(),
+            created_at: Utc::now(),
+            last_room: None,
+            roles,
+            gender: Gender::Neutral,
+            race: String::new(),
+            class: String::new(),
+            level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
+            inventory: Vec::new(),
+        }
+        .into_components();
+        (
+            gname,
+            actor,
+            character,
+            InRoom { room },
+            Player { connection: conn },
+            OutputHistory::with_max(100),
+        )
+    }
+
     /// `gecho` reaches everyone including the sender; another admin sees it
     /// attributed (`Name> text`) while the sender and non-admins see raw text.
     #[test]
@@ -492,61 +529,18 @@ mod output_format {
         let admin2_conn = mk_conn(&mut app, 2, 12346);
         let normal_conn = mk_conn(&mut app, 3, 12347);
 
-        let admin_char = |name: &str, conn: Entity| {
-            let (gname, actor, character) = StoredCharacter {
-                id: GrimId::new(),
-                account_id: GrimId::new(),
-                name: name.into(),
-                created_at: Utc::now(),
-                last_room: None,
-                roles: vec![Role::Admin],
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-                inventory: Vec::new(),
-            }
-            .into_components();
-            (
-                gname,
-                actor,
-                character,
-                InRoom { room },
-                Player { connection: conn },
-                OutputHistory::with_max(100),
-            )
-        };
-
-        let sender = app.world_mut().spawn(admin_char("Boss", sender_conn)).id();
-        let _admin2 = app.world_mut().spawn(admin_char("Deputy", admin2_conn));
-        let (gname, actor, character) = StoredCharacter {
-            id: GrimId::new(),
-            account_id: GrimId::new(),
-            name: "Peon".into(),
-            created_at: Utc::now(),
-            last_room: None,
-            roles: Vec::new(),
-            gender: Gender::Neutral,
-            race: String::new(),
-            class: String::new(),
-            level: 1,
-            title: None,
-            restrings: std::collections::HashMap::new(),
-            inventory: Vec::new(),
-        }
-        .into_components();
-        let _normal = app.world_mut().spawn((
-            gname,
-            actor,
-            character,
-            InRoom { room },
-            Player {
-                connection: normal_conn,
-            },
-            OutputHistory::with_max(100),
-        ));
+        let sender = app
+            .world_mut()
+            .spawn(char_bundle("Boss", sender_conn, room, vec![Role::Admin]))
+            .id();
+        let _admin2 = app
+            .world_mut()
+            .spawn(char_bundle("Deputy", admin2_conn, room, vec![Role::Admin]))
+            .id();
+        let _normal = app
+            .world_mut()
+            .spawn(char_bundle("Peon", normal_conn, room, Vec::new()))
+            .id();
 
         app.world_mut().write_message(GlobalEcho {
             actor: sender,
