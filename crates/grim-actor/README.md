@@ -58,6 +58,7 @@ Player-facing verbs and where to find their handlers.
 | `config [key] [value]` | `src/commands/config.rs` | List settings with values + valid options; bare key cycles to the next value (naming the previous); key + value sets it (validated against `grim-config`, stored on `Character.config`). |
 | `desc [clear\|+\|-\|edit]` | `src/commands/desc.rs` | View or edit your description paragraphs (`clear` empties, `+ <line>` appends, `-` drops the last, `edit` opens the line editor). |
 | `move` — `n`/`e`/`s`/`w`/`u`/`d` (+ `north`…) | `src/commands/movement.rs` | Walk through an exit; emits `MoveEvent`. Direction aliases parsed in `grim-scene`. |
+| `recall` | `src/commands/recall.rs` | Return to the Town Square (`haven:square`); no-op with a reply when already there. Available to every player. |
 | `goto <address>` | `src/commands/movement.rs` | Admin teleport to a room by address. |
 | `quit` | `src/commands/quit.rs` | Request a clean disconnect (save + despawn happen in `grim-scene`). |
 | `title [text]` | `src/commands/title.rs` | Set (or, bare, clear) the actor's title; rejected over 60 chars. |

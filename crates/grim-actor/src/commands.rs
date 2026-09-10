@@ -9,5 +9,6 @@ pub mod look;
 pub mod map;
 pub mod movement;
 pub mod quit;
+pub mod recall;
 pub mod shutdown;
 pub mod title;

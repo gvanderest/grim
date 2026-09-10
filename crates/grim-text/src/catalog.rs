@@ -225,6 +225,8 @@ fn default_string(key: &str) -> String {
         "config.cycled" => "%{name} set to %{value}. (was previously %{old})\n",
         "config.unknown_key" => "Unknown config option: %{name}.\n",
         "config.bad_value" => "Invalid value \"%{value}\" for %{name}. Valid values: %{options}.\n",
+        "recall.already" => "You are already there.\n",
+        "recall.failed" => "Nothing happens.\n",
         other => return other.to_string(),
     }
     .to_string()
