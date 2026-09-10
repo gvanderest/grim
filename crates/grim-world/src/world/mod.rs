@@ -4,6 +4,7 @@
 
 mod area;
 mod location;
+mod map;
 mod plugin;
 mod topology;
 
@@ -14,4 +15,7 @@ pub use location::RoomLocation;
 pub use plugin::WorldPlugin;
 // World topology types (Placement Phase 2a): re-exported at `grim_world::world::*`
 // and hoisted to the crate root in `lib.rs`.
+// ASCII area-map rendering (being-free): shared by the `map` verb and the look
+// minimap. Re-exported at `grim_world::world::*` and hoisted to the crate root.
+pub use map::{render_map, MapConfig};
 pub use topology::{Area, Exits, Room, StartingRoom};

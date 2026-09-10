@@ -52,6 +52,10 @@ impl Plugin for ScenePlugin {
         // effective set is non-empty; both plugins init_resource idempotently.
         app.init_resource::<RaceRegistry>();
         app.init_resource::<ClassRegistry>();
+        // Player settings the look minimap resolves (`minimap` on/off).
+        // init_resource so ScenePlugin stands alone; ActorPlugin seeds the
+        // `minimap` definition into the same registry when present.
+        app.init_resource::<grim_config::ConfigRegistry>();
         // Per-tick set of connections a pre-game handler advanced to InGame; the
         // in-game input system consults it to avoid re-dispatching the line that
         // triggered the transition (see input.rs).

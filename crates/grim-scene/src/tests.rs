@@ -7,7 +7,9 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
-use grim_actor::{InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter};
+use grim_actor::{
+    Actor, Character, InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter,
+};
 use grim_channel::{Channel, ChannelMessage, ChannelPlugin};
 use grim_core::components::Name as GrimName;
 use grim_core::components::*;
@@ -114,6 +116,7 @@ fn make_character(roles: Vec<Role>) -> StoredCharacter {
         level: 1,
         title: None,
         restrings: std::collections::HashMap::new(),
+        config: std::collections::HashMap::new(),
         inventory: Vec::new(),
     }
 }
@@ -471,6 +474,40 @@ mod output_format {
         );
     }
 
+    /// Spawn bundle for an in-world character in output-format tests.
+    fn char_bundle(
+        name: &str,
+        conn: Entity,
+        room: Entity,
+        roles: Vec<Role>,
+    ) -> (GrimName, Actor, Character, InRoom, Player, OutputHistory) {
+        let (gname, actor, character) = StoredCharacter {
+            id: GrimId::new(),
+            account_id: GrimId::new(),
+            name: name.into(),
+            created_at: Utc::now(),
+            last_room: None,
+            roles,
+            gender: Gender::Neutral,
+            race: String::new(),
+            class: String::new(),
+            level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
+            inventory: Vec::new(),
+        }
+        .into_components();
+        (
+            gname,
+            actor,
+            character,
+            InRoom { room },
+            Player { connection: conn },
+            OutputHistory::with_max(100),
+        )
+    }
+
     /// `gecho` reaches everyone including the sender; another admin sees it
     /// attributed (`Name> text`) while the sender and non-admins see raw text.
     #[test]
@@ -492,61 +529,18 @@ mod output_format {
         let admin2_conn = mk_conn(&mut app, 2, 12346);
         let normal_conn = mk_conn(&mut app, 3, 12347);
 
-        let admin_char = |name: &str, conn: Entity| {
-            let (gname, actor, character) = StoredCharacter {
-                id: GrimId::new(),
-                account_id: GrimId::new(),
-                name: name.into(),
-                created_at: Utc::now(),
-                last_room: None,
-                roles: vec![Role::Admin],
-                gender: Gender::Neutral,
-                race: String::new(),
-                class: String::new(),
-                level: 1,
-                title: None,
-                restrings: std::collections::HashMap::new(),
-                inventory: Vec::new(),
-            }
-            .into_components();
-            (
-                gname,
-                actor,
-                character,
-                InRoom { room },
-                Player { connection: conn },
-                OutputHistory::with_max(100),
-            )
-        };
-
-        let sender = app.world_mut().spawn(admin_char("Boss", sender_conn)).id();
-        let _admin2 = app.world_mut().spawn(admin_char("Deputy", admin2_conn));
-        let (gname, actor, character) = StoredCharacter {
-            id: GrimId::new(),
-            account_id: GrimId::new(),
-            name: "Peon".into(),
-            created_at: Utc::now(),
-            last_room: None,
-            roles: Vec::new(),
-            gender: Gender::Neutral,
-            race: String::new(),
-            class: String::new(),
-            level: 1,
-            title: None,
-            restrings: std::collections::HashMap::new(),
-            inventory: Vec::new(),
-        }
-        .into_components();
-        let _normal = app.world_mut().spawn((
-            gname,
-            actor,
-            character,
-            InRoom { room },
-            Player {
-                connection: normal_conn,
-            },
-            OutputHistory::with_max(100),
-        ));
+        let sender = app
+            .world_mut()
+            .spawn(char_bundle("Boss", sender_conn, room, vec![Role::Admin]))
+            .id();
+        let _admin2 = app
+            .world_mut()
+            .spawn(char_bundle("Deputy", admin2_conn, room, vec![Role::Admin]))
+            .id();
+        let _normal = app
+            .world_mut()
+            .spawn(char_bundle("Peon", normal_conn, room, Vec::new()))
+            .id();
 
         app.world_mut().write_message(GlobalEcho {
             actor: sender,
@@ -1182,7 +1176,7 @@ mod output_format {
             "objects list under creatures; got:\n{text}"
         );
         assert!(
-            text.contains("hammering metal.\nA brass lantern rests here."),
+            text.contains("hammering metal.\n    @      A brass lantern rests here."),
             "no blank line between creatures and objects; got:\n{text}"
         );
         assert!(
@@ -1506,6 +1500,179 @@ mod ingame_commands {
         assert!(
             queued || dispatched,
             "admin shutdown should be queued or dispatched, not dropped"
+        );
+    }
+
+    /// A non-admin `reboot` is masked exactly like an unknown command and never
+    /// forwarded to the engine.
+    #[test]
+    fn ingame_reboot_masked_for_non_admin() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        spawn_ingame(&mut app, conn, make_character(Vec::new()));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "reboot 10".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == conn)
+            .expect("expected a response");
+        assert_eq!(out.text, "Unknown command. Type 'commands' for a list.\n");
+        assert!(!out.prepend_newline, "must match unknown-command framing");
+
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        assert_eq!(engine.get_cursor().read(engine).count(), 0);
+    }
+
+    /// An admin `reboot` is accepted (queued), never masked.
+    #[test]
+    fn ingame_reboot_allowed_for_admin() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        spawn_ingame(&mut app, conn, make_character(vec![Role::Admin]));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "reboot 10".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        assert!(
+            !cursor
+                .read(msgs)
+                .any(|o| o.connection == conn && o.text.contains("Unknown command")),
+            "admin reboot must not be masked"
+        );
+
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        let dispatched = engine
+            .get_cursor()
+            .read(engine)
+            .any(|e| matches!(e.command, Command::Reboot { seconds: 10 }));
+        let mut clients = app.world_mut().query::<&Client>();
+        let queued = clients
+            .iter(app.world())
+            .find(|c| c.connection == conn)
+            .is_some_and(|c| {
+                matches!(c.input_queue.front(), Some(Command::Reboot { seconds: 10 }))
+            });
+        assert!(
+            queued || dispatched,
+            "admin reboot should be queued or dispatched, not dropped"
+        );
+    }
+
+    /// A non-admin `copyover` is masked exactly like an unknown command and
+    /// never forwarded to the engine.
+    #[test]
+    fn ingame_copyover_masked_for_non_admin() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        spawn_ingame(&mut app, conn, make_character(Vec::new()));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "copyover 10".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == conn)
+            .expect("expected a response");
+        assert_eq!(out.text, "Unknown command. Type 'commands' for a list.\n");
+        assert!(!out.prepend_newline, "must match unknown-command framing");
+
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        assert_eq!(engine.get_cursor().read(engine).count(), 0);
+    }
+
+    /// An admin `copyover` is accepted (queued), never masked.
+    #[test]
+    fn ingame_copyover_allowed_for_admin() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        spawn_ingame(&mut app, conn, make_character(vec![Role::Admin]));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "copyover 10".into(),
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        assert!(
+            !cursor
+                .read(msgs)
+                .any(|o| o.connection == conn && o.text.contains("Unknown command")),
+            "admin copyover must not be masked"
+        );
+
+        let engine = app.world().resource::<Messages<EngineCommand>>();
+        let dispatched = engine
+            .get_cursor()
+            .read(engine)
+            .any(|e| matches!(e.command, Command::Copyover { seconds: 10 }));
+        let mut clients = app.world_mut().query::<&Client>();
+        let queued = clients
+            .iter(app.world())
+            .find(|c| c.connection == conn)
+            .is_some_and(|c| {
+                matches!(
+                    c.input_queue.front(),
+                    Some(Command::Copyover { seconds: 10 })
+                )
+            });
+        assert!(
+            queued || dispatched,
+            "admin copyover should be queued or dispatched, not dropped"
         );
     }
 

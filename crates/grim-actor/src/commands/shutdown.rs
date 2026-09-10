@@ -1,22 +1,26 @@
-//! The `shutdown` command: an admin schedules a graceful server shutdown. This
-//! is the *being-reading* half of the shutdown subsystem — it gates on the
+//! The `shutdown` / `reboot` / `copyover` commands: an admin schedules a warned
+//! countdown with three different exits (halt, cold restart, hot restart).
+//! This is the *being-reading* half of the shutdown subsystem — it gates on the
 //! actor's [`Character`] admin role. The signal handling, countdown state, and
 //! ticking stay in `grim_world`'s `ShutdownPlugin` (they are being-free).
 //!
 //! The handler slots into [`grim_world::ShutdownSet::Command`], between the
 //! world's SIGTERM poll and countdown tick, so a SIGTERM and an admin
-//! `shutdown` arriving in the same tick still schedule exactly one countdown.
+//! command arriving in the same tick still schedule exactly one countdown.
 
 use bevy::prelude::*;
 use grim_core::events::{Command, EngineCommand, InfoMessage, ServerBroadcast};
-use grim_world::shutdown::{warn_text, ActiveShutdown, ShutdownCountdown};
+use grim_world::shutdown::{
+    warn_text, ActiveShutdown, CopyoverShutdown, RebootShutdown, ShutdownCountdown,
+};
 use grim_world::ShutdownSet;
 
 use crate::character::Character;
 
-/// `shutdown <seconds>`: admin-gated (defense in depth — the client gates first).
-/// Non-admins are ignored silently; a second request while one is pending is
-/// rejected.
+/// `shutdown|reboot|copyover [seconds]`: admin-gated (defense in depth — the
+/// client gates first). Non-admins are ignored silently; a second request
+/// while one is pending is rejected. Exactly one countdown runs at a time no
+/// matter which of the three (or SIGTERM) scheduled it.
 fn handle_shutdown_command(
     mut engine: MessageReader<EngineCommand>,
     characters: Query<&Character>,
@@ -31,13 +35,18 @@ fn handle_shutdown_command(
     // first) rather than stacking two.
     let mut scheduled = false;
     for cmd in engine.read() {
-        let Command::Shutdown { seconds } = cmd.command else {
-            continue;
+        // Which countdown exit this line asks for; anything else is another
+        // handler's command.
+        let seconds = match cmd.command {
+            Command::Shutdown { seconds } => seconds,
+            Command::Reboot { seconds } => seconds,
+            Command::Copyover { seconds } => seconds,
+            _ => continue,
         };
         let actor = cmd.client;
-        // Defense in depth. The client already gates `shutdown` and masks it as
-        // an unknown command for non-admins, so a well-behaved session never
-        // sends this for a non-admin. If one arrives anyway (a non-client
+        // Defense in depth. The client already gates these verbs and masks them
+        // as unknown commands for non-admins, so a well-behaved session never
+        // sends one for a non-admin. If one arrives anyway (a non-client
         // command source), fail closed and stay silent — emitting anything here
         // would leak the command's existence with the wrong output framing.
         let is_admin = characters
@@ -58,6 +67,16 @@ fn handle_shutdown_command(
             text: warn_text(seconds),
         });
         commands.insert_resource(ActiveShutdown(ShutdownCountdown::new(seconds)));
+        // The exit the tick takes: plain halt is the absence of a marker.
+        match cmd.command {
+            Command::Reboot { .. } => {
+                commands.insert_resource(RebootShutdown);
+            }
+            Command::Copyover { .. } => {
+                commands.insert_resource(CopyoverShutdown);
+            }
+            _ => {}
+        }
         scheduled = true;
     }
 }
@@ -99,6 +118,7 @@ mod tests {
                 class: String::new(),
                 title: None,
                 restrings: std::collections::HashMap::new(),
+                config: std::collections::HashMap::new(),
             })
             .id()
     }
@@ -182,5 +202,95 @@ mod tests {
         assert!(casts[0].contains("30"));
         let infos = drain::<InfoMessage>(&app);
         assert!(infos.iter().any(|i| i.contains("already scheduled")));
+    }
+
+    #[test]
+    fn non_admin_reboot_and_copyover_are_silent_no_ops() {
+        let mut app = test_app();
+        let actor = spawn_character(&mut app, Vec::new());
+        for command in [
+            Command::Reboot { seconds: 10 },
+            Command::Copyover { seconds: 10 },
+        ] {
+            app.world_mut().write_message(EngineCommand {
+                client: actor,
+                command,
+            });
+        }
+        app.update();
+
+        assert!(app.world().get_resource::<ActiveShutdown>().is_none());
+        assert!(app.world().get_resource::<RebootShutdown>().is_none());
+        assert!(app.world().get_resource::<CopyoverShutdown>().is_none());
+        assert_eq!(drain::<InfoMessage>(&app).len(), 0);
+        assert_eq!(drain::<ServerBroadcast>(&app).len(), 0);
+    }
+
+    #[test]
+    fn admin_reboot_schedules_with_reboot_marker() {
+        let mut app = test_app();
+        let actor = spawn_character(&mut app, vec![Role::Admin]);
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Reboot { seconds: 10 },
+        });
+        app.update();
+
+        assert!(app.world().get_resource::<ActiveShutdown>().is_some());
+        assert!(app.world().get_resource::<RebootShutdown>().is_some());
+        assert!(app.world().get_resource::<CopyoverShutdown>().is_none());
+        let casts = drain::<ServerBroadcast>(&app);
+        assert!(casts.iter().any(|c| c.contains("10")));
+    }
+
+    #[test]
+    fn admin_copyover_schedules_with_copyover_marker() {
+        let mut app = test_app();
+        let actor = spawn_character(&mut app, vec![Role::Admin]);
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Copyover { seconds: 10 },
+        });
+        app.update();
+
+        assert!(app.world().get_resource::<ActiveShutdown>().is_some());
+        assert!(app.world().get_resource::<CopyoverShutdown>().is_some());
+        assert!(app.world().get_resource::<RebootShutdown>().is_none());
+        let casts = drain::<ServerBroadcast>(&app);
+        assert!(casts.iter().any(|c| c.contains("10")));
+    }
+
+    #[test]
+    fn mixed_shutdown_reboot_copyover_in_one_tick_schedule_only_one() {
+        let mut app = test_app();
+        let actor = spawn_character(&mut app, vec![Role::Admin]);
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Shutdown { seconds: 30 },
+        });
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Reboot { seconds: 5 },
+        });
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Copyover { seconds: 5 },
+        });
+        app.update();
+
+        // First wins; the other two are rejected, and no exit marker lands.
+        let casts = drain::<ServerBroadcast>(&app);
+        assert_eq!(casts.len(), 1, "exactly one countdown announced: {casts:?}");
+        assert!(casts[0].contains("30"));
+        assert!(app.world().get_resource::<RebootShutdown>().is_none());
+        assert!(app.world().get_resource::<CopyoverShutdown>().is_none());
+        let infos = drain::<InfoMessage>(&app);
+        assert_eq!(
+            infos
+                .iter()
+                .filter(|i| i.contains("already scheduled"))
+                .count(),
+            2
+        );
     }
 }

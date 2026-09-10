@@ -9,6 +9,7 @@
 mod ban;
 mod channel_output;
 mod command;
+mod countdown;
 mod editor;
 mod finger;
 mod input;

@@ -45,6 +45,21 @@ fn parse_tell(rest: &str) -> Option<Command> {
     })
 }
 
+/// Parse `config [key] [value]`: bare lists settings, one word shows one,
+/// two words set one. More words are unknown — values are single tokens.
+fn parse_config(rest: &str) -> Option<Command> {
+    let mut words = rest.split_whitespace();
+    let key = words.next();
+    let value = words.next();
+    if words.next().is_some() {
+        return None;
+    }
+    Some(Command::Config {
+        key: key.map(str::to_string),
+        value: value.map(str::to_string),
+    })
+}
+
 /// Split `<item> <target>` for `give`/`steal`. Tokens are shell-like: an
 /// optional `N*`/`N.` selector prefix plus a bare word or a `"quoted phrase"`.
 /// Usually the item is the first token and the being everything after it
@@ -246,6 +261,9 @@ fn build_registry() -> CommandRegistry<Command> {
             })
         }
     });
+    // `map` — bare only (`map <anything>` is unknown, like `sockets`). The `m`
+    // prefix is uncontested, so this steals no abbreviation.
+    r.register("map", |rest| rest.trim().is_empty().then_some(Command::Map));
     r.register("who", |_| Some(Command::Who));
     r.register("wizlist", |_| Some(Command::Wizlist));
     r.register("where", |_| Some(Command::Where));
@@ -261,6 +279,11 @@ fn build_registry() -> CommandRegistry<Command> {
     r.register("inv", |_| Some(Command::Inventory));
     r.register("eq", |_| Some(Command::Equipment));
     r.register("areas", |_| Some(Command::Areas));
+    // `config [key] [value]` — list settings, cycle one, or set one.
+    // Registered BEFORE `commands` so the shared `c`/`co` abbreviations keep
+    // reaching the older verb (`con` never matched `commands` — `com` vs
+    // `con` — so it and longer prefixes reach `config`); exact words match.
+    r.register("config", parse_config);
     r.register("commands", |_| Some(Command::Commands));
     r.register("help", |_| Some(Command::Commands));
     // `sockets` — admin-only, session-local (masked at dispatch, see
@@ -302,12 +325,9 @@ fn build_registry() -> CommandRegistry<Command> {
     });
 
     // ── Admin ────────────────────────────────────────────────────
-    // `shutdown [seconds]` — defaults to 30s when no/invalid count given.
-    // Admin-gated at dispatch (grim::plugins::ShutdownPlugin), not here.
-    r.register("shutdown", |rest| {
-        let seconds = rest.trim().parse::<u64>().unwrap_or(30);
-        Some(Command::Shutdown { seconds })
-    });
+    // Warned-countdown verbs (`shutdown|reboot|copyover`) live in
+    // `countdown.rs` (factories + priority); register them here with the rest.
+    crate::countdown::register(&mut r);
     // `goto <address>` — admin-gated + masked at dispatch (see grim-scene
     // dispatcher). Rejected with no argument so a bare `goto` is unknown.
     r.register("goto", |rest| {
@@ -1009,6 +1029,57 @@ mod tests {
         );
     }
 
+    // ── Reboot / copyover (admin; same countdown shape as shutdown) ──
+    #[test]
+    fn test_reboot_with_count() {
+        assert_eq!(parse("reboot 10"), Some(Command::Reboot { seconds: 10 }));
+    }
+
+    #[test]
+    fn test_reboot_defaults_to_30() {
+        assert_eq!(parse("reboot"), Some(Command::Reboot { seconds: 30 }));
+        assert_eq!(parse("reboot abc"), Some(Command::Reboot { seconds: 30 }));
+    }
+
+    #[test]
+    fn test_copyover_with_count() {
+        assert_eq!(
+            parse("copyover 10"),
+            Some(Command::Copyover { seconds: 10 })
+        );
+    }
+
+    #[test]
+    fn test_copyover_defaults_to_30() {
+        assert_eq!(parse("copyover"), Some(Command::Copyover { seconds: 30 }));
+        assert_eq!(
+            parse("copyover abc"),
+            Some(Command::Copyover { seconds: 30 })
+        );
+    }
+
+    #[test]
+    fn test_new_admin_verbs_do_not_steal_prefixes() {
+        // `reboot`/`copyover` are deprioritized: short prefixes still reach
+        // the older verbs; only long unambiguous prefixes reach the new ones.
+        assert_eq!(
+            parse("r hello"),
+            Some(Command::Reply {
+                text: "hello".into()
+            })
+        );
+        assert_eq!(
+            parse("re hello"),
+            Some(Command::Reply {
+                text: "hello".into()
+            })
+        );
+        assert_eq!(parse("reb 10"), Some(Command::Reboot { seconds: 10 }));
+        assert_eq!(parse("c"), Some(Command::Commands));
+        assert_eq!(parse("co"), Some(Command::Commands));
+        assert_eq!(parse("copy 10"), Some(Command::Copyover { seconds: 10 }));
+    }
+
     // ── Edge cases ────────────────────────────────────────────────
     #[test]
     fn test_empty_input() {
@@ -1042,6 +1113,67 @@ mod tests {
             parse("s"),
             Some(Command::Move {
                 direction: Cardinal::South
+            })
+        );
+    }
+
+    #[test]
+    fn test_map_bare_and_abbreviation() {
+        // The `m` prefix is uncontested: both the word and the abbreviation
+        // reach `map`, while anything with arguments is unknown.
+        assert_eq!(parse("map"), Some(Command::Map));
+        assert_eq!(parse("m"), Some(Command::Map));
+        assert_eq!(parse("ma"), Some(Command::Map));
+        assert_eq!(parse("map foo"), None);
+    }
+
+    #[test]
+    fn test_config_list_show_set() {
+        assert_eq!(
+            parse("config"),
+            Some(Command::Config {
+                key: None,
+                value: None
+            })
+        );
+        assert_eq!(
+            parse("config minimap"),
+            Some(Command::Config {
+                key: Some("minimap".into()),
+                value: None
+            })
+        );
+        assert_eq!(
+            parse("config minimap off"),
+            Some(Command::Config {
+                key: Some("minimap".into()),
+                value: Some("off".into())
+            })
+        );
+        // Values are single tokens: a third word is unknown.
+        assert_eq!(parse("config minimap off now"), None);
+    }
+
+    #[test]
+    fn test_config_keeps_older_c_prefixes() {
+        // `config` registers before `commands`, so the shared `c`/`co`
+        // abbreviations still reach the older verb. `con` is not a prefix of
+        // `commands` at all (`com` vs `con`) — it unambiguously reaches
+        // `config`, as does `conf`.
+        assert_eq!(parse("c"), Some(Command::Commands));
+        assert_eq!(parse("co"), Some(Command::Commands));
+        assert_eq!(
+            parse("con"),
+            Some(Command::Config {
+                key: None,
+                value: None
+            })
+        );
+        assert_eq!(
+            parse("conf"),
+            Some(Command::Config {
+                key: None,
+                value: None
             })
         );
     }

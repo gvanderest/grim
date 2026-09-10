@@ -3,8 +3,10 @@
 //! systems and the messages it owns; [`crate::plugin::ActorPlugin`] calls each
 //! `register` in turn.
 
+pub mod config;
 pub mod desc;
 pub mod look;
+pub mod map;
 pub mod movement;
 pub mod quit;
 pub mod shutdown;

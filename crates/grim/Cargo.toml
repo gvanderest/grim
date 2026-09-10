@@ -16,6 +16,7 @@ grim-auth = { path = "../grim-auth" }
 grim-world = { path = "../grim-world" }
 grim-actor = { path = "../grim-actor" }
 grim-channel = { path = "../grim-channel" }
+grim-config = { path = "../grim-config" }
 grim-object = { path = "../grim-object" }
 grim-persistence = { path = "../grim-persistence" }
 grim-script = { path = "../grim-script" }

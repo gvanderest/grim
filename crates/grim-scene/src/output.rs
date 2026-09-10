@@ -2,9 +2,12 @@
 //! events (look/say/yell/ooc/move/info + announces) into `ConnectionOutput`,
 //! captures output for linkdead replay, and fans server broadcasts out.
 
+use std::collections::HashMap;
+
 use bevy::prelude::*;
 use grim_actor::{Character, InRoom, OutputHistory, Player};
 use grim_channel::{ChannelMessage, ChannelRegistry};
+use grim_config::ConfigRegistry;
 use grim_core::components::{Description, Name as GrimName, RoomDescription};
 use grim_core::events::{
     GlobalEcho, InfoMessage, LookEntity, LookRoom, MoveEvent, ServerBroadcast,
@@ -12,7 +15,7 @@ use grim_core::events::{
 use grim_networking::ConnectionOutput;
 use grim_object::Object;
 use grim_text::tr;
-use grim_world::{Exits, Room};
+use grim_world::{render_map, Exits, MapConfig, Room};
 
 use crate::channel_output::emit_channel;
 use crate::formatter;
@@ -42,9 +45,10 @@ pub(crate) fn format_output(
     mut gecho_events: MessageReader<GlobalEcho>,
     mut announces: AnnounceReaders,
     channel_registry: Res<ChannelRegistry>,
+    config_registry: Res<ConfigRegistry>,
     rooms: Query<(Entity, &Room, &GrimName)>,
     room_occupants: Occupants,
-    room_exits: Query<&Exits>,
+    room_exits: Query<(Entity, &Exits)>,
     names: Query<&GrimName>,
     descriptions: Query<&Description>,
     characters: Query<&Character>,
@@ -95,6 +99,7 @@ pub(crate) fn format_output(
             &room_occupants,
             &room_exits,
             &characters,
+            &config_registry,
             &mut outputs,
         );
     }
@@ -124,8 +129,9 @@ fn emit_look_room(
     ev: &LookRoom,
     rooms: &Query<(Entity, &Room, &GrimName)>,
     room_occupants: &Occupants,
-    room_exits: &Query<&Exits>,
+    room_exits: &Query<(Entity, &Exits)>,
     characters: &Query<&Character>,
+    config_registry: &ConfigRegistry,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
     let Ok((_, room, name)) = rooms.get(ev.room) else {
@@ -134,7 +140,7 @@ fn emit_look_room(
     let exits = room_exits
         .get(ev.room)
         .ok()
-        .map(|e| {
+        .map(|(_, e)| {
             let mut dirs: Vec<String> = e.exits.keys().map(|d| d.to_string()).collect();
             dirs.sort();
             dirs
@@ -198,12 +204,33 @@ fn emit_look_room(
         }),
     );
     let conn = find_conn(ev.target, room_occupants);
+    let body = formatter::format_room(&title, &room.description, &exits, &presence);
+    // Minimap: the same renderer as `map` on the small canvas, stapled left
+    // when the looker's resolved `minimap` setting is on. Actors without a
+    // `Character` and unseeded registries (unit tests) keep the map, matching
+    // the pre-toggle behavior.
+    let minimap_on = characters
+        .get(ev.target)
+        .map(|c| {
+            config_registry
+                .resolve(&c.config, "minimap")
+                .unwrap_or("on")
+                == "on"
+        })
+        .unwrap_or(true);
+    let text = if minimap_on {
+        let mut snapshot = HashMap::new();
+        for (room_entity, links) in room_exits.iter() {
+            snapshot.insert(room_entity, links.exits.clone());
+        }
+        let map_rows = render_map(ev.room, &snapshot, &MapConfig::MINIMAP);
+        formatter::staple_minimap(&map_rows, &body)
+    } else {
+        body
+    };
     outputs.write(ConnectionOutput {
         echo: None,
-        ..ConnectionOutput::new(
-            conn,
-            formatter::format_room(&title, &room.description, &exits, &presence),
-        )
+        ..ConnectionOutput::new(conn, text)
     });
 }
 

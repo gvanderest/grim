@@ -47,6 +47,33 @@ pub fn format_room(name: &str, desc: &str, exits: &[String], presence: &[String]
     out
 }
 
+/// Minimap canvas width: every stapled row reserves this gutter plus two
+/// spaces before the room text.
+pub const MINIMAP_WIDTH: usize = 9;
+
+/// Staple minimap rows to the left of room text: each canvas row pads to
+/// [`MINIMAP_WIDTH`] plus two spaces, then the corresponding text line. The
+/// short side pads with blanks, and padding never leaves trailing spaces — a
+/// missing map row emits blanks, a missing text line emits the map row bare.
+pub fn staple_minimap(map_rows: &[String], text: &str) -> String {
+    let text_rows: Vec<&str> = text.split('\n').collect();
+    let height = map_rows.len().max(text_rows.len());
+    let mut out = String::new();
+    for i in 0..height {
+        let map = map_rows.get(i).map(String::as_str).unwrap_or("");
+        let line = text_rows.get(i).copied().unwrap_or("");
+        if line.is_empty() {
+            out.push_str(map);
+        } else {
+            out.push_str(&format!("{map:<MINIMAP_WIDTH$}  {line}"));
+        }
+        if i + 1 < height {
+            out.push('\n');
+        }
+    }
+    out
+}
+
 /// Format a look at a specific entity.
 pub fn format_entity(name: &str, desc: &str) -> String {
     format!("{}\n{}\n", name, desc)
@@ -237,6 +264,7 @@ pub fn format_linkdead(name: &str, reconnecting: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use grim_world::MapConfig;
 
     // ── format_areas_list ────────────────────────────────────────
 
@@ -313,6 +341,36 @@ mod tests {
     fn room_empty_both() {
         let got = format_room("Empty", "Nothing.", &[], &[]);
         assert_eq!(got, "Empty\nNothing.\n");
+    }
+
+    // ── staple_minimap ───────────────────────────────────────────
+
+    #[test]
+    fn minimap_gutter_matches_canvas_width() {
+        // The gutter must equal the canvas it staples: a width change on
+        // either side without the other silently misaligns rows.
+        assert_eq!(MINIMAP_WIDTH, MapConfig::MINIMAP.width);
+    }
+
+    #[test]
+    fn staple_zips_map_and_text() {
+        let map = vec!["    @".into(), "    |".into()];
+        assert_eq!(
+            staple_minimap(&map, "Hall\nCold."),
+            "    @      Hall\n    |      Cold."
+        );
+    }
+
+    #[test]
+    fn staple_pads_short_sides_without_trailing_spaces() {
+        // Long text: blank gutter, no trailing blanks on the map-only side.
+        let got = staple_minimap(&["@".into()], "One\nTwo\nThree");
+        assert_eq!(got, "@          One\n           Two\n           Three");
+        // Long map: bare map rows, never blank-padded.
+        let got = staple_minimap(&["@".into(), "|".into()], "One");
+        assert_eq!(got, "@          One\n|");
+        // Trailing newline survives with no trailing spaces.
+        assert_eq!(staple_minimap(&[], "One\n"), "           One\n");
     }
 
     // ── format_entity ────────────────────────────────────────────

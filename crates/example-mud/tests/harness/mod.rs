@@ -76,11 +76,21 @@ impl Output {
     }
 }
 
+/// Outcome of [`Mud::send_shutdown`]: the session's output plus every
+/// `AppExit` / `CopyoverDue` written while the pump ran.
+pub struct ShutdownOutcome {
+    pub output: Output,
+    pub exits: Vec<AppExit>,
+    pub copyover_due: usize,
+}
+
 pub struct Mud {
     app: App,
     next_conn: usize,
     data_dir: PathBuf,
     cursor: bevy::ecs::message::MessageCursor<ConnectionOutput>,
+    exit_cursor: bevy::ecs::message::MessageCursor<AppExit>,
+    due_cursor: bevy::ecs::message::MessageCursor<grim::events::CopyoverDue>,
     buffers: HashMap<Entity, Vec<String>>,
     read_offsets: HashMap<Entity, usize>,
 }
@@ -114,12 +124,19 @@ impl Mud {
             .world()
             .resource::<Messages<ConnectionOutput>>()
             .get_cursor();
+        let exit_cursor = app.world().resource::<Messages<AppExit>>().get_cursor();
+        let due_cursor = app
+            .world()
+            .resource::<Messages<grim::events::CopyoverDue>>()
+            .get_cursor();
 
         Self {
             app,
             next_conn: 1,
             data_dir,
             cursor,
+            exit_cursor,
+            due_cursor,
             buffers: HashMap::new(),
             read_offsets: HashMap::new(),
         }
@@ -245,6 +262,46 @@ impl Mud {
             .resource::<Messages<ConnectionOutput>>()
             .get_cursor();
         self.cursor = cursor;
+        self.exit_cursor = self
+            .app
+            .world()
+            .resource::<Messages<AppExit>>()
+            .get_cursor();
+        self.due_cursor = self
+            .app
+            .world()
+            .resource::<Messages<grim::events::CopyoverDue>>()
+            .get_cursor();
+    }
+
+    /// Send a shutdown-verb line (`shutdown|reboot|copyover N`) and settle,
+    /// returning the output plus every exit/handoff request written along the
+    /// way. Drained per tick because messages only survive a couple of frames
+    /// — a drain after the pump would miss a request written mid-pump (and a
+    /// `copyover` fires exactly once, so there is no sticky re-fire to catch
+    /// up with).
+    pub fn send_shutdown(&mut self, session: Session, line: &str) -> ShutdownOutcome {
+        self.app.world_mut().write_message(ConnectionInput {
+            connection: session.conn,
+            text: line.to_string(),
+        });
+        let mut exits = Vec::new();
+        let mut copyover_due = 0;
+        for _ in 0..8 {
+            self.tick();
+            let exit_msgs = self.app.world().resource::<Messages<AppExit>>();
+            exits.extend(self.exit_cursor.read(exit_msgs).cloned());
+            let due_msgs = self
+                .app
+                .world()
+                .resource::<Messages<grim::events::CopyoverDue>>();
+            copyover_due += self.due_cursor.read(due_msgs).count();
+        }
+        ShutdownOutcome {
+            output: self.collect_new(session.conn),
+            exits,
+            copyover_due,
+        }
     }
 
     /// Names of player characters currently in the world (for assertions about

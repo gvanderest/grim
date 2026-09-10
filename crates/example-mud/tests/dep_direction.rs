@@ -96,6 +96,9 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // `Object` marker and `format_item_events` renders `ItemEvent`. grim-object
     // does not depend on grim-scene, so no cycle.
     ("grim-scene", "grim-object"),
+    // NOTE (config #119 P3): the look minimap resolves the per-character
+    // `minimap` setting. grim-config depends on nothing internal, no cycle.
+    ("grim-scene", "grim-config"),
     // ── Pre-game / auth ─────────────────────────────────────────────────────────
     // NOTE (Phase 2b): grim-auth owns the login / account-creation /
     // character-select / MOTD flow extracted from grim-scene. It is the pre-game
@@ -144,6 +147,9 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // NOTE (keyword query): `look` resolves targets through grim-target
     // (BEING specs + ranking). grim-target depends on nothing internal.
     ("grim-actor", "grim-target"),
+    // NOTE (config #119 P3): the `config` verb reads/writes Character.config
+    // through the registry, seeded by ActorPlugin. No back edge, no cycle.
+    ("grim-actor", "grim-config"),
     ("grim-channel", "grim-core"),
     ("grim-channel", "grim-text"),
     // NOTE (keyword query): `tell` rank-matches through grim-target.
@@ -224,6 +230,8 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // ActorPlugin and adds ActorPlugin to GrimDefaultPlugins.
     ("grim", "grim-actor"),
     ("grim", "grim-channel"),
+    // NOTE (config #119 P3): the facade re-exports the registry types.
+    ("grim", "grim-config"),
     ("grim", "grim-persistence"),
     // NOTE (mob scripting): the facade re-exports the script trigger types +
     // ScriptPlugin and adds ScriptPlugin to the default plugin groups.
