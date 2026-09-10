@@ -182,7 +182,8 @@ pub fn render_map(
     canvas
         .into_iter()
         .map(|row| {
-            let mut out = String::with_capacity(row.len());
+            // Worst-case glyph expansion is 6 bytes (`@` → `{R@@{x`).
+            let mut out = String::with_capacity(row.len() * 6);
             for glyph in row {
                 match glyph {
                     '@' => out.push_str("{R@@{x"),
