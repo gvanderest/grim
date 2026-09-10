@@ -1,0 +1,6 @@
+{
+  "solo": {
+    "actor": "You grin widely.\n",
+    "room": "%{actor} grins widely.\n"
+  }
+}

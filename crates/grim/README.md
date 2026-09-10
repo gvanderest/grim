@@ -2,7 +2,7 @@
 > The engine facade: re-exports every subsystem and offers the default plugin group so a MUD author depends on one crate.
 
 **Role:** horizontal (infrastructure)
-**Depends on:** `grim-core`, `grim-text`, `grim-command`, `grim-networking`, `grim-networking-telnet`, `grim-scene`, `grim-auth`, `grim-world`, `grim-actor`, `grim-channel`, `grim-persistence`
+**Depends on:** `grim-core`, `grim-text`, `grim-command`, `grim-target`, `grim-command-events`, `grim-networking`, `grim-networking-telnet`, `grim-scene`, `grim-auth`, `grim-world`, `grim-actor`, `grim-channel`, `grim-object`, `grim-persistence`, `grim-script`
 
 ## Components
 

@@ -11,4 +11,5 @@ pub use grim_object::ObjectPlugin;
 pub use grim_persistence::{BanEntry, BanList, PersistenceConfig, PersistencePlugin};
 pub use grim_scene::ScenePlugin;
 pub use grim_script::ScriptPlugin;
+pub use grim_social::SocialPlugin;
 pub use grim_world::{ShutdownPlugin, WorldPlugin};

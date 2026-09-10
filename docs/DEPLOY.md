@@ -1,21 +1,28 @@
 # Deployment
 
-Every push to `main` builds a static binary in GitHub Actions and rolls it onto
-a single EC2 host. No Docker, and nothing is compiled on the box — a t2.micro
-(1 GB RAM) cannot realistically build Bevy in release, so CI does it and ships
-the binary.
+Pushes to `main` that touch what runs on the box build a static binary in
+GitHub Actions and roll it onto a single EC2 host (see the trigger gate below).
+No Docker, and nothing is compiled on the box — a t2.micro (1 GB RAM) cannot
+realistically build Bevy in release, so CI does it and ships the binary.
 
 ## Pipeline
 
+**Trigger gate:** pushes to `main` deploy only when they touch what runs on the
+box — `crates/**`, `data/areas/**`, `assets/**`, `deploy/**`, or the root
+`Cargo.toml` / `Cargo.lock` / `rust-toolchain.toml` (see `on.push.paths` in
+`deploy.yml`). Anything else (docs, `.planning/`, CI, scripts) skips the
+pipeline; use `Run workflow` to force a deploy.
 `.github/workflows/deploy.yml`:
 
 1. **build** — `cargo build --release --target x86_64-unknown-linux-musl`. The
    musl target produces a fully static binary. Most assets are `include_str!`-baked,
-   but **area blueprints (`data/areas/*.json`) are read from disk at runtime**, so
-   they ship alongside the binary (see below). Uploaded as an artifact named `grim-binary`.
+   but **area blueprints (`data/areas/*.json`) and social overrides
+   (`data/socials/*.json`) are read from disk at runtime**, so they ship
+   alongside the binary (see below). Uploaded as an artifact named `grim-binary`.
 2. **deploy** — `scp`s the binary to `/opt/grim/bin/grim.new`, plus
-   `deploy/deploy.sh`, `deploy/grim.service`, and the committed `data/areas`
-   folder (to `/opt/grim/bin/areas.staged`), then runs the script over SSH.
+   `deploy/deploy.sh`, `deploy/grim.service`, the committed `data/areas`
+   folder (to `/opt/grim/bin/areas.staged`), and the committed `data/socials`
+   folder (to `/opt/grim/bin/socials.staged`), then runs the script over SSH.
 
 `deploy/deploy.sh` (on the host):
 
@@ -26,6 +33,11 @@ the binary.
   repo doesn't linger. Only `data/areas` is touched — sibling `data/accounts` and
   `data/characters` (runtime player saves) are left alone. The server reads these
   at startup and re-reads on copyover, so they must be current before the roll.
+- **Mirror the social overrides** into `/opt/grim/data/socials`: same
+  wipe-and-repopulate shape as the area blueprints, so a removed social
+  doesn't linger. The server loads them once at startup (they don't change
+  while it's up), so they must be current before the roll; with no overrides
+  on disk the built-in set applies.
 - **Sync the systemd unit** from the uploaded `grim.service` (rendering `User=` to
   the deploy user); `daemon-reload` + `enable`. Track whether the unit *changed*.
 - Then pick one:

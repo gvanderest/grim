@@ -31,5 +31,4 @@
 //! child (the [`Contest`] report and [`CommandRegistry::contested_prefixes`]).
 
 mod registry;
-
-pub use registry::{CommandRegistry, Contest};
+pub use registry::{CommandRegistry, Contest, Factory};

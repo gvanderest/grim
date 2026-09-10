@@ -22,8 +22,10 @@
 #[macro_use]
 mod macros;
 mod catalog;
+mod grid;
 
-pub use catalog::tr;
+pub use catalog::{render, tr};
+pub use grid::column_grid;
 
 #[cfg(test)]
 mod tests {
@@ -100,5 +102,42 @@ mod tests {
     #[test]
     fn macro_with_no_args() {
         assert_eq!(tr!("login.prompt"), tr("login.prompt", &[]));
+    }
+
+    #[test]
+    fn render_substitutes_file_style_template() {
+        let out = render(
+            "%{actor} grins at %{target}.\n",
+            &[("actor", "Alice"), ("target", "Bob")],
+        );
+        assert_eq!(out, "Alice grins at Bob.\n");
+    }
+
+    #[test]
+    fn render_escapes_values_like_tr() {
+        let out = render("%{actor} grins.\n", &[("actor", "{RMal")]);
+        let rendered = ansi(&convert_16color(&out));
+        assert!(
+            rendered.contains("{RMal"),
+            "override names must render literally: {rendered:?}"
+        );
+    }
+
+    #[test]
+    fn render_converts_colour_before_substitution() {
+        let out = render("{M%{actor} grins.\n", &[("actor", "Alice")]);
+        assert_eq!(out, "@xf0fAlice grins.\n");
+    }
+
+    #[test]
+    fn social_grin_defaults_resolve() {
+        assert_eq!(tr("social.grin.solo.actor", &[]), "You grin.\n");
+        assert_eq!(
+            tr(
+                "social.grin.other.room",
+                &[("actor", "Al"), ("target", "Bo")]
+            ),
+            "Al grins at Bo.\n"
+        );
     }
 }

@@ -24,6 +24,7 @@ deferred (ARCHITECTURE.md §8). See CONTEXT.md.
 | `grim-color` | Colour markup, ANSI rendering, palette, `escape_codes`. No Bevy, no serde |
 | `grim-text` | Text catalog: `tr`/`tr!`, inlined defaults. Depends only on `grim-color`. No Bevy |
 | `grim-command` | `CommandRegistry<C>` — generic, resource-ready. Exact-then-prefix resolution, `prioritize`/`deprioritize`, `contested_prefixes`. Bevy-only |
+| `grim-command-events` | Semantic intent events (`MoveIntent`, `LookIntent`, … — one `Message` per player intent). Plain library, no plugin |
 | `grim-networking` | `Connection` component + wire events (`ConnectionInput`/`Output`, `ConnectionEstablished`/`Closed`, `DisconnectRequest`). Bevy-only |
 | `grim-networking-telnet` | `TelnetPlugin`: TCP server, IAC negotiation, tokio↔Bevy bridge, ANSI render |
 | `grim-core` | Game events, components, validation; re-exports `grim-color` |
@@ -61,7 +62,7 @@ extend.
 - **`Exit` vs `Exits`**: The component is `Exits { exits: HashMap<Cardinal, Entity> }`. On a Room entity.
 - **`Name` vs `GrimName`**: Import aliased from `grim` as `GrimName` in binary/client to avoid collisions with Bevy's `Name`.
 - **Single-letter directions** (`n`/`e`/`s`/`w`/`u`/`d`) work via prefix matching against the `CommandRegistry`. Directions are registered last in `parser.rs::build_registry()`, and `register` puts each new command at the front of the priority ordering, so directions win single-character input.
-- **Command resolution**: `grim::CommandRegistry<Command>` (from `grim-command`). Commands are registered by name + `fn(&str) -> Option<Command>` factory. Resolution is case-insensitive: exact name first, then highest-priority prefix. Priority is explicit and reorderable via `prioritize`/`deprioritize` — not `max(entry_idx)`. `l` is a registered name; `n` matches `north` via prefix. It is a live Bevy **resource** (`grim-scene` inserts `parser::command_registry()`, which logs contested prefixes), threaded into `handle_client_input` via the `SessionRes` `SystemParam`. The `OnceLock` is gone.
+- **Command resolution**: `grim::CommandRegistry<Command>` (from `grim-command`). Commands are registered by name + `fn(&str) -> Option<Command>` factory. Resolution is case-insensitive: exact name first, then highest-priority prefix. Priority is explicit and reorderable via `prioritize`/`deprioritize` — not `max(entry_idx)`. Single-character/punctuation shorthands are not registered names (`l` reaches `look`, `n` reaches `north` via prefix; the `'` say-alias is gone). It is a live Bevy **resource** (`grim-scene` inserts `parser::command_registry()`, which logs contested prefixes), threaded into `handle_client_input` via the `SessionRes` `SystemParam`. The `OnceLock` is gone.
 - **Player presence = online.** `Player` is attached only while a connection is driving the character (`Player { connection: Entity }`, non-optional). **Online ⇔ the character has a `Player`; linkdead ⇔ it has a `Character` and no `Player`** (marked `Linkdead`). There is no "linkdead `Player`".
 - **Character takeover**: If a character is already online (has a `Player`) and another session selects it, the old session's connection receives "Someone else has logged into this character." and is disconnected; the new session inserts its own `Player` (with the new connection) and proceeds. The old connection's later `ConnectionClosed` must NOT re-mark the character linkdead — see the guard below.
 - **Online indicator**: The character select menu shows "(online)" for characters that have a `Player` and "(linkdead)" for linkdead characters (`Linkdead`, no `Player`).
@@ -91,6 +92,7 @@ When developing new features, start by asking:
 
 ## Workflow
 
+0. **Design** — feature/design work starts with the `grim-design` skill (`.agents/skills/grim-design/SKILL.md`): arch review, ADR conflicts, local iteration in `.planning/tmp/`, publish on request.
 1. **Branch pre-check** — check current branch; if wrong, branch from `main`
 2. **Branch** from `main`
 3. **Commit** incrementally

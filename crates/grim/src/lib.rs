@@ -26,6 +26,7 @@ pub use grim_scene::ConnectedAt;
 pub use grim_script::{
     compile, CompiledTrigger, ScriptPlugin, ScriptTriggers, TriggerDef, TriggerKind,
 };
+pub use grim_social::{SocialDef, SocialDir, SocialPerformed, SocialRegistry};
 pub use grim_world::{
     Area, ClassDef, ClassRegistry, Exits, RaceDef, RaceRegistry, Room, RoomLocation, StartingRoom,
 };

@@ -125,6 +125,7 @@ plugin registering five scenes. That is correct and not a violation.
 | `grim-color` | — (plain library) | colour codes, ANSI rendering, palette |
 | `grim-text` | — (plain library) | the Catalog: strings, templates, interpolation |
 | `grim-command` | — (`CommandRegistry` type; resource held by `grim-scene`) | command registry, resolution, dispatch |
+| `grim-command-events` | — (plain library) | semantic intent events: one `Message` per player intent (`MoveIntent`, `LookIntent`, …), re-exported by the facade |
 | `grim-target` | — (plain library) | target parsing + keyword query: `TargetSpec` selectors (`2.x`, `N*x`, `all`, quoted groups), ranking, selector application |
 | `grim-core` | — (transitional, dissolving — not the floor) | leftover shared types until each moves to its owner: `Name`→actor, `RoomLocation` already→world, `Command` dies with typed dispatch, game events→owners, validation→owners |
 | `grim-networking` | `GrimNetworkingPlugin` | wire shapes: `Connection`, `ConnectionInput`/`Output`, `Established`/`Closed`, `DisconnectRequest` (no `Transport` trait until a 2nd transport lands) |

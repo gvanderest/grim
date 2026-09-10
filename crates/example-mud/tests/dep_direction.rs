@@ -175,6 +175,16 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // NOTE (keyword query): get/drop/give/steal resolve through grim-target
     // (ITEM specs + selectors). grim-target depends on nothing internal.
     ("grim-object", "grim-target"),
+    // NOTE (socials #77): grim-social owns the data-driven emote verbs. It
+    // reads being placement (grim-actor's InRoom) and names, renders through
+    // the catalog (grim-text, incl. render() for file templates), resolves
+    // targets through grim-target, and registers names into grim-command's
+    // registry at Startup. None of them depends back, so no cycle.
+    ("grim-social", "grim-core"),
+    ("grim-social", "grim-actor"),
+    ("grim-social", "grim-text"),
+    ("grim-social", "grim-target"),
+    ("grim-social", "grim-command"),
     // `grim-persistence` loads/saves accounts + characters (→ god-types) and reacts
     // to connection lifecycle events (→ grim-networking).
     ("grim-persistence", "grim-core"),
@@ -218,6 +228,9 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // NOTE (mob scripting): the facade re-exports the script trigger types +
     // ScriptPlugin and adds ScriptPlugin to the default plugin groups.
     ("grim", "grim-script"),
+    // NOTE (socials #77): the facade re-exports the social types +
+    // SocialPlugin and adds SocialPlugin to the default plugin groups.
+    ("grim", "grim-social"),
     // NOTE (typed-event command dispatch): grim-command-events holds semantic
     // intent events (MoveIntent, LookIntent, etc.) that the facade re-exports.
     ("grim", "grim-command-events"),

@@ -431,6 +431,57 @@ fn speech_is_heard_by_others_in_the_room() {
 }
 
 #[test]
+fn socials_render_per_audience_from_builtins() {
+    // Temp data dir holds no data/socials: the built-in set applies.
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+
+    // Solo: actor sees the actor wording, the room the room wording.
+    mud.send(alice, "grin").assert_contains("You grin.");
+    mud.recv(bob).assert_contains("Alice grins.");
+
+    // Targeted: all three audiences.
+    mud.send(alice, "grin bob")
+        .assert_contains("You grin at Bob.");
+    mud.recv(bob).assert_contains("Alice grins at you.");
+
+    // Self: the self case, not the targeted one. Alice was created Male,
+    // so the room sees "himself".
+    mud.send(alice, "grin self")
+        .assert_contains("You grin to yourself.");
+    mud.recv(bob).assert_contains("Alice grins to himself.");
+
+    // Unknown target explains itself to the actor only.
+    mud.send(alice, "grin xyzzy")
+        .assert_contains("You don't see anyone by that name here.");
+}
+
+#[test]
+fn commands_hides_socials_and_admin_verbs() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    // Socials live under `socials`; admin verbs stay hidden from non-admins.
+    mud.send(alice, "commands")
+        .assert_contains("look")
+        .assert_contains("socials")
+        .assert_excludes("grin")
+        .assert_excludes("shutdown")
+        .assert_excludes("sockets");
+}
+
+#[test]
+fn socials_lists_the_data_driven_verbs() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    mud.send(alice, "socials")
+        .assert_contains("grin")
+        .assert_contains("smile");
+}
+
+#[test]
 fn ooc_is_global_and_reaches_a_distant_player() {
     let mut mud = Mud::new();
     let alice = create_char(&mut mud, "alice@example.com", "Alice");

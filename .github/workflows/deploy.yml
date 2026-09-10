@@ -1,9 +1,21 @@
 name: Deploy
 
-# Every push to main builds a fresh static binary and rolls it onto the EC2 box.
+# Only changes that can alter what runs on the box trigger a deploy: the
+# workspace crates, the area blueprints shipped alongside the binary, the
+# include_str!-baked assets, the deploy script/unit, and the manifests that
+# pin the build. Everything else (docs, .planning/, CI, scripts) skips the
+# pipeline; `Run workflow` forces a deploy when needed.
 on:
   push:
     branches: [main]
+    paths:
+      - 'crates/**'
+      - 'data/areas/**'
+      - 'assets/**'
+      - 'deploy/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
   workflow_dispatch: {}
 
 # Never let two deploys race onto the same host.
@@ -80,6 +92,10 @@ jobs:
           # Staged next to the binary; deploy.sh syncs it into data/areas.
           ssh -i ~/.ssh/id_deploy "$TARGET" 'rm -rf /opt/grim/bin/areas.staged'
           scp -i ~/.ssh/id_deploy -r data/areas "$TARGET:/opt/grim/bin/areas.staged"
+          # Committed social overrides, read from disk at startup.
+          # Staged next to the binary; deploy.sh syncs it into data/socials.
+          ssh -i ~/.ssh/id_deploy "$TARGET" 'rm -rf /opt/grim/bin/socials.staged'
+          scp -i ~/.ssh/id_deploy -r data/socials "$TARGET:/opt/grim/bin/socials.staged"
 
       - name: Run deploy
         env:
