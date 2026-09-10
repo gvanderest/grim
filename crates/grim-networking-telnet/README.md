@@ -15,6 +15,7 @@ None. Reuses `grim_networking::Connection`.
 | `drain_network_events` | Update (chained) | `src/bridge.rs` | Drain events off the tokio→Bevy channel into `ConnectionEstablished` / `ConnectionResumed` / `ConnectionInput` / `ConnectionClosed` messages, spawning/despawning `Connection` entities. |
 | `send_network_commands` | Update (chained) | `src/bridge.rs` | Read `ConnectionOutput` / `DisconnectRequest` and route them back to the network thread (render + echo toggle + disconnect). |
 | `poll_copyover_signal` | Update (chained) | `src/copyover.rs` | On a raised `SIGUSR2` flag, snapshot in-game sessions into a `HandoverManifest` and start the handoff to the successor. |
+| `trigger_copyover_on_due` | Update (chained, before poll) | `src/copyover.rs` | On an in-game `copyover` countdown's expiry (`CopyoverDue`), raise the same latched flag `SIGUSR2` raises. |
 | `finish_copyover` | Update (chained) | `src/copyover.rs` | Once the successor acks the handoff, emit `AppExit` to exit the predecessor cleanly. |
 
 ## Commands
@@ -35,11 +36,12 @@ None. This is a transport; it produces `ConnectionInput` messages, not game comm
 Wire messages (`ConnectionEstablished`, `ConnectionInput`, `ConnectionClosed`, `ConnectionOutput`, `ConnectionResumed`, `DisconnectRequest`) are defined in `grim-networking`; `TelnetPlugin` re-registers them so the transport can be used standalone.
 
 ## Notes
-- `TelnetPlugin::new(port)` inserts `TelnetPort`, inits `CopyoverSignal` / `CopyoverDone`, and schedules the Startup + Update systems. The four Update systems are `.chain()`-ed in order: drain → send → poll copyover → finish copyover.
+
+- `TelnetPlugin::new(port)` inserts `TelnetPort`, inits `CopyoverSignal` / `CopyoverDone`, and schedules the Startup + Update systems. The five Update systems are `.chain()`-ed in order: drain → send → bridge copyover-due → poll copyover → finish copyover.
 - Bevy's schedule is synchronous and tokio owns its threads, so the two are joined by a channel seam (`NetworkBridge`), not by running async TCP on Bevy's executor. See `docs/ARCHITECTURE.md` §5.1.
 - IAC (`src/iac.rs`): minimal handshake (`IAC WILL ECHO`, `IAC WILL SUPPRESS_GO_AHEAD`) on fresh accept; `WILL_ECHO` / `WONT_ECHO` toggle password masking; `strip_iac` removes inbound `0xFF cmd cmd` sequences. Re-adopted copyover sockets skip the handshake.
 - Rendering (`src/render.rs`): prepend a newline for unsolicited events, append the in-game `> ` prompt, convert colour codes to ANSI (via `grim-color`), translate `\n` → `\r\n`.
-- Copyover / hot restart (`src/copyover.rs`, `src/server.rs`): `SIGUSR2` hands the live listener + in-game client sockets to a freshly-spawned successor over a unix socket (`SCM_RIGHTS`, via `sendfd`), waits for the ack, then exits. The `GRIM_COPYOVER_SOCK` env var tells a successor to adopt fds instead of binding fresh. See `docs/DEPLOY.md`.
+- Copyover / hot restart (`src/copyover.rs`, `src/server.rs`): `SIGUSR2` — or an admin's in-game `copyover [seconds]` countdown expiring into `CopyoverDue` — hands the live listener + in-game client sockets to a freshly-spawned successor over a unix socket (`SCM_RIGHTS`, via `sendfd`), waits for the ack, then exits. The `GRIM_COPYOVER_SOCK` env var tells a successor to adopt fds instead of binding fresh. See `docs/DEPLOY.md`.
 
 ---
 *Format: [`docs/README.template.md`](../../docs/README.template.md). Improve over time.*
