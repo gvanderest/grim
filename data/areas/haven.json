@@ -9,8 +9,8 @@
       "id": "C7Ee6NQVAfBr",
       "slug": "tavern",
       "name": "The Rusted Anvil",
-      "description": "Smoke and the clang of hammer on steel fill the air.\nSawdust covers the floor of this cozy tavern. A staircase leads up\nto the second floor, and a door leads north to the town square.",
-      "exits": { "north": "y0vjzSNtWQo3" },
+      "description": "Smoke and the clang of hammer on steel fill the air.\nSawdust covers the floor of this cozy tavern. A staircase leads up\nto the second floor, a door leads north to the town square, and a\nnarrow trail slips south toward the valley wall.",
+      "exits": { "north": "y0vjzSNtWQo3", "south": "ADG0C9DN6xaA" },
       "npcs": [
         {
           "name": "Grimmok Ironhand",
@@ -36,15 +36,71 @@
       "id": "y0vjzSNtWQo3",
       "slug": "square",
       "name": "Town Square",
-      "description": "The cobblestone square bustles with activity.\nA fountain marks the center. The tavern is to the south, and the\nsmithy is to the east.",
-      "exits": { "south": "C7Ee6NQVAfBr", "east": "dSWS6Y77CtwJ" }
+      "description": "The cobblestone square bustles with activity.\nA fountain marks the center. The tavern is to the south, the\nsmithy is to the east, market stalls crowd to the north, and a\nsteep trail climbs west up the valley wall.",
+      "exits": { "south": "C7Ee6NQVAfBr", "east": "dSWS6Y77CtwJ", "north": "D0kEmYSLOzNB", "west": "rHa0Ar55AEtS" }
     },
     {
       "id": "dSWS6Y77CtwJ",
       "slug": "forge",
       "name": "Grimmok's Forge",
-      "description": "The heat from the forge is intense.\nWeapons and armor hang from the walls.\nThe town square is to the west.",
-      "exits": { "west": "y0vjzSNtWQo3" }
+      "description": "The heat from the forge is intense.\nWeapons and armor hang from the walls.\nThe town square is to the west, and a dirt road leads east\nout of town.",
+      "exits": { "west": "y0vjzSNtWQo3", "east": "776t3azrMoy7" }
+    },
+    {
+      "id": "D0kEmYSLOzNB",
+      "slug": "market",
+      "name": "Market Square",
+      "description": "Stalls draped in canvas crowd this small market square.\nFarmers hawk roots and bread, and the smell of roast nuts hangs\nin the air. The town square lies south, and a farm lane winds\nnorth out of town.",
+      "exits": { "south": "y0vjzSNtWQo3", "north": "7MpXA8fbKLLg" }
+    },
+    {
+      "id": "7MpXA8fbKLLg",
+      "slug": "farm-lane",
+      "name": "Farm Lane",
+      "description": "A rutted farm lane runs between low stone walls.\nThe market square lies south, worked fields stretch north, and\na farmhouse stands to the west.",
+      "exits": { "south": "D0kEmYSLOzNB", "north": "sSYkfBsq9xKn", "west": "La5hAvwedXBd" }
+    },
+    {
+      "id": "La5hAvwedXBd",
+      "slug": "farmhouse",
+      "name": "Stone Farmhouse",
+      "description": "A low stone farmhouse with a sagging thatch roof.\nChickens scratch in the yard, and the smell of fresh hay drifts\nfrom the open door. The farm lane runs east.",
+      "exits": { "east": "7MpXA8fbKLLg" }
+    },
+    {
+      "id": "sSYkfBsq9xKn",
+      "slug": "fields",
+      "name": "Haven Fields",
+      "description": "Rows of wheat and root vegetables stripe these small fields.\nA scarecrow leans in the dirt. The farm lane lies south, and\nthe valley's northern foothills rise beyond.",
+      "exits": { "south": "7MpXA8fbKLLg", "north": "pHCSNYOiMyyQ" }
+    },
+    {
+      "id": "pHCSNYOiMyyQ",
+      "slug": "foothills",
+      "name": "Northern Foothills",
+      "description": "Scrub and loose scree climb toward the valley's northern wall.\nThe peaks loom too steep to climb. The fields lie south.",
+      "exits": { "south": "sSYkfBsq9xKn" }
+    },
+    {
+      "id": "rHa0Ar55AEtS",
+      "slug": "west-slope",
+      "name": "Western Slope",
+      "description": "Pine and loose rock climb the valley's western wall.\nThe slope is too steep to climb further. Haven's square lies\neast below.",
+      "exits": { "east": "y0vjzSNtWQo3" }
+    },
+    {
+      "id": "ADG0C9DN6xaA",
+      "slug": "south-slope",
+      "name": "Southern Slope",
+      "description": "Scrub pine clings to the valley's southern wall.\nThe rock rises too sheer to climb. The tavern door lies north.",
+      "exits": { "north": "C7Ee6NQVAfBr" }
+    },
+    {
+      "id": "776t3azrMoy7",
+      "slug": "east-road",
+      "name": "East Road",
+      "description": "A dirt road switchbacks east out of the valley.\nThe forge lies west behind you, and a dark treeline looms east.",
+      "exits": { "west": "dSWS6Y77CtwJ", "east": "PCjTmircfbBy" }
     }
   ]
 }
