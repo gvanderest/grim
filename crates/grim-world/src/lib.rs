@@ -24,3 +24,6 @@ pub use world::RoomLocation;
 // Shared room-address lookups (being-free): the actor movement verbs resolve
 // destinations through these. Hoisted so consumers use `grim_world::{...}`.
 pub use world::{resolve_room_address, room_location, RoomLookup};
+// ASCII area-map rendering (`world::map`): hoisted so consumers use
+// `grim_world::{MapConfig, render_map}`.
+pub use world::{render_map, MapConfig};

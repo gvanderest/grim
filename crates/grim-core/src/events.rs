@@ -16,6 +16,9 @@ pub enum Command {
     /// `look` or `look <target>` — the target is a `grim-target` being spec
     /// (`2.goblin` looks at the second; `"two words"` needs every word).
     Look { target: Option<String> },
+    /// `map` — render the area around the actor's room as ASCII (`@` self,
+    /// `#` rooms, `--`/`|` exits, `,`/`'` up/down markers).
+    Map,
     /// `say <text>` — room-scoped
     Say { text: String },
     /// `yell <text>` — area-scoped
