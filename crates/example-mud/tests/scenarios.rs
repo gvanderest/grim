@@ -146,8 +146,28 @@ fn movement_walks_between_seeded_rooms() {
 
     mud.send(alice, "north")
         .assert_contains("Town Square")
-        .assert_contains("Exits: east, south");
+        .assert_contains("Exits: east, north, south, west");
     mud.send(alice, "south").assert_contains("The Rusted Anvil");
+}
+
+#[test]
+fn can_walk_from_tavern_to_bear_cavern() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    // Haven's east road crosses into Whisperwood; the cave mouth hides off
+    // the dead-end clearing, south of the main trail — an explorer's find.
+    // The walk proves every link wires, including the cross-area road.
+    mud.send(alice, "north").assert_contains("Town Square");
+    mud.send(alice, "east").assert_contains("Grimmok's Forge");
+    mud.send(alice, "east").assert_contains("East Road");
+    mud.send(alice, "east").assert_contains("Forest Edge");
+    mud.send(alice, "east").assert_contains("Forest Heart");
+    mud.send(alice, "east").assert_contains("Forest Clearing");
+    mud.send(alice, "south").assert_contains("Bear Cavern");
+    mud.send(alice, "look").assert_contains("bear");
+    // And the way back is wired too.
+    mud.send(alice, "north").assert_contains("Forest Clearing");
 }
 
 #[test]

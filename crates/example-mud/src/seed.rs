@@ -120,7 +120,47 @@ pub fn seed_world(mut commands: Commands, dir: Option<Res<AreaBlueprintDir>>) {
         .map(|d| d.0.clone())
         .unwrap_or_else(|| AreaBlueprintDir::default().0);
 
-    let mut files: Vec<PathBuf> = match std::fs::read_dir(&dir) {
+    // Load every canonical blueprint first so exits can resolve across areas
+    // (ADR-0001: cross-area links bind Canonical → Canonical). Rooms are
+    // stamped before any exit is wired, so an exit may target any loaded area.
+    let blueprints = load_canonical_blueprints(&dir);
+
+    // Pass 1: stamp every area and room, recording Grim ID -> entity globally.
+    let mut room_ents: HashMap<GrimId, Entity> = HashMap::new();
+    let mut pending: Vec<AreaBlueprint> = Vec::new();
+    for bp in blueprints {
+        if stamp_area_rooms(&mut commands, &bp, &mut room_ents).is_some() {
+            pending.push(bp);
+        }
+    }
+
+    // Pass 2: wire exits (by Grim ID, across all stamped areas) and place
+    // NPCs/objects. A target that resolves to no stamped room is a dangling
+    // exit: log and skip it, never fail startup over one bad link.
+    for bp in &pending {
+        wire_area_contents(&mut commands, bp, &room_ents);
+    }
+    let starting = pending
+        .iter()
+        .find_map(|bp| bp.starting_room.and_then(|id| room_ents.get(&id).copied()));
+
+    match starting {
+        Some(room) => commands.insert_resource(StartingRoom(room)),
+        // Fail fast, and loudly. The scene systems take `Res<StartingRoom>`, so a
+        // missing resource would otherwise panic cryptically on the first tick.
+        // A MUD with no reachable world cannot serve logins — surface the real
+        // cause at startup instead.
+        None => panic!(
+            "no starting room resolved from area blueprints in {dir:?}: need at least one \
+             `canonical` area declaring a resolvable `starting_room`"
+        ),
+    }
+}
+
+/// Read every `*.json` blueprint in `dir` (sorted filenames for determinism),
+/// returning the `canonical` ones. Unreadable or unparseable files log and skip.
+fn load_canonical_blueprints(dir: &PathBuf) -> Vec<AreaBlueprint> {
+    let mut files: Vec<PathBuf> = match std::fs::read_dir(dir) {
         Ok(entries) => entries
             .filter_map(|entry| match entry {
                 Ok(e) => Some(e.path()),
@@ -138,7 +178,7 @@ pub fn seed_world(mut commands: Commands, dir: Option<Res<AreaBlueprintDir>>) {
     };
     files.sort(); // deterministic load order
 
-    let mut starting: Option<Entity> = None;
+    let mut blueprints = Vec::new();
     for path in &files {
         let raw = match std::fs::read_to_string(path) {
             Ok(s) => s,
@@ -158,36 +198,32 @@ pub fn seed_world(mut commands: Commands, dir: Option<Res<AreaBlueprintDir>>) {
         if !blueprint.canonical {
             continue;
         }
-        if let Some(room) = spawn_area(&mut commands, &blueprint) {
-            starting = starting.or(Some(room));
-        }
+        blueprints.push(blueprint);
     }
-
-    match starting {
-        Some(room) => commands.insert_resource(StartingRoom(room)),
-        // Fail fast, and loudly. The scene systems take `Res<StartingRoom>`, so a
-        // missing resource would otherwise panic cryptically on the first tick.
-        // A MUD with no reachable world cannot serve logins — surface the real
-        // cause at startup instead.
-        None => panic!(
-            "no starting room resolved from area blueprints in {dir:?}: need at least one \
-             `canonical` area declaring a resolvable `starting_room`"
-        ),
-    }
+    blueprints
 }
 
-/// Stamp one area blueprint into the world: spawn the area, its rooms, wire
-/// exits, place NPCs. Returns this area's starting-room entity, if it declared a
-/// resolvable one.
-fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
-    // Validate room ids BEFORE spawning anything: a duplicate id would otherwise
-    // leave the first room spawned but unreferenced (exits wire only the last
-    // entity for that id). Reject the whole area instead of a half-built one.
+/// Stamp one area and its rooms, recording Grim ID -> entity in `room_ents`.
+/// A duplicate room id — within the area or across already-stamped areas —
+/// would leave one room spawned but unreferenced, so it rejects the whole
+/// area instead of a half-built one. Returns the area entity.
+fn stamp_area_rooms(
+    commands: &mut Commands,
+    bp: &AreaBlueprint,
+    room_ents: &mut HashMap<GrimId, Entity>,
+) -> Option<Entity> {
     let mut seen = HashSet::new();
     for r in &bp.rooms {
         if !seen.insert(r.id) {
             error!(
                 "area '{}': duplicate room id {} — skipping area",
+                bp.slug, r.id
+            );
+            return None;
+        }
+        if room_ents.contains_key(&r.id) {
+            error!(
+                "area '{}': room id {} already stamped by another area — skipping area",
                 bp.slug, r.id
             );
             return None;
@@ -201,9 +237,6 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
             name: bp.name.clone(),
         })
         .id();
-
-    // Pass 1: spawn rooms and record Grim ID -> entity so exits can resolve.
-    let mut room_ents: HashMap<GrimId, Entity> = HashMap::new();
     for r in &bp.rooms {
         let entity = commands
             .spawn((
@@ -220,34 +253,23 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
             .id();
         room_ents.insert(r.id, entity);
     }
+    Some(area)
+}
 
-    // Pass 2: wire exits (by Grim ID, within this area) and place NPCs.
+/// Wire one stamped area's exits against the global room map and place its
+/// NPCs and objects.
+fn wire_area_contents(
+    commands: &mut Commands,
+    bp: &AreaBlueprint,
+    room_ents: &HashMap<GrimId, Entity>,
+) {
     for r in &bp.rooms {
         let Some(&from) = room_ents.get(&r.id) else {
             continue;
         };
-        let mut exits = HashMap::new();
-        for (dir, target) in &r.exits {
-            let Some(cardinal) = Cardinal::parse(dir) else {
-                warn!(
-                    "area '{}' room '{}': bad exit direction '{dir}'",
-                    bp.slug, r.slug
-                );
-                continue;
-            };
-            match room_ents.get(target) {
-                Some(&to) => {
-                    exits.insert(cardinal, to);
-                }
-                // Cross-area / unknown targets are not wired yet — log and skip
-                // rather than fail (see ADR-0001 dangling-exit handling).
-                None => warn!(
-                    "area '{}' room '{}': exit '{dir}' -> unknown room id {target}, skipped",
-                    bp.slug, r.slug
-                ),
-            }
-        }
-        commands.entity(from).insert(Exits { exits });
+        commands.entity(from).insert(Exits {
+            exits: resolve_exits(&bp.slug, &r.slug, &r.exits, room_ents),
+        });
 
         for npc in &r.npcs {
             spawn_npc(commands, &bp.slug, npc, from);
@@ -263,9 +285,33 @@ fn spawn_area(commands: &mut Commands, bp: &AreaBlueprint) -> Option<Entity> {
             ));
         }
     }
+}
 
-    bp.starting_room
-        .and_then(|gid| room_ents.get(&gid).copied())
+/// Resolve one room's exits (direction name -> destination Grim ID) to room
+/// entities. Bad directions and unknown targets log and skip — a dangling
+/// exit never fails startup.
+fn resolve_exits(
+    area_slug: &str,
+    room_slug: &str,
+    exits: &HashMap<String, GrimId>,
+    room_ents: &HashMap<GrimId, Entity>,
+) -> HashMap<Cardinal, Entity> {
+    let mut resolved = HashMap::new();
+    for (dir, target) in exits {
+        let Some(cardinal) = Cardinal::parse(dir) else {
+            warn!("area '{area_slug}' room '{room_slug}': bad exit direction '{dir}'");
+            continue;
+        };
+        match room_ents.get(target) {
+            Some(&to) => {
+                resolved.insert(cardinal, to);
+            }
+            None => warn!(
+                "area '{area_slug}' room '{room_slug}': exit '{dir}' -> unknown room id {target}, skipped"
+            ),
+        }
+    }
+    resolved
 }
 
 /// Stamp one NPC blueprint into `room`: the being bundle plus its compiled
@@ -330,7 +376,7 @@ mod tests {
         let bp: AreaBlueprint = serde_json::from_str(&raw).unwrap();
         assert_eq!(bp.slug, "haven");
         assert!(bp.canonical);
-        assert_eq!(bp.rooms.len(), 3);
+        assert_eq!(bp.rooms.len(), 11);
 
         let tavern = &bp.rooms[0];
         let square = &bp.rooms[1];
@@ -348,17 +394,18 @@ mod tests {
         app.add_systems(Startup, seed_world);
         app.update();
 
-        // One area, three rooms.
+        // Two areas: Haven (11 rooms) plus Whisperwood (4 rooms).
         let areas = app.world_mut().query::<&Area>().iter(app.world()).count();
-        assert_eq!(areas, 1);
+        assert_eq!(areas, 2);
         let rooms: Vec<String> = app
             .world_mut()
             .query::<&Room>()
             .iter(app.world())
             .map(|r| r.friendly_id.clone())
             .collect();
-        assert_eq!(rooms.len(), 3);
+        assert_eq!(rooms.len(), 15);
         assert!(rooms.contains(&"tavern".to_string()));
+        assert!(rooms.contains(&"bear-cavern".to_string()));
 
         // Starting room resolved and points at the tavern.
         let starting = app.world().resource::<StartingRoom>().0;
@@ -383,14 +430,15 @@ mod tests {
             app.world().get::<Room>(north).unwrap().friendly_id,
             "square"
         );
+        // Cross-area exits are covered in `seed_wires_exits_across_areas`.
 
-        // The creature (mob) is present.
+        // Both mobs are present: Grimmok in Haven, the bear in Whisperwood.
         let creatures = app
             .world_mut()
             .query::<&Creature>()
             .iter(app.world())
             .count();
-        assert_eq!(creatures, 1);
+        assert_eq!(creatures, 2);
 
         // Grimmok spawned with both greeting triggers compiled.
         let mut scripted = app.world_mut().query::<&ScriptTriggers>();
@@ -399,22 +447,67 @@ mod tests {
         assert!(triggers.0.iter().any(|t| t.on == TriggerKind::Enter));
         assert!(triggers.0.iter().any(|t| t.on == TriggerKind::AttemptLeave));
 
-        // The creature carries its look paragraphs, keywords, and room line.
+        // Grimmok carries its look paragraphs, keywords, and room line.
         let mut descs = app.world_mut().query::<(&GrimName, &Description)>();
-        let (name, desc) = descs.iter(app.world()).next().unwrap();
-        assert_eq!(name.0, "Grimmok Ironhand");
+        let (_, desc) = descs
+            .iter(app.world())
+            .find(|(name, _)| name.0 == "Grimmok Ironhand")
+            .unwrap();
         assert_eq!(desc.0.len(), 2);
-        let mut keys = app.world_mut().query::<&Keywords>();
+        let mut bear_rooms = app.world_mut().query::<(&GrimName, &InRoom)>();
+        let (_, bear_room) = bear_rooms
+            .iter(app.world())
+            .find(|(name, _)| name.0 == "Old Cave Bear")
+            .expect("bear spawned");
+        assert_eq!(
+            app.world().get::<Room>(bear_room.room).unwrap().friendly_id,
+            "bear-cavern"
+        );
+        let mut keys = app.world_mut().query::<(&GrimName, &Keywords)>();
         assert!(keys
             .iter(app.world())
-            .next()
+            .find(|(name, _)| name.0 == "Grimmok Ironhand")
             .unwrap()
-            .0
+            .1
+             .0
             .contains(&"smith".to_string()));
-        let mut lines = app.world_mut().query::<&RoomDescription>();
+        let mut lines = app.world_mut().query::<(&GrimName, &RoomDescription)>();
         assert_eq!(
-            lines.iter(app.world()).next().unwrap().0,
+            lines
+                .iter(app.world())
+                .find(|(name, _)| name.0 == "Grimmok Ironhand")
+                .unwrap()
+                .1
+                 .0,
             "Grimmok Ironhand stands here, hammering metal."
+        );
+    }
+
+    #[test]
+    fn seed_wires_exits_across_areas() {
+        let mut app = App::new();
+        app.insert_resource(AreaBlueprintDir(areas_dir()));
+        app.add_systems(Startup, seed_world);
+        app.update();
+
+        // Haven's east road reaches Whisperwood's forest edge, and back.
+        let (road_entity, _) = app
+            .world_mut()
+            .query::<(Entity, &Room)>()
+            .iter(app.world())
+            .find(|(_, r)| r.friendly_id == "east-road")
+            .unwrap();
+        let road_exits = app.world().get::<Exits>(road_entity).unwrap();
+        let east = road_exits.exits.get(&Cardinal::East).copied().unwrap();
+        assert_eq!(
+            app.world().get::<Room>(east).unwrap().friendly_id,
+            "forest-edge"
+        );
+        let edge_exits = app.world().get::<Exits>(east).unwrap();
+        let west = edge_exits.exits.get(&Cardinal::West).copied().unwrap();
+        assert_eq!(
+            app.world().get::<Room>(west).unwrap().friendly_id,
+            "east-road"
         );
     }
 
