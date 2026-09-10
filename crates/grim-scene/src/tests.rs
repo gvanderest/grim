@@ -1176,7 +1176,7 @@ mod output_format {
             "objects list under creatures; got:\n{text}"
         );
         assert!(
-            text.contains("hammering metal.\n    @      A brass lantern rests here."),
+            text.contains("hammering metal.\n    {R@@{x      A brass lantern rests here."),
             "no blank line between creatures and objects; got:\n{text}"
         );
         assert!(

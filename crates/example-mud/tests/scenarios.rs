@@ -15,6 +15,13 @@ use harness::{Mud, Session};
 /// `password_must_be_valid`).
 const PW: &str = "secretpw";
 
+/// Map glyph colours (`grim_world::render_map` markup, asserted literally —
+/// the harness reads pre-render `ConnectionOutput` text).
+const ME: &str = "{R@@{x";
+const RM: &str = "{w#{x";
+const HL: &str = "{8-{x";
+const VL: &str = "{8|{x";
+
 /// Create a brand-new account + character and enter the world. Leaves the
 /// session in-game, standing in the starting room.
 fn create_char(mud: &mut Mud, email: &str, name: &str) -> Session {
@@ -730,18 +737,30 @@ fn map_centers_self_repeats_stably_and_recenters_on_move() {
     assert_eq!(first, second_out.text(), "map must not flicker");
     let rows: Vec<&str> = first.lines().collect();
     assert_eq!(rows.len(), 20);
-    assert_eq!(rows[10], format!("{:40}@              #", ""));
-    assert_eq!(rows[9], format!("{:40}|              |", ""));
-    assert_eq!(rows[8], format!("{:37}#--#--#--#--#--#--#", ""));
+    assert_eq!(rows[10], format!("{:40}{ME}              {RM}", ""));
+    assert_eq!(rows[9], format!("{:40}{VL}              {VL}", ""));
+    assert_eq!(
+        rows[8],
+        format!(
+            "{:37}{RM}{HL}{HL}{RM}{HL}{HL}{RM}{HL}{HL}{RM}{HL}{HL}{RM}{HL}{HL}{RM}{HL}{HL}{RM}",
+            ""
+        )
+    );
 
     // Walking north recenters the canvas on the square: west slope and forge
     // flank it, the tavern lies south, the farm chain continues north.
     mud.send(alice, "north").assert_contains("Town Square");
     let moved_out = mud.send(alice, "map");
     let rows: Vec<&str> = moved_out.text().lines().collect();
-    assert_eq!(rows[10], format!("{:37}#--@--#--#--#--#--#", ""));
-    assert_eq!(rows[11], format!("{:40}|              |", ""));
-    assert_eq!(rows[12], format!("{:40}#              #", ""));
+    assert_eq!(
+        rows[10],
+        format!(
+            "{:37}{RM}{HL}{HL}{ME}{HL}{HL}{RM}{HL}{HL}{RM}{HL}{HL}{RM}{HL}{HL}{RM}{HL}{HL}{RM}",
+            ""
+        )
+    );
+    assert_eq!(rows[11], format!("{:40}{VL}              {VL}", ""));
+    assert_eq!(rows[12], format!("{:40}{RM}              {RM}", ""));
 }
 
 #[test]
@@ -754,13 +773,17 @@ fn look_staples_minimap_left_of_room_text() {
     // `@` centered on the looker's row, 9-wide gutter + two spaces throughout.
     let out = mud.send(alice, "look");
     let lines: Vec<&str> = out.text().lines().collect();
-    assert_eq!(lines[0], "    |      The Rusted Anvil");
+    assert_eq!(lines[0], format!("    {VL}      The Rusted Anvil"));
     assert!(
-        lines[1].starts_with(" #--#--#-  "),
+        lines[1].starts_with(&format!(" {RM}{HL}{HL}{RM}{HL}{HL}{RM}{HL}  ")),
         "square row:\n{}",
         lines[1]
     );
-    assert!(lines[3].starts_with("    @  "), "self row:\n{}", lines[3]);
+    assert!(
+        lines[3].starts_with(&format!("    {ME}  ")),
+        "self row:\n{}",
+        lines[3]
+    );
     // Past the 7-row canvas the gutter runs blank (11 spaces).
     let exits = lines
         .iter()
@@ -777,7 +800,9 @@ fn config_minimap_toggles_look_map_persists_and_rejects() {
     // On by default: the stapled self row is in the look output.
     let out = mud.send(alice, "look");
     assert!(
-        out.text().lines().any(|l| l.starts_with("    @  ")),
+        out.text()
+            .lines()
+            .any(|l| l.starts_with(&format!("    {ME}  "))),
         "minimap on by default:\n{}",
         out.text()
     );
@@ -793,7 +818,7 @@ fn config_minimap_toggles_look_map_persists_and_rejects() {
     let lines: Vec<&str> = out.text().lines().collect();
     assert_eq!(lines[0], "The Rusted Anvil");
     assert!(
-        !lines.iter().any(|l| l.starts_with("    @")),
+        !lines.iter().any(|l| l.contains(ME)),
         "no minimap rows:\n{}",
         out.text()
     );
@@ -821,7 +846,9 @@ fn config_minimap_toggles_look_map_persists_and_rejects() {
         .assert_contains("minimap set to on.");
     let out = mud.send(again, "look");
     assert!(
-        out.text().lines().any(|l| l.starts_with("    @  ")),
+        out.text()
+            .lines()
+            .any(|l| l.starts_with(&format!("    {ME}  "))),
         "minimap back on:\n{}",
         out.text()
     );
