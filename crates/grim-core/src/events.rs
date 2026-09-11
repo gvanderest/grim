@@ -58,6 +58,9 @@ pub enum Command {
     Desc { op: DescOp },
     /// Movement via cardinal direction
     Move { direction: Cardinal },
+    /// `recall` — return to the Town Square (`haven:square`). No-op with a
+    /// reply when already there. Available to every player.
+    Recall,
     /// `quit` — clean disconnect
     Quit,
     /// `who` — list connected players
@@ -342,6 +345,16 @@ pub struct MoveEvent {
     pub from: Entity,
     pub to: Entity,
     pub direction: Cardinal,
+}
+
+/// A character recalled to the Town Square. Rendered per-recipient in both
+/// rooms: the room left sees the attempt then the disappearance; the room
+/// entered sees a recall-marked arrival (never a plain walk-in `MoveEvent`).
+#[derive(Message, Debug)]
+pub struct RecallEvent {
+    pub actor: Entity,
+    pub from: Entity,
+    pub to: Entity,
 }
 
 /// Direct text message to a specific client (via their character entity).

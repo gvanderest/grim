@@ -1,7 +1,8 @@
 //! Movement: walking an exit (`move`) and the admin `goto` teleport, plus the
-//! shared [`place_actor`] seam every "put actor in room X" path routes through.
-//! Both read the actor's [`Character`]/[`InRoom`] and resolve destinations
-//! against `grim_world`'s room topology + address lookups.
+//! shared [`place_actor`] seam every "put actor in room X" path routes through
+//! (also used by the player `recall` in [`super::recall`]). Both read the
+//! actor's [`Character`]/[`InRoom`] and resolve destinations against
+//! `grim_world`'s room topology + address lookups.
 
 use bevy::prelude::*;
 use grim_core::events::{Command, EngineCommand, InfoMessage, LookRoom, MoveEvent};
@@ -18,7 +19,7 @@ use crate::transition::{AttemptEnter, AttemptLeave, AttemptWalk, Enter, Leave};
 /// `Query<&Room>`/`Query<&Area>`); `handle_goto` holds `Query<(Entity, &Room)>`
 /// for address resolution, so it decomposes to the same records and shares this
 /// one builder — keeping both paths in agreement if `RoomLocation` grows a field.
-fn persisted_location(room: &Room, area: &Area) -> RoomLocation {
+pub(super) fn persisted_location(room: &Room, area: &Area) -> RoomLocation {
     RoomLocation {
         area: area.friendly_id.clone(),
         room: room.friendly_id.clone(),
@@ -34,7 +35,7 @@ fn persisted_location(room: &Room, area: &Area) -> RoomLocation {
 /// Persists only `last_room` today. ADR-0001's `last_canonical_room` is not a
 /// field yet; while every room is Canonical (no instancing) the two would be
 /// equal, so it is deferred to the instancing work rather than added dead here.
-fn place_actor(
+pub(super) fn place_actor(
     actor: Entity,
     to: Entity,
     loc: Option<RoomLocation>,
@@ -53,10 +54,10 @@ fn place_actor(
 
 /// A committed room transition waiting for its facts to fire next tick.
 #[derive(Debug, Clone, Copy)]
-struct RoomFact {
-    actor: Entity,
-    from: Entity,
-    to: Entity,
+pub(super) struct RoomFact {
+    pub(super) actor: Entity,
+    pub(super) from: Entity,
+    pub(super) to: Entity,
 }
 
 /// Facts committed by placement but not yet fired. Double-buffered: the
@@ -66,7 +67,7 @@ struct RoomFact {
 #[derive(Resource, Default)]
 pub(crate) struct PendingFacts {
     ready: Vec<RoomFact>,
-    incoming: Vec<RoomFact>,
+    pub(super) incoming: Vec<RoomFact>,
 }
 
 /// Fire last tick's committed facts. Chained after the orchestrators so the
@@ -339,6 +340,7 @@ mod tests {
         app.add_plugins(MinimalPlugins)
             .add_plugins(grim_world::WorldPlugin);
         register(&mut app);
+        crate::commands::recall::register(&mut app);
         app.init_resource::<walking::TransitionLog>();
         app.add_observer(walking::log_attempt_walk);
         app.add_observer(walking::log_attempt_leave);
@@ -418,10 +420,35 @@ mod tests {
         app.update();
     }
 
+    fn send_recall(app: &mut App, actor: Entity) {
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Recall,
+        });
+        app.update();
+    }
+
     fn info_texts(app: &App) -> Vec<String> {
         let messages = app.world().resource::<Messages<InfoMessage>>();
         let mut cursor = messages.get_cursor();
         cursor.read(messages).map(|m| m.text.clone()).collect()
+    }
+
+    fn move_event_count(app: &App) -> usize {
+        let messages = app.world().resource::<Messages<MoveEvent>>();
+        let mut cursor = messages.get_cursor();
+        cursor.read(messages).count()
+    }
+
+    fn recall_events(app: &App) -> Vec<(Entity, Entity, Entity)> {
+        let messages = app
+            .world()
+            .resource::<Messages<grim_core::events::RecallEvent>>();
+        let mut cursor = messages.get_cursor();
+        cursor
+            .read(messages)
+            .map(|e| (e.actor, e.from, e.to))
+            .collect()
     }
 
     // ── walking an exit ──────────────────────────────────────────────
@@ -1061,6 +1088,91 @@ mod tests {
                 info_texts(&app).is_empty(),
                 "non-admin goto must stay silent"
             );
+        }
+    }
+
+    // ── player recall ──────────────────────────────────────────
+    mod recall {
+        use super::*;
+
+        #[test]
+        fn recall_moves_non_admin_to_haven_square_and_updates_last_room() {
+            // Recall is a player verb: no admin gate, unlike goto.
+            let mut app = test_app();
+            let square = spawn_room(&mut app, "haven", "square", Exits::default());
+            let start = spawn_room(&mut app, "haven", "tavern", Exits::default());
+            let actor = spawn_actor_in(&mut app, start, false);
+            send_recall(&mut app, actor);
+            assert_eq!(room_of(&app, actor), square);
+            assert_eq!(look_room_count(&app), 1);
+            // The room echoes render from this event, not from a `MoveEvent`.
+            assert_eq!(recall_events(&app), vec![(actor, start, square)]);
+            assert_eq!(move_event_count(&app), 0);
+            let loc = app
+                .world()
+                .get::<Character>(actor)
+                .unwrap()
+                .last_room
+                .clone()
+                .expect("recall should refresh last_room");
+            assert_eq!((loc.area.as_str(), loc.room.as_str()), ("haven", "square"));
+        }
+
+        #[test]
+        fn recall_emits_transitions_between_rooms() {
+            let mut app = test_app();
+            let square = spawn_room(&mut app, "haven", "square", Exits::default());
+            let start = spawn_room(&mut app, "haven", "tavern", Exits::default());
+            let actor = spawn_actor_in(&mut app, start, false);
+            send_recall(&mut app, actor);
+            assert_eq!(room_of(&app, actor), square);
+            // Teleports skip the walk intent but greet both rooms; facts land later.
+            assert_eq!(super::walking::transition_events(&app), (0, 1, 1, 0, 0));
+            app.update();
+            app.update();
+            assert_eq!(super::walking::transition_events(&app), (0, 1, 1, 1, 1));
+            assert_eq!(move_event_count(&app), 0);
+        }
+
+        #[test]
+        fn recall_already_there_replies_without_moving() {
+            let mut app = test_app();
+            let square = spawn_room(&mut app, "haven", "square", Exits::default());
+            let actor = spawn_actor_in(&mut app, square, false);
+            send_recall(&mut app, actor);
+            assert_eq!(room_of(&app, actor), square);
+            assert_eq!(info_texts(&app), vec!["You are already there.\n"]);
+            assert_eq!(look_room_count(&app), 0);
+            assert_eq!(super::walking::transition_events(&app), (0, 0, 0, 0, 0));
+            assert!(recall_events(&app).is_empty());
+        }
+
+        #[test]
+        fn recall_without_in_room_is_ignored() {
+            // No placement, no recall: skipped silently, like `handle_move` —
+            // no `last_room` rewrite, no look at a room the actor is not in.
+            let mut app = test_app();
+            spawn_room(&mut app, "haven", "square", Exits::default());
+            let actor = app.world_mut().spawn_empty().id();
+            send_recall(&mut app, actor);
+            assert!(info_texts(&app).is_empty());
+            assert_eq!(look_room_count(&app), 0);
+            assert_eq!(move_event_count(&app), 0);
+            assert!(recall_events(&app).is_empty());
+        }
+
+        #[test]
+        fn recall_without_haven_square_fails_closed() {
+            // A world with no `haven:square` (renamed area data): the actor
+            // stays put and gets a reply, never a panic or a stray look.
+            let mut app = test_app();
+            let start = spawn_room(&mut app, "town", "square", Exits::default());
+            let actor = spawn_actor_in(&mut app, start, false);
+            send_recall(&mut app, actor);
+            assert_eq!(room_of(&app, actor), start);
+            assert_eq!(info_texts(&app), vec!["Nothing happens.\n"]);
+            assert_eq!(look_room_count(&app), 0);
+            assert_eq!(super::walking::transition_events(&app), (0, 0, 0, 0, 0));
         }
     }
 }

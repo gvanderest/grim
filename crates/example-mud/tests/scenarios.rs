@@ -158,6 +158,51 @@ fn movement_walks_between_seeded_rooms() {
 }
 
 #[test]
+fn recall_returns_to_the_town_square() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    // Walk north into the Town Square; recall there is a no-op with a reply.
+    mud.send(alice, "north").assert_contains("Town Square");
+    mud.send(alice, "recall")
+        .assert_contains("You are already there.");
+    // Walk away, then recall back: the arrival room shows, not the tavern.
+    mud.send(alice, "east").assert_contains("Grimmok's Forge");
+    let back = mud.send(alice, "recall");
+    let text = back.text();
+    assert!(
+        text.contains("Town Square"),
+        "recall should arrive in the Town Square:\n{text}"
+    );
+    assert!(
+        !text.contains("Rusted Anvil"),
+        "recall should leave the tavern:\n{text}"
+    );
+}
+
+#[test]
+fn recall_echoes_departure_and_arrival() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+    let carol = create_char(&mut mud, "carol@example.com", "Carol");
+
+    // Bob waits in the Town Square; Carol stays in the tavern with Alice.
+    mud.send(bob, "north").assert_contains("Town Square");
+
+    mud.send(alice, "recall").assert_contains("Town Square");
+
+    // Carol saw the attempt, then the disappearance, back in the tavern.
+    let left = mud.send(carol, "look").text().to_string();
+    let attempt = left.find("closes their eyes").expect("attempt echo");
+    let vanish = left.find("disappears").expect("vanish echo");
+    assert!(attempt < vanish, "attempt precedes disappearance:\n{left}");
+    // Bob saw the recall-marked arrival in the square, not a walk-in.
+    mud.send(bob, "look")
+        .assert_contains("appears in a flash of light");
+}
+
+#[test]
 fn can_walk_from_tavern_to_bear_cavern() {
     let mut mud = Mud::new();
     let alice = create_char(&mut mud, "alice@example.com", "Alice");

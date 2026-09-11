@@ -15,13 +15,14 @@ use crate::commands::look;
 use crate::commands::map;
 use crate::commands::movement;
 use crate::commands::quit;
+use crate::commands::recall;
 use crate::commands::shutdown;
 use crate::commands::title;
 
 /// Registers the actor command verbs: `look`, `map`, `config`, `desc`,
-/// `move`/`goto`, `quit`, `title`, and the admin `shutdown` gate. Also seeds
-/// the player-config registry (`minimap`, default on) — the `config` verb and
-/// the look minimap resolve through it.
+/// `move`/`goto`/`recall`, `quit`, `title`, and the admin `shutdown` gate.
+/// Also seeds the player-config registry (`minimap`, default on) — the
+/// `config` verb and the look minimap resolve through it.
 pub struct ActorPlugin;
 
 impl Plugin for ActorPlugin {
@@ -41,6 +42,7 @@ impl Plugin for ActorPlugin {
         desc::register(app);
         config::register(app);
         movement::register(app);
+        recall::register(app);
         quit::register(app);
         title::register(app);
         shutdown::register(app);

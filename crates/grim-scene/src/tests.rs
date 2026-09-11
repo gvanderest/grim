@@ -880,6 +880,76 @@ mod output_format {
         );
     }
 
+    // ── recall echoes: attempt + disappearance left, marked arrival right ──
+    #[test]
+    fn format_output_recall_broadcasts() {
+        let mut app = test_app();
+        let from_room = spawn_room(&mut app);
+        let to_room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(from_room));
+        let mk_conn = |app: &mut App, id: usize| {
+            app.world_mut()
+                .spawn(Connection {
+                    id,
+                    addr: "127.0.0.1:12345".parse().unwrap(),
+                    echo_hidden: false,
+                })
+                .id()
+        };
+        let mk_watcher = |app: &mut App, room: Entity, name: &str, conn: Entity| {
+            app.world_mut()
+                .spawn((
+                    GrimName(name.into()),
+                    InRoom { room },
+                    Player { connection: conn },
+                    OutputHistory::with_max(100),
+                ))
+                .id()
+        };
+        let actor_conn = mk_conn(&mut app, 1);
+        let left_conn = mk_conn(&mut app, 2);
+        let arrived_conn = mk_conn(&mut app, 3);
+        let actor = mk_watcher(&mut app, from_room, "Mover", actor_conn);
+        mk_watcher(&mut app, from_room, "LeftBehind", left_conn);
+        mk_watcher(&mut app, to_room, "Greeter", arrived_conn);
+
+        app.world_mut().write_message(RecallEvent {
+            actor,
+            from: from_room,
+            to: to_room,
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
+        let texts = |conn: Entity| {
+            outputs
+                .iter()
+                .filter(|o| o.connection == conn)
+                .map(|o| o.text.as_str())
+                .collect::<Vec<_>>()
+                .join("")
+        };
+        // The room left sees the attempt, then the disappearance, in order.
+        let left = texts(left_conn);
+        let attempt = left.find("closes their eyes").expect("attempt echo");
+        let vanish = left.find("disappears").expect("vanish echo");
+        assert!(attempt < vanish, "attempt precedes disappearance:\n{left}");
+        // The room entered sees a recall-marked arrival, not a walk-in.
+        let arrived = texts(arrived_conn);
+        assert!(
+            arrived.contains("appears in a flash of light"),
+            "arrival should be recall-marked:\n{arrived}"
+        );
+        // The recaller sees neither echo (they get the arrival description).
+        let own = texts(actor_conn);
+        assert!(
+            !own.contains("disappears") && !own.contains("flash of light"),
+            "recaller must not see their own echoes:\n{own}"
+        );
+    }
+
     // ── transfer events: mover / other / room all see named lines ──
     #[test]
     fn format_transfer_events_echoes_all_parties() {

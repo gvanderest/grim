@@ -27,6 +27,7 @@ by `grim-auth`.
 | `handle_connection_resumed` | `Update` | `src/resume.rs` | Re-attaches a session after copyover / reconnect (skips login). Refuses banned IPs/characters/accounts first (`refuse_banned`), before spawning or attaching anything. |
 | `handle_ban_command` | `Update` | `src/ban.rs` | Admin `ban list`/`add`/`remove` off the engine queue (defense-in-depth admin re-check): lists, persists to `bans.json`, and kicks every matching live session on `add`. |
 | `format_output` | `Update` | `src/output.rs` | Renders domain events per-recipient into `ConnectionOutput`. |
+| `format_recall` | `Update` | `src/recall_output.rs` | Renders `RecallEvent` per-recipient (attempt + disappearance left, recall-marked arrival right). Separate system: `format_output` is at Bevy's parameter ceiling. |
 | `format_server_broadcast` | `Update` | `src/output.rs` | Renders `ServerBroadcast` (e.g. shutdown warnings) to all sessions. |
 | `capture_output` | `Update` | `src/output.rs` | Collects output for flushing to connections. |
 | `open_editor` | `Update` | `src/editor.rs` | Attaches `EditorSession` on `OpenEditor` and shows the numbered entry view. |
@@ -66,7 +67,7 @@ Other verbs (`look`, `map`, `move`, `say`, `shutdown`, …) are parsed here then
 | `ConnectionOutput` | Message (emitted; from `grim-networking`) | `src/output.rs` |
 | `ItemEvent` / `TransferEvent` | Message (consumed → rendered per-recipient) | `src/item_output.rs` (`format_item_events`, `format_transfer_events`, `format_look_pack`) |
 | `OpenEditor` / `EditorDone` | Message (consumed/emitted; the editor callback) | `src/editor.rs` (`open_editor`, `handle_editor_line`) |
-| `LookRoom` / `LookEntity` / `MoveEvent` | Message (consumed → rendered) | `src/output.rs` |
+| `LookRoom` / `LookEntity` / `MoveEvent` / `RecallEvent` | Message (consumed → rendered) | `src/output.rs` (`RecallEvent` in `src/recall_output.rs`) |
 | `SayEvent` / `YellEvent` / `OocEvent` / `GlobalEcho` | Message (consumed → rendered) | `src/output.rs` |
 | `LoginAnnounce` / `LogoutAnnounce` / `LinkdeadAnnounce` | Message (session announces) | `src/output.rs`, `src/command.rs` |
 | `ServerBroadcast` | Message (consumed → rendered) | `src/output.rs` |
