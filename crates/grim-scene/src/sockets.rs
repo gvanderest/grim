@@ -25,6 +25,8 @@ pub(crate) struct ClientSnapshot {
     pub(crate) state: ClientState,
     pub(crate) account: Option<Entity>,
     pub(crate) character: Option<Entity>,
+    /// Whether the session is flagged AFK (copied from `Client::afk`).
+    pub(crate) afk: bool,
 }
 
 /// Short session-state label for the `sockets` list, resolved through the

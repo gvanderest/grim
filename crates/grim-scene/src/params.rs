@@ -40,7 +40,7 @@ pub(crate) struct SessionRes<'w> {
     pub(crate) registry: Res<'w, grim_command::CommandRegistry<Command>>,
     pub(crate) races: Res<'w, RaceRegistry>,
     pub(crate) classes: Res<'w, ClassRegistry>,
-    pub(crate) wizlist: Res<'w, crate::who::WizlistAdmins>,
+    pub(crate) wizlist: Res<'w, crate::wizlist::WizlistAdmins>,
 }
 
 /// Rooms + areas bundled so placement code can resolve a persisted

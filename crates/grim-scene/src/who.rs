@@ -1,56 +1,38 @@
-//! Session-local list renderers: the MUD-style `who` list, the admin-filtered
-//! `wizlist`, plus the `where` and `areas` lists. Factored out of
-//! [`crate::command::handle_ingame`] to hold that dispatcher under the line
-//! budget — the same one-file-per-list shape as `sockets.rs` and `finger.rs`.
+//! Session-local list renderers: the MUD-style `who` list plus the `where`
+//! and `areas` lists. Factored out of [`crate::command::handle_ingame`] to
+//! hold that dispatcher under the line budget — the same one-file-per-list
+//! shape as `sockets.rs`, `finger.rs`, and `wizlist.rs`.
 
 use std::cmp::Ordering;
-
-use bevy::prelude::*;
-use chrono::{DateTime, Utc};
-use grim_actor::{Linkdead, Role, StoredCharacter};
-use grim_core::components::Gender;
-use grim_persistence::{load_all_characters, PersistenceConfig};
+use std::collections::HashSet;
 
 use crate::formatter;
 use crate::params::{PlayerChars, RoomResolver, SessionRes};
-
-/// Admin-flagged characters snapshotted from disk at startup, backing the
-/// offline half of the `wizlist`. Short-term shape (per review): a reboot
-/// refreshes it, but a role granted or revoked at runtime only takes effect on
-/// the live rows until the next restart — the snapshot is not rewritten.
-#[derive(Resource, Default)]
-pub(crate) struct WizlistAdmins(pub Vec<StoredCharacter>);
-
-/// Snapshot every admin-flagged character on disk into [`WizlistAdmins`].
-/// Missing dir → empty (same fail-closed read as the other disk scans).
-pub(crate) fn load_wizlist_admins(mut commands: Commands, config: Res<PersistenceConfig>) {
-    let mut admins: Vec<StoredCharacter> = load_all_characters(&config)
-        .into_iter()
-        .filter(|stored| stored.roles.contains(&Role::Admin))
-        .collect();
-    admins.sort_by_key(|a| a.name.to_lowercase());
-    commands.insert_resource(WizlistAdmins(admins));
-}
+use crate::sockets::ClientSnapshot;
+use bevy::prelude::*;
+use chrono::{DateTime, Utc};
+use grim_actor::Linkdead;
+use grim_core::components::Gender;
 
 /// The WHO ordering keys for one online character.
-struct WhoKey {
-    is_admin: bool,
-    level: u32,
-    connected_at: DateTime<Utc>,
+pub(crate) struct WhoKey {
+    pub(crate) is_admin: bool,
+    pub(crate) level: u32,
+    pub(crate) connected_at: DateTime<Utc>,
     /// Lower-cased name for a case-insensitive tiebreak.
-    sort_name: String,
+    pub(crate) sort_name: String,
 }
 
 /// One online character's WHO data: the ordering [`WhoKey`] plus the
 /// fully-computed [`WhoRow`] to render.
-struct WhoData<'a> {
-    key: WhoKey,
-    row: WhoRow<'a>,
+pub(crate) struct WhoData<'a> {
+    pub(crate) key: WhoKey,
+    pub(crate) row: WhoRow<'a>,
 }
 
 /// WHO ordering: admins first, alphabetical by name; then everyone else by
 /// level DESC, connect-time ASC (oldest connection first), name ASC.
-fn who_order(a: &WhoKey, b: &WhoKey) -> Ordering {
+pub(crate) fn who_order(a: &WhoKey, b: &WhoKey) -> Ordering {
     match (a.is_admin, b.is_admin) {
         (true, false) => Ordering::Less,
         (false, true) => Ordering::Greater,
@@ -64,7 +46,7 @@ fn who_order(a: &WhoKey, b: &WhoKey) -> Ordering {
 }
 
 /// Map a [`Gender`] to its single-character WHO code.
-fn gender_char(gender: Gender) -> &'static str {
+pub(crate) fn gender_char(gender: Gender) -> &'static str {
     match gender {
         Gender::Male => "M",
         Gender::Female => "F",
@@ -130,6 +112,8 @@ pub(crate) struct WhoRow<'a> {
     pub restrings: &'a std::collections::HashMap<String, String>,
     /// Whether to append the `(Linkdead)` marker.
     pub linkdead: bool,
+    /// Whether to append the `(AFK)` marker.
+    pub afk: bool,
     /// Whether to append the `(offline)` marker (wizlist snapshot rows).
     pub offline: bool,
 }
@@ -171,9 +155,8 @@ impl WhoRow<'_> {
         )
     }
 }
-
 /// Render one WHO line: the stat block, the real name, an optional title, and
-/// a trailing `(Linkdead)` / `(offline)` marker.
+/// trailing `(AFK)` / `(Linkdead)` / `(offline)` markers.
 pub(crate) fn format_who_row(row: &WhoRow) -> String {
     let mut line = format!("{} {}", row.stat_block(), row.name);
     if let Some(title) = &row.title {
@@ -182,6 +165,9 @@ pub(crate) fn format_who_row(row: &WhoRow) -> String {
             line.push_str(title);
             line.push_str(WHO_RESET);
         }
+    }
+    if row.afk {
+        line.push_str(" (AFK)");
     }
     if row.linkdead {
         line.push_str(" (Linkdead)");
@@ -205,109 +191,39 @@ pub(crate) fn format_who_list(rows: &[WhoRow]) -> String {
     out
 }
 
-/// Render the full WIZLIST from already-sorted rows: the same MUD-style rows
-/// as WHO, but every admin — online rows plus `(offline)` snapshot rows.
-pub(crate) fn format_wizlist_list(rows: &[WhoRow]) -> String {
-    if rows.is_empty() {
-        return "No wizards found.\n".into();
-    }
-    let mut out = format!("Wizards ({}):\n", rows.len());
-    for row in rows {
-        out.push_str(&format_who_row(row));
-        out.push('\n');
-    }
-    out
+/// Character entities behind AFK-flagged sessions, resolved from the per-tick
+/// snapshot (the dispatcher's `&mut Client` borrow forbids a second query).
+pub(crate) fn afk_chars(snapshot: &[ClientSnapshot]) -> HashSet<Entity> {
+    snapshot
+        .iter()
+        .filter(|s| s.afk)
+        .filter_map(|s| s.character)
+        .collect()
 }
 
 /// The MUD-style `who` list. Each online character renders as
 /// `LLL G RRRRR CCC GGGGG Name Title` (admins show `IMM` for level; restrings
 /// override columns — see [`WhoRow`]). Sort: admins first, alphabetical; then
 /// everyone else by level DESC, connect-time ASC, name ASC. Linkdead characters
-/// still appear, marked.
+/// still appear, marked. AFK characters carry an `(AFK)` marker.
 pub(crate) fn format_who(
     player_chars: &PlayerChars,
     linkdead: &Query<&Linkdead>,
+    afk_chars: &HashSet<Entity>,
     res: &SessionRes,
 ) -> String {
-    let mut data = collect_who_data(player_chars, linkdead, res);
+    let mut data = collect_who_data(player_chars, linkdead, afk_chars, res);
     data.sort_by(|a, b| who_order(&a.key, &b.key));
     let rows: Vec<WhoRow> = data.into_iter().map(|d| d.row).collect();
     format_who_list(&rows)
 }
 
-/// The `wizlist`: every admin-flagged character — online rows (same MUD-style
-/// rows as [`format_who`], linkdead marked) plus the offline admins from the
-/// startup [`WizlistAdmins`] snapshot, marked `(offline)`. Online wins the
-/// name: a snapshot entry also in the world renders once, live. Public like
-/// `who` — admins already head that list. Sorted alphabetical by name.
-pub(crate) fn format_wizlist(
-    player_chars: &PlayerChars,
-    linkdead: &Query<&Linkdead>,
-    res: &SessionRes,
-    admins: &WizlistAdmins,
-) -> String {
-    let mut data = collect_who_data(player_chars, linkdead, res);
-    data.retain(|d| d.key.is_admin);
-    data.extend(offline_admin_rows(player_chars, res, admins));
-    data.sort_by(|a, b| who_order(&a.key, &b.key));
-    let rows: Vec<WhoRow> = data.into_iter().map(|d| d.row).collect();
-    format_wizlist_list(&rows)
-}
-
-/// One [`WhoData`] per snapshot admin absent from the world: the same columns
-/// as a live row (always `IMM`, registry abbrevs resolved the same way),
-/// marked `(offline)` at render. Borrows the snapshot, so the resource must
-/// outlive the returned rows — it does (the whole command answer).
-fn offline_admin_rows<'a>(
-    player_chars: &PlayerChars,
-    res: &SessionRes,
-    admins: &'a WizlistAdmins,
-) -> Vec<WhoData<'a>> {
-    admins
-        .0
-        .iter()
-        .filter(|stored| {
-            !player_chars
-                .iter()
-                .any(|(_, n, _, _, _, _)| n.0.eq_ignore_ascii_case(&stored.name))
-        })
-        .map(|stored| WhoData {
-            key: WhoKey {
-                is_admin: true,
-                level: stored.level,
-                connected_at: stored.created_at,
-                sort_name: stored.name.to_lowercase(),
-            },
-            row: WhoRow {
-                level: "IMM".to_string(),
-                gender: gender_char(stored.gender).to_string(),
-                race: res
-                    .races
-                    .get(&stored.race)
-                    .map(|r| r.abbrev.clone())
-                    .unwrap_or_default(),
-                class: res
-                    .classes
-                    .get(&stored.class)
-                    .map(|c| c.abbrev.clone())
-                    .unwrap_or_default(),
-                guild: String::new(),
-                name: stored.name.clone(),
-                title: stored.title.clone(),
-                restrings: &stored.restrings,
-                linkdead: false,
-                offline: true,
-            },
-        })
-        .collect()
-}
-
 /// One [`WhoData`] per online character: the ordering [`WhoKey`] plus the
 /// fully-computed [`WhoRow`]. Shared by [`format_who`] and [`format_wizlist`]
-/// so both lists build rows — and read restrings — exactly once, one way.
-fn collect_who_data<'a>(
+pub(crate) fn collect_who_data<'a>(
     player_chars: &'a PlayerChars<'_, '_>,
     linkdead: &Query<&Linkdead>,
+    afk_chars: &HashSet<Entity>,
     res: &SessionRes,
 ) -> Vec<WhoData<'a>> {
     player_chars
@@ -351,6 +267,7 @@ fn collect_who_data<'a>(
                     title: ch.title.clone(),
                     restrings: &ch.restrings,
                     linkdead: linkdead.get(e).is_ok(),
+                    afk: afk_chars.contains(&e),
                     offline: false,
                 },
             })
@@ -400,6 +317,7 @@ pub(crate) fn format_areas(rooms: &RoomResolver) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wizlist::format_wizlist_list;
     use chrono::{TimeZone, Utc};
     use std::cmp::Ordering;
     use std::collections::HashMap;
@@ -502,6 +420,7 @@ mod tests {
             title: None,
             restrings,
             linkdead: false,
+            afk: false,
             offline: false,
         }
     }
@@ -540,6 +459,15 @@ mod tests {
         let got = format_wizlist_list(&[row]);
         assert!(got.starts_with("Wizards (1):\n"), "header:\n{got}");
         assert!(got.contains("Gandalf (offline)\n"), "row:\n{got}");
+    }
+
+    #[test]
+    fn who_marks_afk_rows() {
+        let rs = HashMap::new();
+        let mut row = who_row("5", "M", "Human", "War", "Bob", &rs);
+        row.afk = true;
+        let got = format_who_list(&[row]);
+        assert!(got.contains("Bob (AFK)\n"), "row:\n{got}");
     }
 
     /// Column geometry check: the stat block is always 21 chars, so the name

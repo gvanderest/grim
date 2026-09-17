@@ -57,6 +57,7 @@ pub(crate) fn handle_ingame_input(
             state: c.state.clone(),
             account: c.account,
             character: c.character,
+            afk: c.afk,
         })
         .collect();
     for ev in inputs.read() {

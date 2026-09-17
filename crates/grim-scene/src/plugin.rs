@@ -72,8 +72,8 @@ impl Plugin for ScenePlugin {
         // Admin snapshot backing the offline half of the `wizlist`: read once
         // at startup (a reboot refreshes it). init_resource so the `Res` in
         // `SessionRes` exists before the loader replaces it.
-        app.init_resource::<crate::who::WizlistAdmins>();
-        app.add_systems(Startup, crate::who::load_wizlist_admins);
+        app.init_resource::<crate::wizlist::WizlistAdmins>();
+        app.add_systems(Startup, crate::wizlist::load_wizlist_admins);
         crate::editor::register(app);
         app.add_message::<ConnectionOutput>()
             .add_message::<ConnectionResumed>()

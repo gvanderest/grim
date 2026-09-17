@@ -26,6 +26,7 @@ mod scene_stack;
 mod session;
 mod sockets;
 mod who;
+mod wizlist;
 
 // Shared render helpers (MOTD text, selection menus) the pre-game auth
 // flow reads. Auth → scene is allowed; scene never depends on auth.
