@@ -306,6 +306,7 @@ mod tests {
                 last_input: None,
                 last_active: None,
                 idle_warned: false,
+                afk: false,
                 editor: None,
             })
             .id();

@@ -35,17 +35,18 @@ pub struct Client {
     pub last_active: Option<Duration>,
     /// Warn-once latch for the idle-disconnect warning; reset on any input.
     pub idle_warned: bool,
+    /// Whether this session is flagged AFK. Set by the `afk` command or the
+    /// idle sweep; cleared by any input line. Dies with the session, so stale
+    /// AFK is structurally impossible — a plain field (not a component) so
+    /// every dispatcher that already holds `&mut Client` can read/write it
+    /// without a second query (which would conflict) or `Commands` threading.
+    pub afk: bool,
     /// Line-editor modal state. `Some` exactly while the session is inside the
     /// editor: input routes to the buffer instead of the command parser. A
     /// plain field (not a component) so opening/closing is visible to later
     /// lines in the same tick — deferred `Commands` could never do that.
     pub editor: Option<EditorSession>,
 }
-
-/// Session-scoped AFK flag on the `Client` entity. Dies with the session on
-/// every disconnect path, so stale AFK is structurally impossible.
-#[derive(Component, Debug, Default)]
-pub struct Afk;
 
 /// Modal line-editor state: what is edited and the lines so far. Lives on
 /// [`Client::editor`]; the open/close events carry the rest.
@@ -68,6 +69,7 @@ impl Client {
             last_input: None,
             last_active: None,
             idle_warned: false,
+            afk: false,
             editor: None,
         }
     }

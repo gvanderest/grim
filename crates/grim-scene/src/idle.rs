@@ -9,7 +9,7 @@
 use std::time::Duration;
 
 use bevy::prelude::*;
-use grim_core::components::{Afk, Client, ClientState};
+use grim_core::components::{Client, ClientState};
 use grim_networking::{ConnectionInput, ConnectionOutput, DisconnectRequest};
 use grim_text::tr;
 
@@ -41,28 +41,22 @@ impl Default for IdleConfig {
 }
 
 /// Stamp activity for every input line: refresh `last_active`, reset the warn
-/// latch, and silently drop `Afk` (the prompt change + `who` marker are the
+/// latch, and silently clear `afk` (the prompt change + `who` marker are the
 /// signal — no cleared notice). Unknown connections are skipped (fail closed).
 /// Runs before both dispatchers (see `SceneSystems::TouchInput`).
 pub(crate) fn touch_sessions_on_input(
     mut inputs: MessageReader<ConnectionInput>,
-    mut clients: Query<(Entity, &mut Client, Has<Afk>)>,
-    mut commands: Commands,
+    mut clients: Query<&mut Client>,
     time: Res<Time>,
 ) {
     let now = time.elapsed();
     for ev in inputs.read() {
-        let Some((session, mut client, has_afk)) = clients
-            .iter_mut()
-            .find(|(_, c, _)| c.connection == ev.connection)
-        else {
+        let Some(mut client) = clients.iter_mut().find(|c| c.connection == ev.connection) else {
             continue;
         };
         client.last_active = Some(now);
         client.idle_warned = false;
-        if has_afk {
-            commands.entity(session).remove::<Afk>();
-        }
+        client.afk = false;
     }
 }
 
@@ -71,10 +65,9 @@ pub(crate) fn touch_sessions_on_input(
 /// and skipped — every spawn site gets a grace tick without touching
 /// `Client::new`.
 pub(crate) fn check_idle(
-    mut commands: Commands,
     time: Res<Time>,
     config: Res<IdleConfig>,
-    mut clients: Query<(Entity, &mut Client, Has<Afk>)>,
+    mut clients: Query<&mut Client>,
     mut outputs: MessageWriter<ConnectionOutput>,
     mut disconnect: MessageWriter<DisconnectRequest>,
 ) {
@@ -83,7 +76,7 @@ pub(crate) fn check_idle(
     let warn_at =
         disconnect_after.saturating_sub(Duration::from_secs(config.warn_secs_before_disconnect));
     let afk_after = Duration::from_secs(config.afk_after_secs);
-    for (session, mut client, has_afk) in clients.iter_mut() {
+    for mut client in clients.iter_mut() {
         let Some(last) = client.last_active else {
             client.last_active = Some(now);
             continue;
@@ -115,8 +108,8 @@ pub(crate) fn check_idle(
                 )
             });
         }
-        if client.state == ClientState::InGame && !has_afk && idle >= afk_after {
-            commands.entity(session).insert(Afk);
+        if client.state == ClientState::InGame && !client.afk && idle >= afk_after {
+            client.afk = true;
             outputs.write(ConnectionOutput {
                 echo: None,
                 ..ConnectionOutput::new(client.connection, tr!("afk.set"))
@@ -175,7 +168,7 @@ mod tests {
     fn input_stamps_activity_and_clears_afk() {
         let mut app = test_app();
         let (session, conn) = spawn_session(&mut app, None);
-        app.world_mut().entity_mut(session).insert(Afk);
+        app.world_mut().get_mut::<Client>(session).unwrap().afk = true;
         app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "look".into(),
@@ -183,7 +176,7 @@ mod tests {
         app.update();
         let client = app.world().get::<Client>(session).unwrap();
         assert_eq!(client.last_active, Some(Duration::ZERO));
-        assert!(app.world().get::<Afk>(session).is_none());
+        assert!(!client.afk);
     }
 
     #[test]
@@ -228,7 +221,7 @@ mod tests {
             .resource_mut::<Time>()
             .advance_by(Duration::from_secs(61));
         app.update();
-        assert!(app.world().get::<Afk>(session).is_some());
+        assert!(app.world().get::<Client>(session).unwrap().afk);
         assert!(outputs(&app).iter().any(|t| t.contains("AFK")));
     }
 }
