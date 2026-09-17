@@ -1,9 +1,13 @@
 //! Row tables: a header, a dash separator, and left/right-aligned rows.
 //!
 //! The caller passes final display strings, already escaped
-//! (`grim_color::escape_codes`) — widths are byte lengths, so colour markup
-//! would misalign. Sibling to [`crate::column_grid`], which packs keywords
-//! rather than aligning heterogeneous rows.
+//! (`grim_color::escape_codes`). Widths are *visible* columns
+//! (`grim_color::visible_width`), so escaped `@@`/`{{` pairs measure as one —
+//! but colour markup is not expected and would misalign. Sibling to
+//! [`crate::column_grid`], which packs keywords rather than aligning
+//! heterogeneous rows.
+
+use grim_color::visible_width;
 
 /// Per-column alignment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -39,10 +43,10 @@ pub fn table(headers: Vec<String>, rows: Vec<Vec<String>>, align: Vec<Align>) ->
             cells
         })
         .collect();
-    let mut widths: Vec<usize> = headers.iter().map(String::len).collect();
+    let mut widths: Vec<usize> = headers.iter().map(|h| visible_width(h)).collect();
     for row in &rows {
         for (i, cell) in row.iter().enumerate() {
-            widths[i] = widths[i].max(cell.len());
+            widths[i] = widths[i].max(visible_width(cell));
         }
     }
     let render_row = |cells: &[String]| -> String {
@@ -50,7 +54,7 @@ pub fn table(headers: Vec<String>, rows: Vec<Vec<String>>, align: Vec<Align>) ->
             .iter()
             .enumerate()
             .map(|(i, cell)| {
-                let pad = widths[i].saturating_sub(cell.len());
+                let pad = widths[i].saturating_sub(visible_width(cell));
                 let aligned = match align.get(i).copied().unwrap_or(Align::Left) {
                     Align::Left => format!("{cell}{}", " ".repeat(pad)),
                     Align::Right => format!("{}{cell}", " ".repeat(pad)),
@@ -104,6 +108,18 @@ mod tests {
             "22  10.0.0.8:22      184s\n",
         );
         assert_eq!(got, want);
+    }
+
+    #[test]
+    fn escaped_pairs_measure_as_one_visible_column() {
+        // `escape_codes` doubles `@` to `@@` (2 bytes, 1 visible): the column
+        // must fit the visible 5, not the byte 6.
+        let got = table(
+            vec!["Account".into()],
+            vec![vec!["a@@b.cd".into()], vec!["x".into()]],
+            left(1),
+        );
+        assert_eq!(got, "Account\n-------\na@@b.cd\nx\n");
     }
 
     #[test]

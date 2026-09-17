@@ -73,8 +73,16 @@ pub(crate) fn check_idle(
 ) {
     let now = time.elapsed();
     let disconnect_after = Duration::from_secs(config.disconnect_after_secs);
-    let warn_at =
-        disconnect_after.saturating_sub(Duration::from_secs(config.warn_secs_before_disconnect));
+    // A zero lead disables warnings; a lead at/above the timeout would warn
+    // every session on first sighting, so it disables them too (fail closed).
+    // Either way the unreachable `warn_at` keeps the branch dead.
+    let warn_at = if config.warn_secs_before_disconnect == 0
+        || config.warn_secs_before_disconnect >= config.disconnect_after_secs
+    {
+        disconnect_after
+    } else {
+        disconnect_after.saturating_sub(Duration::from_secs(config.warn_secs_before_disconnect))
+    };
     let afk_after = Duration::from_secs(config.afk_after_secs);
     for mut client in clients.iter_mut() {
         let Some(last) = client.last_active else {
@@ -95,7 +103,8 @@ pub(crate) fn check_idle(
             client.idle_warned = true;
             let conn = client.connection;
             let idle_minutes = (idle.as_secs() / 60).to_string();
-            let left_minutes = (disconnect_after.saturating_sub(idle).as_secs() / 60).to_string();
+            let left_minutes =
+                (disconnect_after.saturating_sub(idle).as_secs().div_ceil(60)).to_string();
             outputs.write(ConnectionOutput {
                 echo: None,
                 ..ConnectionOutput::new(
@@ -206,6 +215,25 @@ mod tests {
         app.update();
         assert_eq!(disconnects(&app), vec![conn]);
         assert!(outputs(&app).iter().any(|t| t.contains("idle too long")));
+    }
+
+    #[test]
+    fn oversized_warn_lead_disables_warnings() {
+        let mut app = test_app();
+        app.insert_resource(IdleConfig {
+            afk_after_secs: 100_000,
+            disconnect_after_secs: 60,
+            warn_secs_before_disconnect: 120,
+        });
+        spawn_session(&mut app, Some(Duration::ZERO));
+        // Idle 30s: past where warn_at would saturate (0s) under the naive
+        // subtraction, but the clamp disables warnings — stays silent.
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(Duration::from_secs(30));
+        app.update();
+        assert!(outputs(&app).is_empty());
+        assert!(disconnects(&app).is_empty());
     }
 
     #[test]

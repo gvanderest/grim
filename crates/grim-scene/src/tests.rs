@@ -1865,7 +1865,7 @@ mod ingame_commands {
         );
         assert!(
             out.text
-                .contains(" 2  127.0.0.1:22222  Login   -     -                 -\n"),
+                .contains(" 2  127.0.0.1:22222  Login   -     -                -\n"),
             "got: {}",
             out.text
         );

@@ -63,6 +63,8 @@ Other verbs (`look`, `map`, `move`, `say`, `shutdown`, …) are parsed here then
 |---|---|---|
 | `JustEnteredWorld` | Resource (routing-split guard; pub) | `src/session.rs` |
 | `SceneSystems` | `SystemSet` (pub; `TouchInput` stamps activity before both dispatchers, pre-game runs before in-game input) | `src/plugin.rs` |
+| `EngineCommand` | Message (emitted to engine) | `src/command.rs` |
+| `BanList` | Resource (consumed for `ban` + resume refusal; owned by `grim-persistence`, `bans.json`-backed) | `src/ban.rs`, `src/resume.rs` |
 | `IdleConfig` | Resource (idle thresholds in seconds: AFK / disconnect / warn lead) | `src/idle.rs` |
 | `WizlistAdmins` | Resource (startup disk snapshot of admin characters for the offline half of `wizlist`) | `src/wizlist.rs` (`load_wizlist_admins`) |
 | `ConnectionOutput` | Message (emitted; from `grim-networking`) | `src/output.rs` |

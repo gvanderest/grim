@@ -179,8 +179,8 @@ pub struct SocketRow {
 }
 /// Render the full `sockets` list as an aligned table (`table` in grim-text).
 /// Cells are escaped first, so connection data (notably `@`-bearing account
-/// identifiers) can never read as colour markup; only the unpadded trailing
-/// Account column can contain `@`, so padding never misaligns.
+/// identifiers) can never read as colour markup; widths measure visible
+/// columns, so the escaped `@@` pairs don't over-pad.
 pub fn format_sockets_list(rows: &[SocketRow]) -> String {
     if rows.is_empty() {
         return tr!("sockets.empty");
@@ -562,10 +562,10 @@ mod tests {
         let got = format_sockets_list(&rows);
         let want = concat!(
             "Sockets connected (2):\n",
-            "ID  IP               State   Name  Account        Idle\n",
-            "--  ---------------  ------  ----  -------------  ----\n",
+            "ID  IP               State   Name  Account       Idle\n",
+            "--  ---------------  ------  ----  ------------  ----\n",
             " 1  127.0.0.1:11111  InGame  Hero  spy@@xf00.com   12s\n",
-            " 2  127.0.0.1:22222  Login   -     -                 -\n",
+            " 2  127.0.0.1:22222  Login   -     -                -\n",
         );
         assert_eq!(got, want);
     }
