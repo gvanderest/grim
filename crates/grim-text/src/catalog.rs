@@ -195,7 +195,6 @@ fn default_string(key: &str) -> String {
         "commands.desc" => "desc [clear|+/-|edit] — View or edit your description paragraphs",
         "sockets.empty" => "No connections.\n",
         "sockets.header" => "Sockets connected (%{total}):\n",
-        "sockets.row" => "  [%{id}] %{addr} %{state} %{name} (%{account})\n",
         "sockets.state.ingame" => "InGame",
         "sockets.state.login" => "Login",
         "sockets.state.password" => "Password",

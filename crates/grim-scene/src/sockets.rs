@@ -27,6 +27,8 @@ pub(crate) struct ClientSnapshot {
     pub(crate) character: Option<Entity>,
     /// Whether the session is flagged AFK (copied from `Client::afk`).
     pub(crate) afk: bool,
+    /// Seconds since the session's last input, or `None` when never seen.
+    pub(crate) idle_secs: Option<u64>,
 }
 
 /// Short session-state label for the `sockets` list, resolved through the
@@ -76,6 +78,7 @@ pub(crate) fn format_sockets(
                 state: client_state_label(&s.state),
                 character,
                 account,
+                idle_secs: s.idle_secs,
             })
         })
         .collect();

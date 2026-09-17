@@ -1847,21 +1847,25 @@ mod ingame_commands {
             "got: {}",
             out.text
         );
-        let first = out.text.find("[1]").expect("admin row");
-        let second = out.text.find("[2]").expect("login row");
+        let first = out.text.find("127.0.0.1:11111").expect("admin row");
+        let second = out.text.find("127.0.0.1:22222").expect("login row");
         assert!(
             first < second,
             "rows must sort by connection id:\n{}",
             out.text
         );
+        // Admin typed `sockets`: the touch system stamped activity this tick,
+        // so idle reads `0s`. The login session never sent input and the sweep
+        // runs after dispatch, so it still reads `-`.
         assert!(
             out.text
-                .contains("[1] 127.0.0.1:11111 InGame Hero (spy@@xf00.com)\n"),
+                .contains(" 1  127.0.0.1:11111  InGame  Hero  spy@@xf00.com    0s\n"),
             "got: {}",
             out.text
         );
         assert!(
-            out.text.contains("[2] 127.0.0.1:22222 Login - (-)\n"),
+            out.text
+                .contains(" 2  127.0.0.1:22222  Login   -     -                 -\n"),
             "got: {}",
             out.text
         );

@@ -1,5 +1,5 @@
 use grim_color::{escape_codes, visible_width};
-use grim_text::tr;
+use grim_text::{table, tr, Align};
 
 /// Room identity ids appended to a room title for admins only.
 pub struct RoomDebugIds<'a> {
@@ -174,27 +174,56 @@ pub struct SocketRow {
     pub character: String,
     /// Account identifier, or `"-"` while the session has none.
     pub account: String,
+    /// Seconds since the session's last input, or `None` when never seen.
+    pub idle_secs: Option<u64>,
 }
-/// Render the full `sockets` list from already id-sorted rows. Values render
-/// through the catalog, so connection data (notably `@`-bearing account
-/// identifiers) is escaped and can never read as colour markup.
+/// Render the full `sockets` list as an aligned table (`table` in grim-text).
+/// Cells are escaped first, so connection data (notably `@`-bearing account
+/// identifiers) can never read as colour markup; only the unpadded trailing
+/// Account column can contain `@`, so padding never misaligns.
 pub fn format_sockets_list(rows: &[SocketRow]) -> String {
     if rows.is_empty() {
         return tr!("sockets.empty");
     }
     let count = rows.len().to_string();
     let mut out = tr!("sockets.header", total = count);
-    for row in rows {
-        let id = row.id.to_string();
-        out.push_str(&tr!(
-            "sockets.row",
-            id = id,
-            addr = row.addr,
-            state = row.state,
-            name = row.character,
-            account = row.account
-        ));
-    }
+    let headers = vec![
+        "ID".to_string(),
+        "IP".to_string(),
+        "State".to_string(),
+        "Name".to_string(),
+        "Account".to_string(),
+        "Idle".to_string(),
+    ];
+    let body: Vec<Vec<String>> = rows
+        .iter()
+        .map(|row| {
+            vec![
+                escape_codes(&row.id.to_string()),
+                escape_codes(&row.addr),
+                escape_codes(&row.state),
+                escape_codes(&row.character),
+                escape_codes(&row.account),
+                escape_codes(
+                    &row.idle_secs
+                        .map(|s| format!("{s}s"))
+                        .unwrap_or_else(|| "-".to_string()),
+                ),
+            ]
+        })
+        .collect();
+    out.push_str(&table(
+        headers,
+        body,
+        vec![
+            Align::Right,
+            Align::Left,
+            Align::Left,
+            Align::Left,
+            Align::Left,
+            Align::Right,
+        ],
+    ));
     out
 }
 
@@ -511,7 +540,7 @@ mod tests {
     }
 
     #[test]
-    fn sockets_rows_render_id_addr_state_names() {
+    fn sockets_rows_render_as_table_with_idle() {
         let rows = [
             SocketRow {
                 id: 1,
@@ -519,6 +548,7 @@ mod tests {
                 state: "InGame".into(),
                 character: "Hero".into(),
                 account: "spy@xf00.com".into(),
+                idle_secs: Some(12),
             },
             SocketRow {
                 id: 2,
@@ -526,14 +556,18 @@ mod tests {
                 state: "Login".into(),
                 character: "-".into(),
                 account: "-".into(),
+                idle_secs: None,
             },
         ];
         let got = format_sockets_list(&rows);
-        assert!(got.starts_with("Sockets connected (2):\n"));
-        // `@` in values is escaped (`@@`) so an identifier can never read as
-        // colour markup at the transport renderer.
-        assert!(got.contains("  [1] 127.0.0.1:11111 InGame Hero (spy@@xf00.com)\n"));
-        assert!(got.contains("  [2] 127.0.0.1:22222 Login - (-)\n"));
+        let want = concat!(
+            "Sockets connected (2):\n",
+            "ID  IP               State   Name  Account        Idle\n",
+            "--  ---------------  ------  ----  -------------  ----\n",
+            " 1  127.0.0.1:11111  InGame  Hero  spy@@xf00.com   12s\n",
+            " 2  127.0.0.1:22222  Login   -     -                 -\n",
+        );
+        assert_eq!(got, want);
     }
 
     // ── format_where_list ────────────────────────────────────────

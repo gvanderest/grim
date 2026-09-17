@@ -49,6 +49,7 @@ pub(crate) fn handle_ingame_input(
     // Snapshot every session once per tick for the `sockets` list. A second
     // `Client` query inside `handle_ingame` would conflict with the `&mut`
     // borrow below, so the data crosses as plain values.
+    let now = res.time.elapsed();
     let snapshot: Vec<ClientSnapshot> = clients
         .iter()
         .map(|(entity, c)| ClientSnapshot {
@@ -58,6 +59,7 @@ pub(crate) fn handle_ingame_input(
             account: c.account,
             character: c.character,
             afk: c.afk,
+            idle_secs: c.last_active.map(|last| now.saturating_sub(last).as_secs()),
         })
         .collect();
     for ev in inputs.read() {

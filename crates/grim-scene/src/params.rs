@@ -41,6 +41,7 @@ pub(crate) struct SessionRes<'w> {
     pub(crate) races: Res<'w, RaceRegistry>,
     pub(crate) classes: Res<'w, ClassRegistry>,
     pub(crate) wizlist: Res<'w, crate::wizlist::WizlistAdmins>,
+    pub(crate) time: Res<'w, Time>,
 }
 
 /// Rooms + areas bundled so placement code can resolve a persisted

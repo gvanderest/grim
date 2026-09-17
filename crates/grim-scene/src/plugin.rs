@@ -102,7 +102,10 @@ impl Plugin for ScenePlugin {
                         .in_set(SceneSystems::TouchInput)
                         .before(SceneSystems::InGameInput),
                     handle_ingame_input.in_set(SceneSystems::InGameInput),
-                    check_idle,
+                    // After dispatch: the sweep observes post-input state, so a
+                    // returning line (touch just cleared AFK, refreshed activity)
+                    // is never re-flagged in the same tick.
+                    check_idle.after(SceneSystems::InGameInput),
                     process_command_queue,
                     format_output,
                     format_item_events,
