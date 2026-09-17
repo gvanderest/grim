@@ -50,7 +50,9 @@ pub(crate) fn handle_ingame_input(
     // `Client` query inside `handle_ingame` would conflict with the `&mut`
     // borrow below, so the data crosses as plain values.
     let now = res.time.elapsed();
-    let snapshot: Vec<ClientSnapshot> = clients
+    // Re-synced below as lines dispatch (the `afk` verb flips `Client.afk`
+    // mid-batch), so later lines in the same tick read current flags.
+    let mut snapshot: Vec<ClientSnapshot> = clients
         .iter()
         .map(|(entity, c)| ClientSnapshot {
             client: entity,
@@ -127,5 +129,11 @@ pub(crate) fn handle_ingame_input(
             &accounts,
             &mut outputs,
         );
+        // The `afk` verb flips `Client.afk` mid-batch: re-sync this session's
+        // snapshot row so a later line in the same tick (another session's
+        // `who`) reads it instead of waiting a tick.
+        if let Some(s) = snapshot.iter_mut().find(|s| s.connection == ev.connection) {
+            s.afk = client.afk;
+        }
     }
 }

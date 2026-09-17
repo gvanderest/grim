@@ -1878,6 +1878,59 @@ mod ingame_commands {
         assert_eq!(engine.get_cursor().read(engine).count(), 0);
     }
 
+    /// Same-tick freshness: Alice's `afk` and Bob's `who` queued before one
+    /// update — Bob's list must show her marker without waiting a tick. The
+    /// per-tick snapshot re-syncs as lines dispatch.
+    #[test]
+    fn ingame_afk_visible_to_same_tick_who() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let alice_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:11111".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let bob_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 2,
+                addr: "127.0.0.1:22222".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let mut alice = make_character(vec![]);
+        alice.name = "Alice".into();
+        let mut bob = make_character(vec![]);
+        bob.name = "Bob".into();
+        spawn_ingame(&mut app, alice_conn, alice);
+        spawn_ingame(&mut app, bob_conn, bob);
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: alice_conn,
+            text: "afk".into(),
+        });
+        app.world_mut().write_message(ConnectionInput {
+            connection: bob_conn,
+            text: "who".into(),
+        });
+        app.update();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == bob_conn)
+            .expect("expected a who response");
+        assert!(
+            out.text.contains("Alice (AFK)"),
+            "same-tick who must show the marker:\n{}",
+            out.text
+        );
+    }
+
     /// A non-admin `sockets` is masked exactly like an unknown command and
     /// never forwarded to the engine.
     #[test]
