@@ -7,6 +7,7 @@
 
 mod harness;
 use grim::components::Gender;
+use grim::IdleConfig;
 use grim::Role;
 use grim::TriggerKind;
 use harness::{Mud, Session};
@@ -896,5 +897,54 @@ fn config_minimap_toggles_look_map_persists_and_rejects() {
             .any(|l| l.starts_with(&format!("    {ME}  "))),
         "minimap back on:\n{}",
         out.text()
+    );
+}
+
+#[test]
+fn afk_command_sets_marker_and_next_line_clears() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+
+    // Explicit set: the notice, and Bob's `who` shows the marker —
+    // Bob's own line only clears Bob.
+    mud.send(alice, "afk").assert_contains("You are now AFK");
+    mud.send(bob, "who").assert_contains("Alice (AFK)");
+
+    // Alice's next line clears her flag: Bob's `who` is clean again.
+    let _ = mud.send(alice, "look");
+    mud.send(bob, "who").assert_excludes("(AFK)");
+}
+
+#[test]
+fn quiet_session_auto_flags_afk_then_warns_and_severs() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+    // Small thresholds, set after creation so the creation pumps (8s each)
+    // don't pre-age anyone past them. The harness clock is manual whole
+    // seconds, so crossings land exactly: AFK at 5, warn_at at 28,
+    // disconnect at 36.
+    mud.set_idle_config(IdleConfig {
+        afk_after_secs: 5,
+        disconnect_after_secs: 36,
+        warn_secs_before_disconnect: 8,
+    });
+    // Reset Alice's clock, then let her go quiet. Each interaction pumps 8s:
+    // look (reset) → recv (idle 8) → Bob's who (idle 16) → recv (idle 24-32)
+    // → recv (idle 32-40). Bob re-touches on his lines and never crosses 36.
+    let _ = mud.send(alice, "look");
+    // Past the 5s AFK mark — Bob's `who` shows her flagged (his own line
+    // clears only him).
+    let _ = mud.recv(alice);
+    mud.send(bob, "who").assert_contains("Alice (AFK)");
+    // Past warn_at (28s) — the warn-once notice arrives.
+    mud.recv(alice).assert_contains("idle");
+    // Past 36s idle — the sweep asks the transport to sever Alice's socket.
+    let _ = mud.recv(alice);
+    let severed = mud.drain_disconnects();
+    assert!(
+        !severed.is_empty() && severed.iter().all(|c| *c == alice.conn),
+        "expected only Alice severed, got {severed:?}",
     );
 }

@@ -23,7 +23,8 @@ by `grim-auth`.
 ## Systems
 
 | System | Schedule | File | Purpose |
-| `handle_ingame_input` | `Update` (`SceneSystems::InGameInput`) | `src/input.rs` | Routes a line whose session stack tops at `InGameScene` into an in-game command; skips stackless sessions (auth's job) and the line that just entered the world (`JustEnteredWorld`). |
+| `touch_sessions_on_input` | `Update` (`SceneSystems::TouchInput`, before both dispatchers) | `src/idle.rs` | Stamps `Client::last_active`, resets the idle-warn latch, and silently clears `afk` on every input line (pre-game, in-game, editor). |
+| `check_idle` | `Update` (after `SceneSystems::InGameInput`) | `src/idle.rs` | Warns then disconnects sessions quiet past `IdleConfig` (any state); auto-flags quiet in-game sessions AFK. Enforcement is `DisconnectRequest` → the normal linkdead path. |
 | `handle_connection_resumed` | `Update` | `src/resume.rs` | Re-attaches a session after copyover / reconnect (skips login). Refuses banned IPs/characters/accounts first (`refuse_banned`), before spawning or attaching anything. |
 | `handle_ban_command` | `Update` | `src/ban.rs` | Admin `ban list`/`add`/`remove` off the engine queue (defense-in-depth admin re-check): lists, persists to `bans.json`, and kicks every matching live session on `add`. |
 | `format_output` | `Update` | `src/output.rs` | Renders domain events per-recipient into `ConnectionOutput`. |
@@ -37,10 +38,11 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 
 | Command | Handler | Summary |
 | `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last, `edit` opens the line editor). |
-| `who` | `handle_ingame` → `format_who` (`src/who.rs`) | List online characters (admins first, then level/connect/name). |
-| `wizlist` | `handle_ingame` → `format_wizlist` (`src/who.rs`) | List every admin: online rows plus `(offline)` rows from the `WizlistAdmins` startup snapshot (`load_wizlist_admins`). |
+| `who` | `handle_ingame` → `format_who` (`src/who.rs`) | List online characters (admins first, then level/connect/name); AFK sessions carry an `(AFK)` marker. |
+| `afk` | `handle_ingame` → `flag_afk` (`src/command.rs`) | Flag yourself AFK (auto-set after `IdleConfig::afk_after_secs` idle; any input clears; prompt becomes `<AFK> `). |
+| `wizlist` | `handle_ingame` → `format_wizlist` (`src/wizlist.rs`) | List every admin: online rows plus `(offline)` rows from the `WizlistAdmins` startup snapshot (`load_wizlist_admins`). |
 | `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last). |
-| `sockets` | `handle_ingame` → `format_sockets` (`src/sockets.rs`) | List live connections by id (admin-only; masked as unknown for others). |
+| `sockets` | `handle_ingame` → `format_sockets` (`src/sockets.rs`) | List live connections as an aligned table (ID/IP/State/Name/Account/Idle seconds; admin-only; masked as unknown for others). |
 | `ban list [type]` / `ban add <type> <pattern>` / `ban remove <type> <pattern>` | parser → engine queue (`src/parser.rs`, `src/ban.rs`) | Blocklist admin verbs (types `ip`/`account`/`character`; IP patterns `*`-wildcarded per octet). Admin-only + masked; an `add` persists and kicks every matching session. |
 | `where` | `handle_ingame` → `format_where` (`src/who.rs`) | Show where players are located. |
 | `inventory` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/inventory.rs`) | List carried objects' short names (sorted), or the empty line. |
@@ -60,10 +62,9 @@ Other verbs (`look`, `map`, `move`, `say`, `shutdown`, …) are parsed here then
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
 | `JustEnteredWorld` | Resource (routing-split guard; pub) | `src/session.rs` |
-| `SceneSystems` | `SystemSet` (pub; orders the pre-game system before in-game input) | `src/plugin.rs` |
-| `EngineCommand` | Message (emitted to engine) | `src/command.rs` |
-| `BanList` | Resource (consumed for `ban` + resume refusal; owned by `grim-persistence`, `bans.json`-backed) | `src/ban.rs`, `src/resume.rs` |
-| `WizlistAdmins` | Resource (startup disk snapshot of admin characters for the offline half of `wizlist`) | `src/who.rs` (`load_wizlist_admins`) |
+| `SceneSystems` | `SystemSet` (pub; `TouchInput` stamps activity before both dispatchers, pre-game runs before in-game input) | `src/plugin.rs` |
+| `IdleConfig` | Resource (idle thresholds in seconds: AFK / disconnect / warn lead) | `src/idle.rs` |
+| `WizlistAdmins` | Resource (startup disk snapshot of admin characters for the offline half of `wizlist`) | `src/wizlist.rs` (`load_wizlist_admins`) |
 | `ConnectionOutput` | Message (emitted; from `grim-networking`) | `src/output.rs` |
 | `ItemEvent` / `TransferEvent` | Message (consumed → rendered per-recipient) | `src/item_output.rs` (`format_item_events`, `format_transfer_events`, `format_look_pack`) |
 | `OpenEditor` / `EditorDone` | Message (consumed/emitted; the editor callback) | `src/editor.rs` (`open_editor`, `handle_editor_line`) |
