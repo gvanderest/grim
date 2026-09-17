@@ -23,9 +23,11 @@
 mod macros;
 mod catalog;
 mod grid;
+mod table;
 
 pub use catalog::{render, tr};
 pub use grid::column_grid;
+pub use table::{table, Align};
 
 #[cfg(test)]
 mod tests {

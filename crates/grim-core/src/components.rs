@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::time::Duration;
 
 use bevy::prelude::*;
 use chrono::{DateTime, Utc};
@@ -29,12 +30,22 @@ pub struct Client {
     pub command_cooldown: Timer,
     /// The last raw input text (for "!" repeat support), excluding the "!" itself.
     pub last_input: Option<String>,
+    /// Bevy-`Time` elapsed at the last input line (any state, incl. editor).
+    /// `None` until the first input or sweep sighting; the idle sweep stamps it.
+    pub last_active: Option<Duration>,
+    /// Warn-once latch for the idle-disconnect warning; reset on any input.
+    pub idle_warned: bool,
     /// Line-editor modal state. `Some` exactly while the session is inside the
     /// editor: input routes to the buffer instead of the command parser. A
     /// plain field (not a component) so opening/closing is visible to later
     /// lines in the same tick — deferred `Commands` could never do that.
     pub editor: Option<EditorSession>,
 }
+
+/// Session-scoped AFK flag on the `Client` entity. Dies with the session on
+/// every disconnect path, so stale AFK is structurally impossible.
+#[derive(Component, Debug, Default)]
+pub struct Afk;
 
 /// Modal line-editor state: what is edited and the lines so far. Lives on
 /// [`Client::editor`]; the open/close events carry the rest.
@@ -55,6 +66,8 @@ impl Client {
             input_queue: VecDeque::new(),
             command_cooldown: Timer::from_seconds(0.5, TimerMode::Once),
             last_input: None,
+            last_active: None,
+            idle_warned: false,
             editor: None,
         }
     }

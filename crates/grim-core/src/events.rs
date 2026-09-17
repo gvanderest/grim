@@ -78,6 +78,9 @@ pub enum Command {
     /// (id, address, session state, character, account). Masked as unknown
     /// for non-admins, like the other admin verbs.
     Sockets,
+    /// `afk` — flag yourself as away. Auto-set after `IdleConfig::afk_after_secs`
+    /// idle; any input line clears it. Shows on `who`; prompt becomes `<AFK>`.
+    Afk,
     /// `inventory` — list the short names of carried objects.
     Inventory,
     /// `equipment` — dummy: always reports empty (no item system yet).

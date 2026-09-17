@@ -304,6 +304,8 @@ mod tests {
                 input_queue: std::collections::VecDeque::new(),
                 command_cooldown: Timer::from_seconds(0.5, TimerMode::Once),
                 last_input: None,
+                last_active: None,
+                idle_warned: false,
                 editor: None,
             })
             .id();
