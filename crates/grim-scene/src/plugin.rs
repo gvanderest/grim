@@ -14,6 +14,7 @@ use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
 use grim_world::{ClassRegistry, RaceRegistry};
 
 use crate::command::process_command_queue;
+use crate::idle::{check_idle, touch_sessions_on_input, IdleConfig};
 use crate::input::handle_ingame_input;
 use crate::item_output::{format_item_events, format_look_pack, format_transfer_events};
 use crate::output::{capture_output, format_output, format_server_broadcast};
@@ -29,6 +30,10 @@ use crate::session::JustEnteredWorld;
 /// and `input.rs`).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SceneSystems {
+    /// Activity stamping + AFK clearing ([`touch_sessions_on_input`]). Runs
+    /// before every dispatcher so a returning line clears AFK before it is
+    /// interpreted. The auth pre-game system runs `.after` this set.
+    TouchInput,
     /// The in-game input dispatcher ([`handle_ingame_input`]).
     InGameInput,
 }
@@ -61,6 +66,9 @@ impl Plugin for ScenePlugin {
         // in-game input system consults it to avoid re-dispatching the line that
         // triggered the transition (see input.rs).
         app.init_resource::<JustEnteredWorld>();
+        // Idle thresholds (seconds); an author overrides by inserting a custom
+        // value. init_resource so ScenePlugin stands alone.
+        app.init_resource::<IdleConfig>();
         // Admin snapshot backing the offline half of the `wizlist`: read once
         // at startup (a reboot refreshes it). init_resource so the `Res` in
         // `SessionRes` exists before the loader replaces it.
@@ -90,7 +98,11 @@ impl Plugin for ScenePlugin {
                 Update,
                 (
                     handle_connection_resumed,
+                    touch_sessions_on_input
+                        .in_set(SceneSystems::TouchInput)
+                        .before(SceneSystems::InGameInput),
                     handle_ingame_input.in_set(SceneSystems::InGameInput),
+                    check_idle,
                     process_command_queue,
                     format_output,
                     format_item_events,

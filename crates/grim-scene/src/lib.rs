@@ -13,6 +13,7 @@ mod countdown;
 mod directions;
 mod editor;
 mod finger;
+mod idle;
 mod input;
 mod item_output;
 mod output;
