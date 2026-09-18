@@ -917,34 +917,31 @@ fn afk_command_sets_marker_and_next_line_clears() {
 }
 
 #[test]
-fn quiet_session_auto_flags_afk_then_warns_and_severs() {
+fn quiet_login_limbo_severs_while_ingame_idles_forever() {
     let mut mud = Mud::new();
     let alice = create_char(&mut mud, "alice@example.com", "Alice");
-    let bob = create_char(&mut mud, "bob@example.com", "Bob");
-    // Small thresholds, set after creation so the creation pumps (8s each)
-    // don't pre-age anyone past them. The harness clock is manual whole
-    // seconds, so crossings land exactly: AFK at 5, warn_at at 28,
-    // disconnect at 36.
+    // A second socket that never logs in: login limbo.
+    let (limbo, _) = mud.connect();
+    // Small thresholds, set after setup so the setup pumps (8s each) don't
+    // pre-age anyone past them. In-game kick stays opted out (default).
     mud.set_idle_config(IdleConfig {
         afk_after_secs: 5,
         disconnect_after_secs: 36,
         warn_secs_before_disconnect: 8,
+        disconnect_ingame_idle: false,
     });
-    // Reset Alice's clock, then let her go quiet. Each interaction pumps 8s:
-    // look (reset) → recv (idle 8) → Bob's who (idle 16) → recv (idle 24-32)
-    // → recv (idle 32-40). Bob re-touches on his lines and never crosses 36.
-    let _ = mud.send(alice, "look");
-    // Past the 5s AFK mark — Bob's `who` shows her flagged (his own line
-    // clears only him).
+    // Reset Alice's clock, then let her go quiet. Each interaction pumps 8s,
+    // so the reset send itself crosses the 5s AFK mark — the notice lands in
+    // its own output. Alice flags but stays connected.
+    mud.send(alice, "look").assert_contains("AFK");
+    // The limbo socket keeps quiet past warn_at (28s) and the 36s timeout:
+    // the sweep asks the transport to sever it — and only it.
     let _ = mud.recv(alice);
-    mud.send(bob, "who").assert_contains("Alice (AFK)");
-    // Past warn_at (28s) — the warn-once notice arrives.
-    mud.recv(alice).assert_contains("idle");
-    // Past 36s idle — the sweep asks the transport to sever Alice's socket.
+    let _ = mud.recv(alice);
     let _ = mud.recv(alice);
     let severed = mud.drain_disconnects();
     assert!(
-        !severed.is_empty() && severed.iter().all(|c| *c == alice.conn),
-        "expected only Alice severed, got {severed:?}",
+        !severed.is_empty() && severed.iter().all(|c| *c == limbo.conn),
+        "expected only the limbo socket severed, got {severed:?}",
     );
 }
