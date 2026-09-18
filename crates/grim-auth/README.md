@@ -25,7 +25,7 @@ world.
 
 | System | Schedule | File | Purpose |
 |---|---|---|---|
-| `handle_connection_established` | `Update` | `src/greeter.rs` | Spawns a `Client`, prints the login banner + first prompt — the entry to the flow. Refuses banned IPs first: the ban message + sever, no session. |
+| `handle_connection_established` | `Update` | `src/greeter.rs` | Spawns a `Client`, prints the login banner + first prompt — the entry to the flow. Refuses banned IPs first (ban message + sever, no session), then per-IP reconnect floods (throttle message + sever + security alert). |
 | `validate_registries` | `Startup` | `src/plugin.rs` | Panics on a mis-seeded world (empty race registry / no tier-1 class) so creation can't trap a player. |
 | `handle_pregame_input` | `Update` (`.after` the greeter, `.before(SceneSystems::InGameInput)`) | `src/input.rs` | Routes a line by pre-game `ClientState`; skips `InGame` (scene's job); records connections it advances into the world in `JustEnteredWorld`. |
 
@@ -37,7 +37,7 @@ one-file-per-command layout, which is for in-game command handlers).
 |---|---|---|
 | `LoginPrompt` | `login_prompt` | `src/login.rs` |
 | `ConfirmCreate` | `confirm_create` | `src/login.rs` |
-| `PasswordPrompt` | `password_prompt` (→ `create_account` / `authenticate`) | `src/login.rs` |
+| `PasswordPrompt` | `password_prompt` (→ `create_account` in `src/account.rs` / `authenticate`) | `src/login.rs` |
 | `CharacterSelect` | `character_select` (+ `show_character_menu`, `account_character_list`) | `src/character_select.rs` |
 | `CreateCharacter` | `create_character` | `src/creation.rs` |
 | `SelectGender` / `SelectRace` / `SelectClass` | `select_gender` / `select_race` / `select_class` | `src/creation.rs` |
@@ -65,7 +65,8 @@ before placing (`refuse_banned` in `grim-scene/src/resume.rs`).
 | `RaceRegistry` / `ClassRegistry` | Resource (read for the creation menus; `init_resource`, from `grim-world`) | `src/plugin.rs` |
 | `PersistenceConfig` | Resource (account/character JSON dir; `init_resource`, from `grim-persistence`) | `src/plugin.rs` |
 | `BanList` | Resource (read at every login gate; owned by `grim-persistence`) | `src/greeter.rs`, `src/login.rs`, `src/character_select.rs`, `src/world_entry.rs` |
-| `LoginAnnounce` / `LinkdeadAnnounce` | Message (emitted on world entry) | `src/character_select.rs`, `src/world_entry.rs` |
+| `ReconnectLimits` | Resource (per-IP throttle knobs, seconds; `init_resource`, author-overridable) | `src/throttle.rs` (`AuthPlugin`) |
+| `ReconnectThrottle` | Resource (per-IP attempt timestamps + reject windows; pruned on access) | `src/throttle.rs` (read in `src/greeter.rs`) |
 | `LookRoom` | Message (emitted at MOTD to auto-look) | `src/character_select.rs` |
 | `ConnectionOutput` / `DisconnectRequest` | Message (from `grim-networking`) | throughout |
 
@@ -76,8 +77,8 @@ Input validation lives entirely in `src/validation.rs`: `hash_password` /
 
 ## Notes
 - Single plugin: `AuthPlugin` — one plugin registering the greeter, the pre-game
-  input system, the reserved-name / race / class / persistence resources, and the
-  mis-seed guard.
+  input system, the reserved-name / race / class / persistence / reconnect-throttle
+  resources, and the mis-seed guard.
 - **Routing coordination.** The pre-game system runs before the scene in-game
   system (`SceneSystems::InGameInput`). Because a single line can transition a
   session to `InGame`, the pre-game system records that connection in

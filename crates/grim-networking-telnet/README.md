@@ -29,15 +29,16 @@ None. This is a transport; it produces `ConnectionInput` messages, not game comm
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
 | `TelnetPort` | Resource | `src/bridge.rs` |
-| `NetworkBridge` | Resource (crate-internal) | `src/bridge.rs` |
-| `CopyoverSignal` | Resource (crate-internal) | `src/copyover.rs` |
-| `CopyoverDone` | Resource (crate-internal) | `src/copyover.rs` |
+| `TelnetLimits` | Resource (line/buffer/rate/connect/shed caps, seconds for time; author-overridable) | `src/limits.rs` (`TelnetPlugin::with_limits`) |
 
 Wire messages (`ConnectionEstablished`, `ConnectionInput`, `ConnectionClosed`, `ConnectionOutput`, `ConnectionResumed`, `DisconnectRequest`) are defined in `grim-networking`; `TelnetPlugin` re-registers them so the transport can be used standalone.
 
 ## Notes
 
-- `TelnetPlugin::new(port)` inserts `TelnetPort`, inits `CopyoverSignal` / `CopyoverDone`, and schedules the Startup + Update systems. The five Update systems are `.chain()`-ed in order: drain → send → bridge copyover-due → poll copyover → finish copyover.
+- `TelnetPlugin::new(port)` inserts `TelnetPort` plus default `TelnetLimits`, inits `CopyoverSignal` / `CopyoverDone`, and schedules the Startup + Update systems. `with_limits` overrides the caps. The five Update systems are `.chain()`-ed in order: drain → send → bridge copyover-due → poll copyover → finish copyover.
+- Input guards (`src/guard.rs`, enforced in the read task before any byte reaches Bevy): lines past `max_line_len` truncate-and-deliver with the remainder discarded to the newline; a line past `max_buffer` without a newline, or more than `max_lines` per `rate_window_secs`, drops the connection with a `GuardTrip` reason logged alongside the peer address.
+- Accept shed (`src/shed.rs`): past `max_connects_total` accepts per `total_window_secs` the listener sheds (accept-and-close, no handshake) for `shed_secs`; transitions cross to Bevy as `Shed` events (entry, ≤1/min heartbeats, lazy exit). Copyover re-adoptions bypass the gate.
+- Drain alerts (`src/drain.rs`): connects/closes/resumes report `Logins` with the peer address; guard trips and shed transitions report `Security`. The read task stays Bevy-free — trips surface as `Disconnected { reason }`.
 - Bevy's schedule is synchronous and tokio owns its threads, so the two are joined by a channel seam (`NetworkBridge`), not by running async TCP on Bevy's executor. See `docs/ARCHITECTURE.md` §5.1.
 - IAC (`src/iac.rs`): minimal handshake (`IAC WILL ECHO`, `IAC WILL SUPPRESS_GO_AHEAD`) on fresh accept; `WILL_ECHO` / `WONT_ECHO` toggle password masking; `strip_iac` removes inbound `0xFF cmd cmd` sequences. Re-adopted copyover sockets skip the handshake.
 - Rendering (`src/render.rs`): prepend a newline for unsolicited events, append the in-game `> ` prompt (`<AFK> ` while the session's `Client.afk` is set), convert colour codes to ANSI (via `grim-color`), translate `\n` → `\r\n`.
