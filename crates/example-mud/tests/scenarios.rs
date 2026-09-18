@@ -945,3 +945,21 @@ fn quiet_login_limbo_severs_while_ingame_idles_forever() {
         "expected only the limbo socket severed, got {severed:?}",
     );
 }
+
+#[test]
+fn where_lists_beings_not_objects_and_names_the_area() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let _bob = create_char(&mut mud, "bob@example.com", "Bob");
+
+    // Both stand in the seeded starting room beside a ground lantern.
+    mud.send(alice, "look")
+        .assert_contains("brass lantern rests here");
+
+    // The lantern is a thing, not a being: no row. Self is marked.
+    mud.send(alice, "where")
+        .assert_contains("In your area (Haven):")
+        .assert_contains("Alice (yourself) in [The Rusted Anvil]")
+        .assert_contains("Bob in [The Rusted Anvil]")
+        .assert_excludes("lantern");
+}
