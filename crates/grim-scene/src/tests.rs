@@ -1166,6 +1166,55 @@ mod output_format {
         );
     }
 
+    // ── look_room presence lines: linkdead players are marked ──
+    #[test]
+    fn look_room_marks_linkdead_players() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let mk_conn = |app: &mut App, id: usize| {
+            app.world_mut()
+                .spawn(Connection {
+                    id,
+                    addr: "127.0.0.1:12345".parse().unwrap(),
+                    echo_hidden: false,
+                })
+                .id()
+        };
+        let viewer_conn = mk_conn(&mut app, 1);
+        let viewer = spawn_ingame(&mut app, viewer_conn, make_character(Vec::new()));
+        let mut zara = make_character(Vec::new());
+        zara.name = "Zara".into();
+        let zara_conn = mk_conn(&mut app, 2);
+        let zara_entity = spawn_ingame(&mut app, zara_conn, zara);
+        for e in [viewer, zara_entity] {
+            app.world_mut().entity_mut(e).insert(InRoom { room });
+        }
+        // Drop Zara's session: linkdead (Character, no Player) + InRoom.
+        app.world_mut()
+            .entity_mut(zara_entity)
+            .remove::<Player>()
+            .insert(Linkdead);
+
+        app.world_mut().write_message(LookRoom {
+            target: viewer,
+            room,
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let text: String = cursor
+            .read(msgs)
+            .filter(|o| o.connection == viewer_conn)
+            .map(|o| o.text.clone())
+            .collect();
+        assert!(
+            text.contains("Zara (Linkdead) is standing here."),
+            "Linkdead marker on presence line; got:\n{text}"
+        );
+    }
+
     // ── look_room presence lines: players above creatures, sorted ──
     #[test]
     fn look_room_lists_players_above_creatures() {

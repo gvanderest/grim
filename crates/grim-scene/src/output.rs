@@ -17,7 +17,7 @@ use grim_world::{Exits, Room};
 use crate::channel_output::emit_channel;
 use crate::formatter;
 use crate::look_output::{emit_look_entity, emit_look_room};
-use crate::params::AnnounceReaders;
+use crate::params::OutputReads;
 
 /// Room-occupant query shape, shared by every broadcast helper below.
 pub(crate) type Occupants<'w, 's> = Query<
@@ -41,7 +41,7 @@ pub(crate) fn format_output(
     mut move_events: MessageReader<MoveEvent>,
     mut info_events: MessageReader<InfoMessage>,
     mut gecho_events: MessageReader<GlobalEcho>,
-    mut announces: AnnounceReaders,
+    mut reads: OutputReads,
     channel_registry: Res<ChannelRegistry>,
     config_registry: Res<ConfigRegistry>,
     rooms: Query<(Entity, &Room, &GrimName)>,
@@ -53,21 +53,21 @@ pub(crate) fn format_output(
     mut outputs: MessageWriter<ConnectionOutput>,
 ) {
     // ── Login / Logout / Linkdead announces ──
-    for ev in announces.login.read() {
+    for ev in reads.login.read() {
         broadcast_global(
             &format!("{} has connected.\n", ev.name),
             &room_occupants,
             &mut outputs,
         );
     }
-    for ev in announces.logout.read() {
+    for ev in reads.logout.read() {
         broadcast_global(
             &format!("{} has disconnected.\n", ev.name),
             &room_occupants,
             &mut outputs,
         );
     }
-    for ev in announces.linkdead.read() {
+    for ev in reads.linkdead.read() {
         let formatted = formatter::format_linkdead(&ev.name, ev.reconnecting);
         broadcast_global(&formatted, &room_occupants, &mut outputs);
     }
@@ -97,7 +97,8 @@ pub(crate) fn format_output(
             &room_occupants,
             &room_exits,
             &characters,
-            &announces.clients,
+            &reads.clients,
+            &reads.linkdead_chars,
             &config_registry,
             &mut outputs,
         );
