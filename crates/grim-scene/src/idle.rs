@@ -17,17 +17,23 @@ use grim_text::tr;
 /// `Duration` at use. Inserted with defaults by `ScenePlugin` — an author
 /// overrides by inserting a custom value before/after adding the plugin.
 ///
-/// Constraint (documented, not enforced): `afk_after_secs` should be well
-/// under `disconnect_after_secs`, or sessions disconnect before ever showing
-/// AFK; `warn_secs_before_disconnect` of `0` disables the warning.
+/// The two timeouts govern different states (AFK for in-game, disconnect for
+/// pre-game), so they need no ordering between them. A `warn_lead` of `0` —
+/// or at/above the disconnect timeout — disables the warning.
 #[derive(Resource, Debug, Clone, Copy)]
 pub struct IdleConfig {
-    /// Quiet seconds before an in-game session auto-flags AFK.
+    /// Quiet seconds before an in-game session auto-flags AFK. AFK is the
+    /// ceiling unless `disconnect_ingame_idle` opts in below.
     pub afk_after_secs: u64,
-    /// Quiet seconds before any session is disconnected.
+    /// Quiet seconds before a session is disconnected: always for *pre-game*
+    /// (login-limbo) sessions, and for in-game ones only when
+    /// `disconnect_ingame_idle` is set.
     pub disconnect_after_secs: u64,
-    /// Seconds before disconnect that the warn-once notice fires.
+    /// Seconds before a disconnect that the warn-once notice fires.
     pub warn_secs_before_disconnect: u64,
+    /// Opt-in: also sever in-game sessions for idleness (default `false` —
+    /// players may idle in the world all day, AFK-flagged).
+    pub disconnect_ingame_idle: bool,
 }
 
 impl Default for IdleConfig {
@@ -36,6 +42,7 @@ impl Default for IdleConfig {
             afk_after_secs: 300,
             disconnect_after_secs: 1800,
             warn_secs_before_disconnect: 300,
+            disconnect_ingame_idle: false,
         }
     }
 }
@@ -60,10 +67,11 @@ pub(crate) fn touch_sessions_on_input(
     }
 }
 
-/// Warn then disconnect sessions quiet past the thresholds; auto-flag quiet
-/// in-game sessions AFK. Sessions never seen (`last_active: None`) are stamped
-/// and skipped — every spawn site gets a grace tick without touching
-/// `Client::new`.
+/// Auto-flag quiet in-game sessions AFK (they stay connected as long as they
+/// like — idling in the world is fine); warn then disconnect quiet *pre-game*
+/// sessions (login limbo must not sit forever). Sessions never seen
+/// (`last_active: None`) are stamped and skipped — every spawn site gets a
+/// grace tick without touching `Client::new`.
 pub(crate) fn check_idle(
     time: Res<Time>,
     config: Res<IdleConfig>,
@@ -90,6 +98,19 @@ pub(crate) fn check_idle(
             continue;
         };
         let idle = now.saturating_sub(last);
+        let ingame = client.state == ClientState::InGame;
+        if ingame && !client.afk && idle >= afk_after {
+            client.afk = true;
+            outputs.write(ConnectionOutput {
+                echo: None,
+                ..ConnectionOutput::new(client.connection, tr!("afk.set"))
+            });
+        }
+        // In-game idlers stay connected unless the author opted in;
+        // login-limbo always severs (bots must not sit forever).
+        if ingame && !config.disconnect_ingame_idle {
+            continue;
+        }
         if idle >= disconnect_after {
             let conn = client.connection;
             outputs.write(ConnectionOutput {
@@ -115,13 +136,6 @@ pub(crate) fn check_idle(
                         left_minutes = left_minutes
                     ),
                 )
-            });
-        }
-        if client.state == ClientState::InGame && !client.afk && idle >= afk_after {
-            client.afk = true;
-            outputs.write(ConnectionOutput {
-                echo: None,
-                ..ConnectionOutput::new(client.connection, tr!("afk.set"))
             });
         }
     }
@@ -195,6 +209,7 @@ mod tests {
             afk_after_secs: 100_000,
             disconnect_after_secs: 3600,
             warn_secs_before_disconnect: 600,
+            disconnect_ingame_idle: true,
         });
         let (_, conn) = spawn_session(&mut app, Some(Duration::ZERO));
         // 3060s idle: past warn_at (3000s), short of disconnect (3600s).
@@ -224,6 +239,7 @@ mod tests {
             afk_after_secs: 100_000,
             disconnect_after_secs: 60,
             warn_secs_before_disconnect: 120,
+            disconnect_ingame_idle: true,
         });
         spawn_session(&mut app, Some(Duration::ZERO));
         // Idle 30s: past where warn_at would saturate (0s) under the naive
@@ -241,8 +257,9 @@ mod tests {
         let mut app = test_app();
         app.insert_resource(IdleConfig {
             afk_after_secs: 60,
-            disconnect_after_secs: 10_000,
+            disconnect_after_secs: 70,
             warn_secs_before_disconnect: 0,
+            disconnect_ingame_idle: false,
         });
         let (session, _) = spawn_session(&mut app, Some(Duration::ZERO));
         app.world_mut()
@@ -251,5 +268,13 @@ mod tests {
         app.update();
         assert!(app.world().get::<Client>(session).unwrap().afk);
         assert!(outputs(&app).iter().any(|t| t.contains("AFK")));
+        // Past the disconnect threshold with the opt-out default: still
+        // connected, no warn, no sever — AFK is the ceiling in the world.
+        app.world_mut()
+            .resource_mut::<Time>()
+            .advance_by(Duration::from_secs(20));
+        app.update();
+        assert!(disconnects(&app).is_empty());
+        assert!(outputs(&app).iter().all(|t| !t.contains("idle")));
     }
 }
