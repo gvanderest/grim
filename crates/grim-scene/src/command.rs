@@ -70,7 +70,7 @@ fn character_is_admin(
 /// Registry names masked as unknown for non-admins (see `dispatch_admin_gated`
 /// and the session-local `sockets` gate). The `commands` grid hides these
 /// from non-admins so the list only shows what the actor can use.
-const ADMIN_GATED_NAMES: &[&str] = &["shutdown", "goto", "gecho", "ban", "sockets"];
+const ADMIN_GATED_NAMES: &[&str] = &["shutdown", "goto", "gecho", "ban", "sockets", "wiznet"];
 
 /// Answer `commands`: the registry grid minus the `socials` section (listed
 /// by its own lister) and minus admin verbs for non-admins. What remains is
@@ -230,7 +230,8 @@ pub(crate) fn handle_ingame(
             | Command::Copyover { .. }
             | Command::Goto { .. }
             | Command::Gecho { .. }
-            | Command::Ban { .. } => {
+            | Command::Ban { .. }
+            | Command::Wiznet { .. } => {
                 // Admin-gated + masked: a non-admin must not learn the command
                 // exists, so respond exactly as for an unknown command — same
                 // text, same framing (a direct ConnectionOutput, no prepended

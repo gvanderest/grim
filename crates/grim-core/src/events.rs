@@ -78,6 +78,10 @@ pub enum Command {
     /// (id, address, session state, character, account, idle seconds).
     /// Masked as unknown for non-admins, like the other admin verbs.
     Sockets,
+    /// `wiznet` / `wiznet on|off|security|logins` — admin-only. List and
+    /// toggle the admin-alert (wiznet) categories. Masked as unknown for
+    /// non-admins, like the other admin verbs.
+    Wiznet { arg: Option<String> },
     /// `afk` — flag yourself as away. Auto-set after `IdleConfig::afk_after_secs`
     /// idle; any input line clears it. Shows on `who`; prompt becomes `<AFK>`.
     Afk,

@@ -294,6 +294,22 @@ fn build_registry() -> CommandRegistry<Command> {
     r.register("sockets", |rest| {
         rest.trim().is_empty().then_some(Command::Sockets)
     });
+    // `wiznet [on|off|security|logins]` — admin-only, engine-queued + masked
+    // (see `handle_wiznet`). Bare lists; one token sets/toggles; more than
+    // one word is unknown.
+    r.register("wiznet", |rest| {
+        let words: Vec<&str> = rest.split_whitespace().collect();
+        match words.as_slice() {
+            [] => Some(Command::Wiznet { arg: None }),
+            [one] => Some(Command::Wiznet {
+                arg: Some(one.to_string()),
+            }),
+            _ => None,
+        }
+    });
+    // `wiz` is now contested (wizlist vs wiznet): keep it resolving to the
+    // older verb so no muscle memory breaks (`wizn…` still reaches wiznet).
+    r.prioritize("wizlist");
     r.register("quit", |_| Some(Command::Quit));
     r.register("exit", |_| Some(Command::Quit));
     // `recall` — return to the Town Square. Bare only (`recall <anything>`
@@ -674,6 +690,35 @@ mod tests {
         assert_eq!(parse("desc +"), None);
         assert_eq!(parse("desc +   "), None);
         assert_eq!(parse("desc bogus"), None);
+    }
+
+    #[test]
+    fn test_wiznet() {
+        assert_eq!(parse("wiznet"), Some(Command::Wiznet { arg: None }));
+        assert_eq!(
+            parse("wiz"),
+            Some(Command::Wizlist),
+            "contested prefix stays with the older verb"
+        );
+        assert_eq!(
+            parse("wizn"),
+            Some(Command::Wiznet { arg: None }),
+            "unambiguous prefix resolves"
+        );
+        assert_eq!(
+            parse("wiznet security"),
+            Some(Command::Wiznet {
+                arg: Some("security".into())
+            })
+        );
+        assert_eq!(
+            parse("WIZNET OFF"),
+            Some(Command::Wiznet {
+                arg: Some("OFF".into())
+            }),
+            "arg case preserved for the handler"
+        );
+        assert_eq!(parse("wiznet too many"), None);
     }
 
     #[test]

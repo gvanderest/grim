@@ -945,3 +945,29 @@ fn quiet_login_limbo_severs_while_ingame_idles_forever() {
         "expected only the limbo socket severed, got {severed:?}",
     );
 }
+
+#[test]
+fn wiznet_lists_toggles_masks_and_reports_quits() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+    mud.edit_character("Alice", |c| {
+        c.roles.push(Role::Admin);
+    });
+
+    // List through the engine round trip; admins see the verb, others don't.
+    mud.send(alice, "wiznet")
+        .assert_contains("Wiznet options:")
+        .assert_contains("wiznet.logins: off");
+    mud.send(alice, "commands").assert_contains("wiznet");
+    mud.send(alice, "wiznet logins")
+        .assert_contains("wiznet.logins set to on.");
+
+    // Non-admin: masked as unknown, hidden from the command list.
+    mud.send(bob, "wiznet").assert_contains("Unknown command");
+    mud.send(bob, "commands").assert_excludes("wiznet");
+
+    // Bob quits; the opted-in admin sees the logins line.
+    let _ = mud.send(bob, "quit");
+    mud.recv(alice).assert_contains("[wiznet:logins] Bob quit");
+}
