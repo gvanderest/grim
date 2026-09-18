@@ -16,6 +16,7 @@ mod finger;
 mod idle;
 mod input;
 mod item_output;
+mod look_output;
 mod output;
 mod params;
 mod parser;

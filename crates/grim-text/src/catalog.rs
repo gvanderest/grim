@@ -149,6 +149,7 @@ fn default_string(key: &str) -> String {
         "character.takeover" => "Someone else has logged into this character.\n",
         "character.default_description" => "A new adventurer.",
         "room.presence.standing" => "%{name} is standing here.",
+        "room.presence.standing_afk" => "%{name} (AFK) is standing here.",
         "room.presence.here" => "%{name} is here.",
         "finger.not_found" => "You don't know anyone by that name.\n",
         "desc.cleared" => "Your description has been cleared.\n",
