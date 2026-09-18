@@ -24,7 +24,7 @@ by `grim-auth`.
 
 | System | Schedule | File | Purpose |
 | `touch_sessions_on_input` | `Update` (`SceneSystems::TouchInput`, before both dispatchers) | `src/idle.rs` | Stamps `Client::last_active`, resets the idle-warn latch, and silently clears `afk` on every input line (pre-game, in-game, editor). |
-| `check_idle` | `Update` (after `SceneSystems::InGameInput`) | `src/idle.rs` | Warns then disconnects sessions quiet past `IdleConfig` (any state); auto-flags quiet in-game sessions AFK. Enforcement is `DisconnectRequest` → the normal linkdead path. |
+| `check_idle` | `Update` (after `SceneSystems::InGameInput`) | `src/idle.rs` | Auto-flags quiet in-game sessions AFK (they stay connected unless `IdleConfig::disconnect_ingame_idle` opts in); warns then severs quiet pre-game sessions via `DisconnectRequest` → the normal linkdead path. |
 | `handle_connection_resumed` | `Update` | `src/resume.rs` | Re-attaches a session after copyover / reconnect (skips login). Refuses banned IPs/characters/accounts first (`refuse_banned`), before spawning or attaching anything. |
 | `handle_ban_command` | `Update` | `src/ban.rs` | Admin `ban list`/`add`/`remove` off the engine queue (defense-in-depth admin re-check): lists, persists to `bans.json`, and kicks every matching live session on `add`. |
 | `format_output` | `Update` | `src/output.rs` | Renders domain events per-recipient into `ConnectionOutput`. |
@@ -65,7 +65,7 @@ Other verbs (`look`, `map`, `move`, `say`, `shutdown`, …) are parsed here then
 | `SceneSystems` | `SystemSet` (pub; `TouchInput` stamps activity before both dispatchers, pre-game runs before in-game input) | `src/plugin.rs` |
 | `EngineCommand` | Message (emitted to engine) | `src/command.rs` |
 | `BanList` | Resource (consumed for `ban` + resume refusal; owned by `grim-persistence`, `bans.json`-backed) | `src/ban.rs`, `src/resume.rs` |
-| `IdleConfig` | Resource (idle thresholds in seconds: AFK / disconnect / warn lead) | `src/idle.rs` |
+| `IdleConfig` | Resource (idle thresholds in seconds: AFK / disconnect / warn lead, plus the `disconnect_ingame_idle` opt-in, default off) | `src/idle.rs` |
 | `WizlistAdmins` | Resource (startup disk snapshot of admin characters for the offline half of `wizlist`) | `src/wizlist.rs` (`load_wizlist_admins`) |
 | `ConnectionOutput` | Message (emitted; from `grim-networking`) | `src/output.rs` |
 | `ItemEvent` / `TransferEvent` | Message (consumed → rendered per-recipient) | `src/item_output.rs` (`format_item_events`, `format_transfer_events`, `format_look_pack`) |
