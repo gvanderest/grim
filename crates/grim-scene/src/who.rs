@@ -275,7 +275,8 @@ pub(crate) fn collect_who_data<'a>(
         .collect()
 }
 
-/// The `where` list: other characters in the actor's current area, by room.
+/// The `where` list: same-area beings (characters and creatures — never
+/// objects) by room, including the actor, marked ` (yourself)`.
 pub(crate) fn format_where(
     char_entity: Entity,
     player_chars: &PlayerChars,
@@ -285,21 +286,34 @@ pub(crate) fn format_where(
         .get(char_entity)
         .ok()
         .and_then(|(_, _, ir, _, _, _)| rooms.rooms.get(ir.room).ok().map(|(_, r, _)| r.area));
+    let Some(area) = actor_area else {
+        return "You are nowhere.\n".into();
+    };
+    let area_name = rooms
+        .areas
+        .get(area)
+        .map(|a| a.name.clone())
+        .unwrap_or_else(|_| "unknown".into());
     let mut entries: Vec<(String, String)> = Vec::new();
-    if let Some(area) = actor_area {
-        for (e, n, ir, _, _, _) in player_chars.iter() {
-            if e == char_entity {
-                continue;
-            }
-            if let Ok((_, r, rn)) = rooms.rooms.get(ir.room) {
-                if r.area == area {
-                    entries.push((n.0.clone(), rn.0.clone()));
-                }
+    for (e, n, ir, actor, _, _) in player_chars.iter() {
+        // Beings only: ground objects share `Name + InRoom` but carry no
+        // `Actor` — without this they list as people.
+        if actor.is_none() {
+            continue;
+        }
+        if let Ok((_, r, rn)) = rooms.rooms.get(ir.room) {
+            if r.area == area {
+                let name = if e == char_entity {
+                    format!("{} (yourself)", n.0)
+                } else {
+                    n.0.clone()
+                };
+                entries.push((name, rn.0.clone()));
             }
         }
-        entries.sort_by(|a, b| a.1.cmp(&b.1));
     }
-    formatter::format_where_list(&entries)
+    entries.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+    formatter::format_where_list(&area_name, &entries)
 }
 
 /// The sorted, deduped `areas` list of `(friendly_id, name)`.
@@ -610,5 +624,111 @@ mod tests {
         assert!(got.starts_with("Players online (2):\n"));
         assert!(got.contains("  5 M Human War       Alice\n"));
         assert!(got.contains("  3 F Elf   Mag       Bob\n"));
+    }
+
+    // ── format_where ─────────────────────────────────────────────────
+
+    use grim_actor::{Actor, Creature, InRoom};
+    use grim_core::components::Name as GrimName;
+    use grim_core::GrimId;
+    use grim_object::{CarriedBy, Object};
+    use grim_world::{Area, Room};
+
+    fn where_room(world: &mut World, area: Entity, name: &str) -> Entity {
+        world
+            .spawn((
+                Room {
+                    id: GrimId::new(),
+                    friendly_id: "anvil".into(),
+                    name: name.into(),
+                    description: "A room.".into(),
+                    area,
+                },
+                GrimName(name.into()),
+            ))
+            .id()
+    }
+
+    fn where_being(world: &mut World, name: &str, room: Entity) -> Entity {
+        world
+            .spawn((
+                GrimName(name.into()),
+                Actor {
+                    race: "human".into(),
+                    level: 1,
+                    gender: Gender::Neutral,
+                },
+                InRoom { room },
+            ))
+            .id()
+    }
+
+    #[derive(Resource, Default)]
+    struct WhereProbe(Option<String>);
+
+    #[test]
+    fn where_lists_beings_not_objects_and_marks_self() {
+        let mut app = App::new();
+        let area = app
+            .world_mut()
+            .spawn(Area {
+                id: GrimId::new(),
+                friendly_id: "haven".into(),
+                name: "Haven".into(),
+            })
+            .id();
+        let room = where_room(app.world_mut(), area, "The Rusted Anvil");
+        let hero = where_being(app.world_mut(), "Hero", room);
+        where_being(app.world_mut(), "Bob", room);
+        // A creature is a being: listed. A ground object shares
+        // `Name + InRoom` but carries no `Actor`: excluded.
+        app.world_mut().spawn((
+            GrimName("Goblin".into()),
+            Actor {
+                race: "goblin".into(),
+                level: 1,
+                gender: Gender::Neutral,
+            },
+            Creature,
+            InRoom { room },
+        ));
+        app.world_mut()
+            .spawn((GrimName("brass lantern".into()), Object, InRoom { room }));
+        // Carried control: no `InRoom`, never matched either way.
+        app.world_mut()
+            .spawn((GrimName("coin".into()), Object, CarriedBy { carrier: hero }));
+
+        app.insert_resource(WhereProbe::default());
+        app.add_systems(
+            Update,
+            move |chars: PlayerChars, rooms: RoomResolver, mut out: ResMut<WhereProbe>| {
+                out.0 = Some(format_where(hero, &chars, &rooms));
+            },
+        );
+        app.update();
+        let got = app
+            .world()
+            .resource::<WhereProbe>()
+            .0
+            .clone()
+            .expect("probe system ran");
+        assert!(
+            got.starts_with("In your area (Haven):\n"),
+            "heading:\n{got}"
+        );
+        assert!(
+            got.contains("  Hero (yourself) in [The Rusted Anvil]\n"),
+            "self:\n{got}"
+        );
+        assert!(
+            got.contains("  Bob in [The Rusted Anvil]\n"),
+            "other PC:\n{got}"
+        );
+        assert!(
+            got.contains("  Goblin in [The Rusted Anvil]\n"),
+            "creature:\n{got}"
+        );
+        assert!(!got.contains("lantern"), "ground object leaked:\n{got}");
+        assert!(!got.contains("coin"), "carried object leaked:\n{got}");
     }
 }

@@ -134,13 +134,12 @@ pub fn format_move(actor: &str, direction: &str, leaving: bool) -> String {
     }
 }
 
-/// Format the where list (same-area players with room names).
-#[allow(dead_code)]
-pub fn format_where_list(entries: &[(String, String)]) -> String {
+/// Format the where list (same-area beings with room names).
+pub fn format_where_list(area: &str, entries: &[(String, String)]) -> String {
     if entries.is_empty() {
-        "No other players in this area.\n".into()
+        "You are nowhere.\n".into()
     } else {
-        let mut out = "Players in your area:\n".to_string();
+        let mut out = format!("In your area ({}):\n", area);
         for (name, room) in entries {
             out.push_str(&format!("  {} in [{}]\n", name, room));
         }
@@ -574,18 +573,18 @@ mod tests {
 
     #[test]
     fn where_empty() {
-        assert_eq!(format_where_list(&[]), "No other players in this area.\n");
+        assert_eq!(format_where_list("Haven", &[]), "You are nowhere.\n");
     }
 
     #[test]
     fn where_populated() {
         let entries = vec![
-            ("Alice".into(), "Tavern".into()),
+            ("Alice (yourself)".into(), "Tavern".into()),
             ("Bob".into(), "Garden".into()),
         ];
-        let got = format_where_list(&entries);
-        assert!(got.starts_with("Players in your area:\n"));
-        assert!(got.contains("  Alice in [Tavern]\n"));
+        let got = format_where_list("Haven", &entries);
+        assert!(got.starts_with("In your area (Haven):\n"));
+        assert!(got.contains("  Alice (yourself) in [Tavern]\n"));
         assert!(got.contains("  Bob in [Garden]\n"));
     }
 
