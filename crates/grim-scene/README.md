@@ -70,7 +70,7 @@ Other verbs (`look`, `map`, `move`, `say`, `shutdown`, …) are parsed here then
 | `ConnectionOutput` | Message (emitted; from `grim-networking`) | `src/output.rs` |
 | `ItemEvent` / `TransferEvent` | Message (consumed → rendered per-recipient) | `src/item_output.rs` (`format_item_events`, `format_transfer_events`, `format_look_pack`) |
 | `OpenEditor` / `EditorDone` | Message (consumed/emitted; the editor callback) | `src/editor.rs` (`open_editor`, `handle_editor_line`) |
-| `LookRoom` / `LookEntity` / `MoveEvent` / `RecallEvent` | Message (consumed → rendered) | `src/output.rs` (`RecallEvent` in `src/recall_output.rs`) |
+| `LookRoom` / `LookEntity` / `MoveEvent` / `RecallEvent` | Message (consumed → rendered) | `src/output.rs` (`LookRoom`/`LookEntity` in `src/look_output.rs`, `RecallEvent` in `src/recall_output.rs`) |
 | `SayEvent` / `YellEvent` / `OocEvent` / `GlobalEcho` | Message (consumed → rendered) | `src/output.rs` |
 | `LoginAnnounce` / `LogoutAnnounce` / `LinkdeadAnnounce` | Message (session announces) | `src/output.rs`, `src/command.rs` |
 | `ServerBroadcast` | Message (consumed → rendered) | `src/output.rs` |
