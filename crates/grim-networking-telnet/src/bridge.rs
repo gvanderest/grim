@@ -61,6 +61,19 @@ pub(crate) enum NetworkEvent {
         /// Set when an input guard (not a clean EOF) ended the connection.
         reason: Option<GuardTrip>,
     },
+    /// The accept loop entered, reported on, or lifted the flood shed.
+    /// Heartbeats (`active: true`, `refused > 0`) arrive at most once a
+    /// minute while shedding; the exit arrives lazily on the next accept.
+    Shed {
+        active: bool,
+        /// Configured trip threshold (connects per window).
+        connects: u32,
+        window_secs: u64,
+        shed_secs: u64,
+        /// Refused connections: 0 on entry, running total on heartbeats
+        /// and the exit report.
+        refused: u64,
+    },
 }
 
 pub(crate) enum NetworkCommand {
@@ -298,7 +311,40 @@ pub(crate) fn drain_network_events(
                     // Despawn is handled by save_on_disconnect in the persistence plugin
                 }
             }
+            NetworkEvent::Shed {
+                active,
+                connects,
+                window_secs,
+                shed_secs,
+                refused,
+            } => {
+                log_shed(active, connects, window_secs, shed_secs, refused);
+            }
         }
+    }
+}
+
+/// Log a shed transition or heartbeat. Factored out of
+/// [`drain_network_events`] for the line budget (same one-function-per-list
+/// shape as the `who`/`sockets` renderers).
+fn log_shed(active: bool, connects: u32, window_secs: u64, shed_secs: u64, refused: u64) {
+    if active {
+        if refused == 0 {
+            info!(
+                "Connection flood: {} connects in {}s — shedding new connections for {}s",
+                connects, window_secs, shed_secs
+            );
+        } else {
+            info!(
+                "Still shedding new connections ({} refused since the trip)",
+                refused
+            );
+        }
+    } else {
+        info!(
+            "Connection shed lifted after refusing {}; accepting again",
+            refused
+        );
     }
 }
 
@@ -992,6 +1038,39 @@ mod tests {
             let mut buf = [0u8; 8];
             stream.set_read_timeout(Some(Duration::from_secs(2))).ok();
             assert_eq!(stream.read(&mut buf).ok(), Some(0), "client must see EOF");
+        }
+
+        #[test]
+        fn accept_flood_enters_shed_and_drops() {
+            let limits = TelnetLimits {
+                max_connects_total: 3,
+                total_window_secs: 60,
+                shed_secs: 3600,
+                ..TelnetLimits::default()
+            };
+            let mut app = boot(19988, limits);
+            let mut streams = Vec::new();
+            for _ in 0..5 {
+                streams.push(connect(19988));
+            }
+            std::thread::sleep(Duration::from_millis(300));
+            app.update();
+            // Three admits, the tripping fourth admitted with the entry
+            // event, the fifth dropped without a handshake.
+            let count = app
+                .world_mut()
+                .query::<&Connection>()
+                .iter(app.world())
+                .count();
+            assert_eq!(count, 4, "shed must admit four and drop the fifth");
+            let mut last = streams.pop().unwrap();
+            last.set_read_timeout(Some(Duration::from_secs(2))).ok();
+            let mut buf = [0u8; 8];
+            assert_eq!(
+                last.read(&mut buf).ok(),
+                Some(0),
+                "shed-dropped socket must see EOF"
+            );
         }
     }
 }

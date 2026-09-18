@@ -4,6 +4,7 @@
 //! runs the accept/command `select!` loop until the app exits.
 
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -22,6 +23,7 @@ use crate::bridge::{
 };
 use crate::copyover::{perform_handoff, receive_handoff, CopyoverDone, Handoff, COPYOVER_SOCK_ENV};
 use crate::limits::TelnetLimits;
+use crate::shed::{gate_accept, AcceptOutcome, ShedState};
 
 /// Shared per-serve state threaded through the accept loop: the next connection
 /// id, the Bevy-bound event sender, and the live connection registry.
@@ -30,6 +32,23 @@ struct ServeState {
     to_bevy_tx: std_mpsc::Sender<NetworkEvent>,
     conns: Arc<Mutex<HashMap<usize, Conn>>>,
     limits: TelnetLimits,
+    shed: Mutex<ShedState>,
+}
+
+/// The normal accept path: announce to Bevy and register the socket.
+fn admit_connection(state: &ServeState, socket: TcpStream, addr: SocketAddr) {
+    let conn_id = state.next_id.fetch_add(1, Ordering::Relaxed);
+    let _ = state
+        .to_bevy_tx
+        .send(NetworkEvent::Connected { conn_id, addr });
+    register_connection(
+        conn_id,
+        socket,
+        &state.to_bevy_tx,
+        &state.conns,
+        true,
+        state.limits.clone(),
+    );
 }
 
 // ─── Startup: spawn the tokio network thread ────────────────────────
@@ -98,6 +117,7 @@ async fn serve(
         to_bevy_tx,
         conns: Arc::new(Mutex::new(HashMap::new())),
         limits,
+        shed: Mutex::new(ShedState::default()),
     };
 
     let (listener, resumed, ack) = adopt_or_bind(handoff, port).await;
@@ -230,9 +250,17 @@ async fn run_accept_loop(
     loop {
         tokio::select! {
             Ok((socket, addr)) = listener.accept(), if accepting => {
-                let conn_id = state.next_id.fetch_add(1, Ordering::Relaxed);
-                let _ = state.to_bevy_tx.send(NetworkEvent::Connected { conn_id, addr });
-                register_connection(conn_id, socket, &state.to_bevy_tx, &state.conns, true, state.limits.clone());
+                match gate_accept(&state.limits, &state.shed) {
+                    AcceptOutcome::Admit => admit_connection(state, socket, addr),
+                    AcceptOutcome::AdmitWith(ev) => {
+                        let _ = state.to_bevy_tx.send(ev);
+                        admit_connection(state, socket, addr);
+                    }
+                    AcceptOutcome::Drop => {}
+                    AcceptOutcome::DropWith(ev) => {
+                        let _ = state.to_bevy_tx.send(ev);
+                    }
+                }
             }
             Some(cmd) = to_tokio_rx.recv() => {
                 match cmd {
@@ -323,5 +351,73 @@ async fn handle_copyover(
             error!("copyover task panicked: {e}; resuming service");
             true
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::time::Instant;
+
+    fn test_state(limits: TelnetLimits) -> ServeState {
+        let (tx, _rx) = std_mpsc::channel();
+        ServeState {
+            next_id: AtomicUsize::new(1),
+            to_bevy_tx: tx,
+            conns: Arc::new(Mutex::new(HashMap::new())),
+            limits,
+            shed: Mutex::new(ShedState::default()),
+        }
+    }
+
+    fn tight_limits() -> TelnetLimits {
+        TelnetLimits {
+            max_connects_total: 3,
+            total_window_secs: 60,
+            shed_secs: 3600,
+            ..TelnetLimits::default()
+        }
+    }
+
+    #[test]
+    fn rapid_accepts_trip_shed_then_drop() {
+        let state = test_state(tight_limits());
+        for _ in 0..3 {
+            assert!(matches!(
+                gate_accept(&state.limits, &state.shed),
+                AcceptOutcome::Admit
+            ));
+        }
+        // The tripping connection arrived before the shed: admitted, with
+        // the entry event.
+        assert!(matches!(
+            gate_accept(&state.limits, &state.shed),
+            AcceptOutcome::AdmitWith(_)
+        ));
+        // Shedding: drops, heartbeat-suppressed (60 s interval).
+        assert!(matches!(
+            gate_accept(&state.limits, &state.shed),
+            AcceptOutcome::Drop
+        ));
+        let shed = state.shed.lock().unwrap();
+        assert!(shed.shed_until.is_some());
+        assert_eq!(shed.refused, 1);
+    }
+
+    #[test]
+    fn expired_shed_lifts_on_next_accept() {
+        let state = test_state(TelnetLimits::default());
+        // Pre-arm an already-expired shed: `until == now` never satisfies
+        // `now < until`, so the next accept lifts deterministically.
+        state.shed.lock().unwrap().shed_until = Some(Instant::now());
+        state.shed.lock().unwrap().refused = 7;
+        assert!(matches!(
+            gate_accept(&state.limits, &state.shed),
+            AcceptOutcome::AdmitWith(_)
+        ));
+        let shed = state.shed.lock().unwrap();
+        assert!(shed.shed_until.is_none());
+        assert_eq!(shed.refused, 0);
+        assert_eq!(shed.accepts.len(), 1, "the lifting accept is counted");
     }
 }

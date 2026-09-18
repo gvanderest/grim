@@ -22,6 +22,7 @@ mod limits;
 mod plugin;
 mod render;
 mod server;
+mod shed;
 
 pub use limits::TelnetLimits;
 pub use plugin::TelnetPlugin;
