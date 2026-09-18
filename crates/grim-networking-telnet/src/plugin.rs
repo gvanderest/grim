@@ -13,15 +13,25 @@ use crate::copyover::{
     finish_copyover, install_copyover_signal, poll_copyover_signal, trigger_copyover_on_due,
     CopyoverDone, CopyoverSignal,
 };
+use crate::limits::TelnetLimits;
 use crate::server::start_telnet_server;
 
 pub struct TelnetPlugin {
     pub port: u16,
+    pub limits: TelnetLimits,
 }
 
 impl TelnetPlugin {
     pub fn new(port: u16) -> Self {
-        Self { port }
+        Self {
+            port,
+            limits: TelnetLimits::default(),
+        }
+    }
+
+    pub fn with_limits(mut self, limits: TelnetLimits) -> Self {
+        self.limits = limits;
+        self
     }
 }
 
@@ -35,6 +45,7 @@ impl Plugin for TelnetPlugin {
             .add_message::<DisconnectRequest>()
             .add_message::<grim_core::events::CopyoverDue>()
             .insert_resource(TelnetPort(self.port))
+            .insert_resource(self.limits.clone())
             .init_resource::<CopyoverSignal>()
             .init_resource::<CopyoverDone>()
             .add_systems(Startup, (install_copyover_signal, start_telnet_server))
@@ -63,8 +74,21 @@ mod tests {
     fn telnet_plugin_new() {
         let plugin = TelnetPlugin::new(8080);
         assert_eq!(plugin.port, 8080);
+        assert_eq!(plugin.limits.max_line_len, 1024);
 
-        let plugin2 = TelnetPlugin { port: 9090 };
+        let plugin2 = TelnetPlugin::new(9090);
         assert_eq!(plugin2.port, 9090);
+    }
+
+    #[test]
+    fn telnet_plugin_with_limits() {
+        let limits = TelnetLimits {
+            max_line_len: 512,
+            ..TelnetLimits::default()
+        };
+        let plugin = TelnetPlugin::new(8080).with_limits(limits);
+        assert_eq!(plugin.port, 8080);
+        assert_eq!(plugin.limits.max_line_len, 512);
+        assert_eq!(plugin.limits.max_buffer, 65536);
     }
 }

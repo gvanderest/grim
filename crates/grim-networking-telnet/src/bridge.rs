@@ -324,7 +324,7 @@ mod tests {
         fn telnet_plugin_accepts_connection() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19999 });
+            app.add_plugins(TelnetPlugin::new(19999));
             add_messages(&mut app);
 
             app.update();
@@ -384,7 +384,7 @@ mod tests {
         fn input_filter_strips_control_chars() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19993 });
+            app.add_plugins(TelnetPlugin::new(19993));
             add_messages(&mut app);
 
             app.update();
@@ -438,7 +438,7 @@ mod tests {
         fn echo_false_sets_echo_hidden() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19995 });
+            app.add_plugins(TelnetPlugin::new(19995));
             add_messages(&mut app);
 
             app.update();
@@ -498,7 +498,7 @@ mod tests {
         fn echo_hidden_resets_on_input() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19994 });
+            app.add_plugins(TelnetPlugin::new(19994));
             add_messages(&mut app);
 
             app.update();
@@ -585,7 +585,7 @@ mod tests {
         fn send_network_commands_sends_text() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19998 });
+            app.add_plugins(TelnetPlugin::new(19998));
             add_messages(&mut app);
 
             app.update();
@@ -639,7 +639,7 @@ mod tests {
         fn send_network_commands_in_game_prompt() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19992 });
+            app.add_plugins(TelnetPlugin::new(19992));
             add_messages(&mut app);
 
             app.update();
@@ -703,7 +703,7 @@ mod tests {
         fn send_network_commands_no_prepend_in_game() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19991 });
+            app.add_plugins(TelnetPlugin::new(19991));
             add_messages(&mut app);
 
             app.update();
@@ -772,7 +772,7 @@ mod tests {
         fn send_network_commands_empty_text_ingame() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19990 });
+            app.add_plugins(TelnetPlugin::new(19990));
             add_messages(&mut app);
 
             app.update();
