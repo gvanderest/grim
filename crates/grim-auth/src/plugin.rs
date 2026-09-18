@@ -45,10 +45,16 @@ impl Plugin for AuthPlugin {
         // registry before adding this plugin (mirrors ReservedNamePrefixes).
         app.init_resource::<RaceRegistry>();
         app.init_resource::<ClassRegistry>();
+        // Per-IP reconnect throttle for the greeter gate. init_resource so
+        // an author overrides by inserting custom limits before this plugin
+        // (mirrors ReservedNamePrefixes).
+        app.init_resource::<crate::throttle::ReconnectLimits>();
+        app.init_resource::<crate::throttle::ReconnectThrottle>();
         // The greeter severs banned-IP sockets itself; register the request
         // here so AuthPlugin stands alone (a no-op when ScenePlugin, which
         // owns the message, is also present).
         app.add_message::<DisconnectRequest>();
+        app.add_message::<grim_networking::WiznetAlert>();
         app.add_systems(Startup, validate_registries);
         app.add_systems(
             Update,

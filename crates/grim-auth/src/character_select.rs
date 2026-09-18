@@ -6,7 +6,9 @@ use grim_actor::{Actor, Character, Linkdead, OutputHistory, Player};
 use grim_core::components::{Account, Client, ClientState, Name as GrimName};
 use grim_core::events::{LinkdeadAnnounce, LoginAnnounce, LookRoom};
 use grim_core::GrimId;
-use grim_networking::{ConnectionOutput, DisconnectRequest};
+use grim_networking::{
+    admin_log, ConnectionOutput, DisconnectRequest, WiznetAlert, WiznetCategory,
+};
 use grim_persistence::{load_account_characters, PersistenceConfig};
 use grim_text::tr;
 use std::collections::VecDeque;
@@ -124,6 +126,7 @@ pub(crate) fn character_select(
     outputs: &mut MessageWriter<ConnectionOutput>,
     announce_linkdead: &mut MessageWriter<LinkdeadAnnounce>,
     disconnect: &mut MessageWriter<DisconnectRequest>,
+    alerts: &mut MessageWriter<WiznetAlert>,
 ) {
     let text = text.trim();
     let lower = text.to_lowercase();
@@ -171,9 +174,13 @@ pub(crate) fn character_select(
     };
     let name = entry.name.clone();
     // Banned characters never enter the world: refuse with the ban message
-    // and re-show the menu so the account's other characters stay playable.
     if res.bans.is_character_banned(&name) {
         outputs.write(ConnectionOutput::new(conn, tr!("ban.banned.character")));
+        admin_log!(
+            alerts,
+            WiznetCategory::Security,
+            "refused banned character '{name}' at selection"
+        );
         show_character_menu(
             client_entity,
             client,
@@ -212,6 +219,7 @@ pub(crate) fn character_select(
         outputs,
         announce_linkdead,
         disconnect,
+        alerts,
     );
 }
 

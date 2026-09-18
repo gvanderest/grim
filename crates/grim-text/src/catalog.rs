@@ -223,6 +223,7 @@ fn default_string(key: &str) -> String {
         "ban.save_failed" => "Ban could not be saved; nothing changed.\n",
         "script.trigger.failed" => "Script error in %{name} (%{trigger}): %{error}\n",
         "ban.invalid_pattern" => "Invalid pattern for %{scope} ban.\n",
+        "throttle.reconnect" => "You are connecting too quickly. Wait a few minutes and try again.\n",
         "config.list.header" => "Config options:\n",
         "config.list.row" => "  %{name}: %{value} - [%{options}]\n",
         "config.set" => "%{name} set to %{value}.\n",

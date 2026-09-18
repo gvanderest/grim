@@ -25,7 +25,10 @@ fn main() {
 
     // The full GRIM stack, from one facade crate. Swap `GrimDefaultPlugins` for
     // the individual plugins (all under `grim::plugins`) to omit or replace any.
-    app.add_plugins(GrimDefaultPlugins { telnet_port: 4000 });
+    app.add_plugins(GrimDefaultPlugins {
+        telnet_port: 4000,
+        ..Default::default()
+    });
 
     // Seed the world
     app.add_systems(Startup, seed::seed_world);

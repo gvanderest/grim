@@ -13,7 +13,7 @@ use bevy::prelude::*;
 use grim_actor::{Actor, Character, InRoom, Linkdead, OutputHistory, Player};
 use grim_core::components::Name as GrimName;
 use grim_core::events::LinkdeadAnnounce;
-use grim_networking::DisconnectRequest;
+use grim_networking::{DisconnectRequest, WiznetAlert};
 use grim_scene::ConnectedAt;
 use grim_world::{Area, ClassRegistry, RaceRegistry, Room, RoomLocation, StartingRoom};
 
@@ -104,4 +104,5 @@ pub(crate) struct WorldEntry<'w, 's> {
     pub(crate) histories: Query<'w, 's, &'static mut OutputHistory>,
     pub(crate) announce_linkdead: MessageWriter<'w, LinkdeadAnnounce>,
     pub(crate) disconnect: MessageWriter<'w, DisconnectRequest>,
+    pub(crate) alerts: MessageWriter<'w, WiznetAlert>,
 }

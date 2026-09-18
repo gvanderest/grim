@@ -94,6 +94,7 @@ impl Plugin for ScenePlugin {
             .add_message::<LogoutAnnounce>()
             .add_message::<LinkdeadAnnounce>()
             .add_message::<ServerBroadcast>()
+            .add_message::<grim_networking::WiznetAlert>()
             .add_systems(
                 Update,
                 (
