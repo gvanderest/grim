@@ -9,13 +9,9 @@ use std::os::fd::{AsRawFd, RawFd};
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 
-use bevy::log::info;
 use bevy::prelude::*;
 use grim_core::components::{Client, ClientState};
-use grim_networking::{
-    Connection, ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,
-    ConnectionResumed, DisconnectRequest,
-};
+use grim_networking::{Connection, ConnectionOutput, DisconnectRequest};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::time::Instant;
@@ -23,7 +19,6 @@ use tokio::time::Instant;
 use crate::guard::{discard_to_newline, frame_input, rate_tripped, GuardTrip};
 use crate::limits::TelnetLimits;
 use crate::{iac, render};
-
 // ─── Internal bridge types ─────────────────────────────────────────
 
 pub(crate) struct Conn {
@@ -218,136 +213,6 @@ pub(crate) fn register_connection(
     );
 }
 
-// ─── Update: drain network -> Bevy events ──────────────────────────
-
-pub(crate) fn drain_network_events(
-    bridge: Res<NetworkBridge>,
-    mut commands: Commands,
-    mut established: MessageWriter<ConnectionEstablished>,
-    mut resumed: MessageWriter<ConnectionResumed>,
-    mut input: MessageWriter<ConnectionInput>,
-    mut closed: MessageWriter<ConnectionClosed>,
-    mut connections: Query<(Entity, &mut Connection)>,
-) {
-    let rx = bridge.from_network.lock().unwrap();
-    while let Ok(ev) = rx.try_recv() {
-        match ev {
-            NetworkEvent::Connected { conn_id, addr } => {
-                info!("Connection from {} (id={})", addr, conn_id);
-                let entity = commands
-                    .spawn(Connection {
-                        id: conn_id,
-                        addr,
-                        echo_hidden: false,
-                    })
-                    .id();
-                established.write(ConnectionEstablished {
-                    connection: entity,
-                    addr,
-                });
-            }
-            NetworkEvent::Resumed {
-                conn_id,
-                addr,
-                character,
-                echo_hidden,
-            } => {
-                info!(
-                    "Connection {} resumed as '{}' (copyover)",
-                    conn_id, character
-                );
-                let entity = commands
-                    .spawn(Connection {
-                        id: conn_id,
-                        addr,
-                        echo_hidden,
-                    })
-                    .id();
-                // No banner, no login: the session layer places the character
-                // straight back into the world.
-                resumed.write(ConnectionResumed {
-                    connection: entity,
-                    character,
-                });
-            }
-            NetworkEvent::Input { conn_id, text } => {
-                if let Some((entity, mut conn)) =
-                    connections.iter_mut().find(|(_, c)| c.id == conn_id)
-                {
-                    // Filter to printable ASCII (32-126) — strip ANSI/control chars
-                    let text: String = text
-                        .chars()
-                        .filter(|&c| c.is_ascii_graphic() || c == ' ')
-                        .collect();
-
-                    // If echo was hidden (password mode), auto-restore on user input.
-                    if conn.echo_hidden {
-                        let _ = bridge.to_network.try_send(NetworkCommand::SendRaw {
-                            conn_id,
-                            data: iac::WONT_ECHO.to_vec(), // IAC WONT ECHO → visible
-                        });
-                        let _ = bridge.to_network.try_send(NetworkCommand::Send {
-                            conn_id,
-                            text: "\n".into(),
-                        });
-                        conn.echo_hidden = false;
-                    }
-                    input.write(ConnectionInput {
-                        connection: entity,
-                        text,
-                    });
-                }
-            }
-            NetworkEvent::Disconnected { conn_id, reason } => {
-                if let Some((entity, conn)) = connections.iter().find(|(_, c)| c.id == conn_id) {
-                    match reason {
-                        Some(trip) => info!(
-                            "Connection {} ({}) disconnected: input guard tripped ({})",
-                            conn_id, conn.addr, trip
-                        ),
-                        None => info!("Connection {} disconnected", conn_id),
-                    }
-                    closed.write(ConnectionClosed { connection: entity });
-                    // Despawn is handled by save_on_disconnect in the persistence plugin
-                }
-            }
-            NetworkEvent::Shed {
-                active,
-                connects,
-                window_secs,
-                shed_secs,
-                refused,
-            } => {
-                log_shed(active, connects, window_secs, shed_secs, refused);
-            }
-        }
-    }
-}
-
-/// Log a shed transition or heartbeat. Factored out of
-/// [`drain_network_events`] for the line budget (same one-function-per-list
-/// shape as the `who`/`sockets` renderers).
-fn log_shed(active: bool, connects: u32, window_secs: u64, shed_secs: u64, refused: u64) {
-    if active {
-        if refused == 0 {
-            info!(
-                "Connection flood: {} connects in {}s — shedding new connections for {}s",
-                connects, window_secs, shed_secs
-            );
-        } else {
-            info!(
-                "Still shedding new connections ({} refused since the trip)",
-                refused
-            );
-        }
-    } else {
-        info!(
-            "Connection shed lifted after refusing {}; accepting again",
-            refused
-        );
-    }
-}
-
 // ─── Update: route Bevy events -> network ──────────────────────────
 
 pub(crate) fn send_network_commands(
@@ -397,11 +262,14 @@ pub(crate) fn send_network_commands(
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::plugin::TelnetPlugin;
+    use grim_networking::{
+        ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,
+        DisconnectRequest, WiznetAlert, WiznetCategory,
+    };
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::time::Duration;
@@ -412,7 +280,8 @@ mod tests {
             .add_message::<ConnectionInput>()
             .add_message::<ConnectionClosed>()
             .add_message::<ConnectionOutput>()
-            .add_message::<DisconnectRequest>();
+            .add_message::<DisconnectRequest>()
+            .add_message::<WiznetAlert>();
     }
 
     /// Accept loop: a fresh connection produces `ConnectionEstablished`, input
@@ -1070,6 +939,40 @@ mod tests {
                 last.read(&mut buf).ok(),
                 Some(0),
                 "shed-dropped socket must see EOF"
+            );
+        }
+
+        fn alert_texts(app: &App) -> Vec<(WiznetCategory, String)> {
+            let msgs = app.world().resource::<Messages<WiznetAlert>>();
+            let mut cursor = msgs.get_cursor();
+            cursor
+                .read(msgs)
+                .map(|a| (a.category, a.text.clone()))
+                .collect()
+        }
+
+        #[test]
+        fn connect_and_close_emit_logins_alerts() {
+            let mut app = boot(19987, TelnetLimits::default());
+            let stream = connect(19987);
+            app.update();
+            std::thread::sleep(Duration::from_millis(100));
+            app.update();
+            let alerts = alert_texts(&app);
+            assert!(
+                alerts.iter().any(|(c, t)| *c == WiznetCategory::Logins
+                    && t.starts_with("new connection from 127.0.0.1:")),
+                "connect emits a logins alert; got {alerts:?}"
+            );
+            drop(stream);
+            std::thread::sleep(Duration::from_millis(150));
+            app.update();
+            let alerts = alert_texts(&app);
+            assert!(
+                alerts.iter().any(|(c, t)| *c == WiznetCategory::Logins
+                    && t.ends_with(" closed")
+                    && t.contains("127.0.0.1:")),
+                "clean close emits a logins alert; got {alerts:?}"
             );
         }
     }
