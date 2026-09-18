@@ -15,7 +15,8 @@ use crate::formatter;
 use crate::params::{PlayerChars, RoomResolver, SessionRes};
 use crate::parser;
 use crate::sockets::{format_sockets, ClientSnapshot};
-use crate::who::{format_areas, format_where, format_who, format_wizlist};
+use crate::who::{afk_chars, format_areas, format_where, format_who};
+use crate::wizlist::format_wizlist;
 
 /// `equipment` stays a dummy (no worn-items system yet). Factored out of
 /// [`handle_ingame`] to hold that dispatch table under the line budget.
@@ -33,6 +34,7 @@ fn answer_wizlist(
     conn: Entity,
     player_chars: &PlayerChars,
     linkdead: &Query<&Linkdead>,
+    snapshot: &[ClientSnapshot],
     res: &SessionRes,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
@@ -40,7 +42,13 @@ fn answer_wizlist(
         echo: None,
         ..ConnectionOutput::new(
             conn,
-            format_wizlist(player_chars, linkdead, res, &res.wizlist),
+            format_wizlist(
+                player_chars,
+                linkdead,
+                &afk_chars(snapshot),
+                res,
+                &res.wizlist,
+            ),
         )
     });
 }
@@ -93,6 +101,37 @@ fn answer_commands(
     });
 }
 
+/// Answer `who` from the player list plus the snapshot-derived AFK set.
+/// Factored out of [`handle_ingame`] to hold that dispatcher under the line
+/// budget (same reason as [`answer_equipment`]).
+fn answer_who(
+    conn: Entity,
+    player_chars: &PlayerChars,
+    linkdead: &Query<&Linkdead>,
+    snapshot: &[ClientSnapshot],
+    res: &SessionRes,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+) {
+    outputs.write(ConnectionOutput {
+        echo: None,
+        ..ConnectionOutput::new(
+            conn,
+            format_who(player_chars, linkdead, &afk_chars(snapshot), res),
+        )
+    });
+}
+
+/// Flag the session AFK with the `afk.set` notice. Any later input line clears
+/// it via the touch system. Factored out of [`handle_ingame`] for the line
+/// budget (same reason as [`answer_equipment`]).
+fn flag_afk(client: &mut Client, conn: Entity, outputs: &mut MessageWriter<ConnectionOutput>) {
+    client.afk = true;
+    outputs.write(ConnectionOutput {
+        echo: None,
+        ..ConnectionOutput::new(conn, tr!("afk.set"))
+    });
+}
+
 /// InGame: parse the line (honouring `!` repeat), answer session-local commands
 /// directly, admin-gate + mask the admin verbs, and queue everything else.
 #[allow(clippy::too_many_arguments)]
@@ -135,14 +174,10 @@ pub(crate) fn handle_ingame(
         client.last_input = Some(text_to_parse.to_string());
         // Handle special commands immediately
         match &cmd {
-            Command::Who => {
-                outputs.write(ConnectionOutput {
-                    echo: None,
-                    ..ConnectionOutput::new(conn, format_who(player_chars, linkdead, res))
-                });
-            }
+            Command::Who => answer_who(conn, player_chars, linkdead, snapshot, res, outputs),
+            Command::Afk => flag_afk(client, conn, outputs),
             Command::Wizlist => {
-                answer_wizlist(conn, player_chars, linkdead, res, outputs);
+                answer_wizlist(conn, player_chars, linkdead, snapshot, res, outputs);
             }
             Command::Where => {
                 outputs.write(ConnectionOutput {

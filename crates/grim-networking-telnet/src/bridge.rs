@@ -277,10 +277,12 @@ pub(crate) fn send_network_commands(
                     });
                 }
             }
-            let is_ingame = clients
+            let (is_ingame, is_afk) = clients
                 .iter()
-                .any(|c| c.state == ClientState::InGame && c.connection == ev.connection);
-            let ready = render::render_output(&ev.text, is_ingame, ev.prepend_newline);
+                .find(|c| c.connection == ev.connection)
+                .map(|c| (c.state == ClientState::InGame, c.afk))
+                .unwrap_or((false, false));
+            let ready = render::render_output(&ev.text, is_ingame, is_afk, ev.prepend_newline);
             let _ = bridge.to_network.try_send(NetworkCommand::Send {
                 conn_id: conn.id,
                 text: ready,

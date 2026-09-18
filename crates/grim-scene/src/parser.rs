@@ -267,6 +267,7 @@ fn build_registry() -> CommandRegistry<Command> {
     r.register("who", |_| Some(Command::Who));
     r.register("wizlist", |_| Some(Command::Wizlist));
     r.register("where", |_| Some(Command::Where));
+    r.register("afk", |_| Some(Command::Afk));
     // `finger <name>` — rejected with no argument so a bare `finger` is unknown.
     r.register("finger", |rest| {
         let target = rest.trim();
@@ -625,6 +626,11 @@ mod tests {
     #[test]
     fn test_who() {
         assert_eq!(parse("who"), Some(Command::Who));
+    }
+
+    #[test]
+    fn test_afk() {
+        assert_eq!(parse("afk"), Some(Command::Afk));
     }
 
     #[test]

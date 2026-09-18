@@ -61,6 +61,7 @@ impl Plugin for AuthPlugin {
                 // input.rs module doc + JustEnteredWorld).
                 handle_pregame_input
                     .after(handle_connection_established)
+                    .after(SceneSystems::TouchInput)
                     .before(SceneSystems::InGameInput),
             ),
         );

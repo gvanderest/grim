@@ -12,7 +12,7 @@ in **`grim-actor`**, and the world-topology components (`Area`/`Room`/`Exits`) p
 
 | Component | File | Purpose |
 |---|---|---|
-| `Client` | `src/components.rs` | Session state machine, one per connection (holds `ClientState`, account/character links, input queue, cooldown). |
+| `Client` | `src/components.rs` | Session state machine, one per connection (holds `ClientState`, account/character links, input queue, cooldown, `last_active`/`idle_warned`/`afk` liveness). |
 | `Account` | `src/components.rs` | Persisted account: identifier, password hash, owned character IDs. |
 | `Name` | `src/components.rs` | Display name for any visible entity (a being's name lives here, not on `Character`). |
 | `Description` | `src/components.rs` | Long description shown by `look <target>`: paragraphs with no embedded newlines, newline-joined at render. |
@@ -29,7 +29,7 @@ This crate *defines* the `Command` enum (the closed set of player verbs, `src/ev
 |---|---|
 | `look` / `desc` / `move` / `goto` / `quit` / `title` / `shutdown` / `reboot` / `copyover` | `grim-actor` → `src/commands/<name>.rs` (`shutdown.rs` handles all three shutdown verbs) |
 | `say` / `yell` / `ooc` / `tell` / `reply` / `gecho` | `grim-channel` → `src/channel.rs` |
-| `finger` / `who` / `wizlist` / `where` / `sockets` / `commands` / `areas` | `grim-scene` → `src/command.rs` (session-local) |
+| `finger` / `who` / `afk` / `wizlist` / `where` / `sockets` / `commands` / `areas` | `grim-scene` → `src/command.rs` (session-local) |
 | `ban` (`BanOp::List` / `Add` / `Remove` over `BanKind::Ip` / `Account` / `Character`) | `grim-scene` → `src/ban.rs` (engine queue; persists + kicks) |
 
 The closed `Command` enum + last-registered-wins registry are documented as defects slated for per-plugin typed dispatch (ARCHITECTURE.md §5.2, §8).

@@ -24,6 +24,7 @@ use grim::{
 };
 use grim::{
     Connection, ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,
+    DisconnectRequest, IdleConfig,
 };
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -91,6 +92,7 @@ pub struct Mud {
     cursor: bevy::ecs::message::MessageCursor<ConnectionOutput>,
     exit_cursor: bevy::ecs::message::MessageCursor<AppExit>,
     due_cursor: bevy::ecs::message::MessageCursor<grim::events::CopyoverDue>,
+    disconnect_cursor: bevy::ecs::message::MessageCursor<DisconnectRequest>,
     buffers: HashMap<Entity, Vec<String>>,
     read_offsets: HashMap<Entity, usize>,
 }
@@ -129,6 +131,10 @@ impl Mud {
             .world()
             .resource::<Messages<grim::events::CopyoverDue>>()
             .get_cursor();
+        let disconnect_cursor = app
+            .world()
+            .resource::<Messages<DisconnectRequest>>()
+            .get_cursor();
 
         Self {
             app,
@@ -137,6 +143,7 @@ impl Mud {
             cursor,
             exit_cursor,
             due_cursor,
+            disconnect_cursor,
             buffers: HashMap::new(),
             read_offsets: HashMap::new(),
         }
@@ -231,6 +238,22 @@ impl Mud {
             connection: session.conn,
         });
         self.pump();
+    }
+
+    /// Override the idle thresholds (seconds) for this test.
+    pub fn set_idle_config(&mut self, config: IdleConfig) {
+        self.app.insert_resource(config);
+    }
+
+    /// Connections the server asked to sever since the last call (idle
+    /// timeouts, quits). The headless harness has no transport, so nothing
+    /// acts on these — they prove the sweep fired.
+    pub fn drain_disconnects(&mut self) -> Vec<Entity> {
+        let msgs = self.app.world().resource::<Messages<DisconnectRequest>>();
+        self.disconnect_cursor
+            .read(msgs)
+            .map(|m| m.connection)
+            .collect()
     }
 
     /// Reboot the world in place: rebuild the app on the SAME data directory

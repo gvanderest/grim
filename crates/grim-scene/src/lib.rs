@@ -13,6 +13,7 @@ mod countdown;
 mod directions;
 mod editor;
 mod finger;
+mod idle;
 mod input;
 mod item_output;
 mod output;
@@ -25,6 +26,7 @@ mod scene_stack;
 mod session;
 mod sockets;
 mod who;
+mod wizlist;
 
 // Shared render helpers (MOTD text, selection menus) the pre-game auth
 // flow reads. Auth → scene is allowed; scene never depends on auth.
@@ -33,6 +35,7 @@ pub mod formatter;
 #[cfg(test)]
 mod tests;
 
+pub use idle::IdleConfig;
 pub use plugin::{ScenePlugin, SceneSystems};
 pub use scene_stack::{push_ingame_scene, top_is_ingame, InGameScene, SceneStack};
 pub use session::{ConnectedAt, JustEnteredWorld};

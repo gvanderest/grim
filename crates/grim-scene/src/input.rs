@@ -49,7 +49,10 @@ pub(crate) fn handle_ingame_input(
     // Snapshot every session once per tick for the `sockets` list. A second
     // `Client` query inside `handle_ingame` would conflict with the `&mut`
     // borrow below, so the data crosses as plain values.
-    let snapshot: Vec<ClientSnapshot> = clients
+    let now = res.time.elapsed();
+    // Re-synced below as lines dispatch (the `afk` verb flips `Client.afk`
+    // mid-batch), so later lines in the same tick read current flags.
+    let mut snapshot: Vec<ClientSnapshot> = clients
         .iter()
         .map(|(entity, c)| ClientSnapshot {
             client: entity,
@@ -57,6 +60,8 @@ pub(crate) fn handle_ingame_input(
             state: c.state.clone(),
             account: c.account,
             character: c.character,
+            afk: c.afk,
+            idle_secs: c.last_active.map(|last| now.saturating_sub(last).as_secs()),
         })
         .collect();
     for ev in inputs.read() {
@@ -124,5 +129,11 @@ pub(crate) fn handle_ingame_input(
             &accounts,
             &mut outputs,
         );
+        // The `afk` verb flips `Client.afk` mid-batch: re-sync this session's
+        // snapshot row so a later line in the same tick (another session's
+        // `who`) reads it instead of waiting a tick.
+        if let Some(s) = snapshot.iter_mut().find(|s| s.connection == ev.connection) {
+            s.afk = client.afk;
+        }
     }
 }

@@ -1847,21 +1847,25 @@ mod ingame_commands {
             "got: {}",
             out.text
         );
-        let first = out.text.find("[1]").expect("admin row");
-        let second = out.text.find("[2]").expect("login row");
+        let first = out.text.find("127.0.0.1:11111").expect("admin row");
+        let second = out.text.find("127.0.0.1:22222").expect("login row");
         assert!(
             first < second,
             "rows must sort by connection id:\n{}",
             out.text
         );
+        // Admin typed `sockets`: the touch system stamped activity this tick,
+        // so idle reads `0s`. The login session never sent input and the sweep
+        // runs after dispatch, so it still reads `-`.
         assert!(
             out.text
-                .contains("[1] 127.0.0.1:11111 InGame Hero (spy@@xf00.com)\n"),
+                .contains(" 1  127.0.0.1:11111  InGame  Hero  spy@@xf00.com    0s\n"),
             "got: {}",
             out.text
         );
         assert!(
-            out.text.contains("[2] 127.0.0.1:22222 Login - (-)\n"),
+            out.text
+                .contains(" 2  127.0.0.1:22222  Login   -     -                -\n"),
             "got: {}",
             out.text
         );
@@ -1872,6 +1876,59 @@ mod ingame_commands {
         // Answered session-locally: nothing queued for the engine.
         let engine = app.world().resource::<Messages<EngineCommand>>();
         assert_eq!(engine.get_cursor().read(engine).count(), 0);
+    }
+
+    /// Same-tick freshness: Alice's `afk` and Bob's `who` queued before one
+    /// update — Bob's list must show her marker without waiting a tick. The
+    /// per-tick snapshot re-syncs as lines dispatch.
+    #[test]
+    fn ingame_afk_visible_to_same_tick_who() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let alice_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:11111".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let bob_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 2,
+                addr: "127.0.0.1:22222".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let mut alice = make_character(vec![]);
+        alice.name = "Alice".into();
+        let mut bob = make_character(vec![]);
+        bob.name = "Bob".into();
+        spawn_ingame(&mut app, alice_conn, alice);
+        spawn_ingame(&mut app, bob_conn, bob);
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: alice_conn,
+            text: "afk".into(),
+        });
+        app.world_mut().write_message(ConnectionInput {
+            connection: bob_conn,
+            text: "who".into(),
+        });
+        app.update();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == bob_conn)
+            .expect("expected a who response");
+        assert!(
+            out.text.contains("Alice (AFK)"),
+            "same-tick who must show the marker:\n{}",
+            out.text
+        );
     }
 
     /// A non-admin `sockets` is masked exactly like an unknown command and
