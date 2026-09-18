@@ -50,7 +50,9 @@ const SHED_REPORT_INTERVAL: Duration = Duration::from_secs(60);
 pub(crate) fn gate_accept(limits: &TelnetLimits, shed: &Mutex<ShedState>) -> AcceptOutcome {
     let mut shed = shed.lock().unwrap();
     let now = Instant::now();
-    let window = Duration::from_secs(limits.total_window_secs);
+    // Zero durations would fail open (nothing accumulates, the shed never
+    // holds); floor them like the input rate window.
+    let window = Duration::from_secs(limits.total_window_secs.max(1));
 
     if let Some(until) = shed.shed_until {
         if now < until {
@@ -82,7 +84,7 @@ pub(crate) fn gate_accept(limits: &TelnetLimits, shed: &Mutex<ShedState>) -> Acc
     }
     shed.accepts.push_back(now);
     if shed.accepts.len() > limits.max_connects_total as usize {
-        shed.shed_until = Some(now + Duration::from_secs(limits.shed_secs));
+        shed.shed_until = Some(now + Duration::from_secs(limits.shed_secs.max(1)));
         shed.last_report = Some(now);
         shed.refused = 0;
         shed.lifted_refused = None;

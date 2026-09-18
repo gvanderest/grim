@@ -167,6 +167,7 @@ mod reconnect {
         app.world_mut().write_message(ConnectionResumed {
             connection: conn,
             character: "Test".into(),
+            addr: "127.0.0.1:12377".parse().unwrap(),
         });
         app.update();
 
@@ -231,6 +232,7 @@ mod reconnect {
             app.world_mut().write_message(ConnectionResumed {
                 connection: conn,
                 character: "Doomed".into(),
+                addr: "127.0.0.1:12378".parse().unwrap(),
             });
             app.update();
 
@@ -307,6 +309,7 @@ mod reconnect {
             app.world_mut().write_message(ConnectionResumed {
                 connection: conn,
                 character: "Clean".into(),
+                addr: "127.0.0.1:12379".parse().unwrap(),
             });
             app.update();
 
@@ -366,6 +369,7 @@ mod reconnect {
             app.world_mut().write_message(ConnectionResumed {
                 connection: conn,
                 character: "Clean".into(),
+                addr: "10.9.9.9:12380".parse().unwrap(),
             });
             app.update();
 

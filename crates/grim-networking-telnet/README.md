@@ -12,7 +12,7 @@ None. Reuses `grim_networking::Connection`.
 |---|---|---|---|
 | `install_copyover_signal` | Startup | `src/copyover.rs` | Install the `SIGUSR2` handler that flips the copyover flag. |
 | `start_telnet_server` | Startup | `src/server.rs` | Spawn the detached tokio thread: adopt inherited fds from a copyover predecessor or bind fresh, signal systemd readiness, run the accept/command `select!` loop. |
-| `drain_network_events` | Update (chained) | `src/bridge.rs` | Drain events off the tokio→Bevy channel into `ConnectionEstablished` / `ConnectionResumed` / `ConnectionInput` / `ConnectionClosed` messages, spawning/despawning `Connection` entities. |
+| `drain_creations` / `drain_dependents` | Update (chained) | `src/drain.rs` | Two-phase drain: creations spawn `Connection` entities first (applied before the next system), then input/close/shed resolve against them — a same-tick connect+input never drops. |
 | `send_network_commands` | Update (chained) | `src/bridge.rs` | Read `ConnectionOutput` / `DisconnectRequest` and route them back to the network thread (render + echo toggle + disconnect). |
 | `poll_copyover_signal` | Update (chained) | `src/copyover.rs` | On a raised `SIGUSR2` flag, snapshot in-game sessions into a `HandoverManifest` and start the handoff to the successor. |
 | `trigger_copyover_on_due` | Update (chained, before poll) | `src/copyover.rs` | On an in-game `copyover` countdown's expiry (`CopyoverDue`), raise the same latched flag `SIGUSR2` raises. |

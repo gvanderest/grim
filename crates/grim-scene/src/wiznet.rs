@@ -190,7 +190,11 @@ fn broadcast_wiznet(
     for (category, text) in pending {
         let line = format!("[wiznet:{category}] {text}\n");
         for conn in wiznet_audience(&online, &registry, category) {
-            outputs.write(ConnectionOutput::new(conn, line.clone()));
+            // Unsolicited like any other game event: stay off the prompt line.
+            outputs.write(ConnectionOutput {
+                prepend_newline: true,
+                ..ConnectionOutput::new(conn, line.clone())
+            });
         }
     }
 }

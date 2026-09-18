@@ -46,7 +46,9 @@ const MAX_TRACKED_IPS: usize = 8192;
 impl ReconnectThrottle {
     /// Record one attempt from `ip` at `now` (seconds). Returns true
     /// when refused: inside a reject window, or past `max_attempts` in
-    /// the sliding window (which arms a fresh reject window).
+    /// the sliding window (which arms a fresh reject window). Zero
+    /// durations floor to one second — a zero window or reject would
+    /// otherwise fail open (nothing accumulates, nothing is refused).
     pub(crate) fn check(&mut self, ip: &IpAddr, now: f64, limits: &ReconnectLimits) -> bool {
         if self
             .rejected_until
@@ -55,24 +57,23 @@ impl ReconnectThrottle {
         {
             return true;
         }
-        let window = limits.window_secs as f64;
+        let window = (limits.window_secs as f64).max(1.0);
+        let reject = (limits.reject_secs as f64).max(1.0);
         let attempts = self.attempts.entry(*ip).or_default();
         while attempts.front().is_some_and(|&t| now - t > window) {
             attempts.pop_front();
         }
         attempts.push_back(now);
         if attempts.len() > limits.max_attempts as usize {
-            self.rejected_until
-                .insert(*ip, now + limits.reject_secs as f64);
-            self.sweep(now, window.max(limits.reject_secs as f64));
+            self.rejected_until.insert(*ip, now + reject);
+            self.sweep(now, window.max(reject));
             return true;
         }
         if self.attempts.len() > MAX_TRACKED_IPS {
-            self.sweep(now, window.max(limits.reject_secs as f64));
+            self.sweep(now, window.max(reject));
         }
         false
     }
-
     /// Drop IPs with nothing inside `horizon` and no live reject window.
     fn sweep(&mut self, now: f64, horizon: f64) {
         self.rejected_until.retain(|_, &mut until| now < until);
@@ -108,6 +109,23 @@ mod tests {
         assert!(throttle.check(&ip(), 100.0, &limits()));
         // Past it: attempts expired out of the window, admitted again.
         assert!(!throttle.check(&ip(), 400.0, &limits()));
+    }
+
+    #[test]
+    fn zero_durations_floor_instead_of_failing_open() {
+        let limits = ReconnectLimits {
+            max_attempts: 1,
+            window_secs: 0,
+            reject_secs: 0,
+        };
+        let mut throttle = ReconnectThrottle::default();
+        assert!(!throttle.check(&ip(), 0.0, &limits));
+        // Second attempt inside the floored 1 s window still trips...
+        assert!(throttle.check(&ip(), 0.5, &limits));
+        // ...and the floored 1 s reject holds...
+        assert!(throttle.check(&ip(), 1.2, &limits));
+        // ...then lapses.
+        assert!(!throttle.check(&ip(), 2.0, &limits));
     }
 
     #[test]

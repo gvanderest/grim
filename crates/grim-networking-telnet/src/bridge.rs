@@ -977,5 +977,23 @@ mod tests {
                 "clean close emits a logins alert; got {alerts:?}"
             );
         }
+
+        #[test]
+        fn same_tick_connect_and_input_both_land() {
+            let mut app = boot(19986, TelnetLimits::default());
+            let mut stream = connect(19986);
+            // No update between connect and input: both events queue, and
+            // one drain pass must deliver both. The spawn from Connected is
+            // deferred, so a single-phase drain cannot see it for Input.
+            stream.write_all(b"hello\n").ok();
+            std::thread::sleep(Duration::from_millis(200));
+            app.update();
+            let texts = input_texts(&app);
+            assert_eq!(
+                texts,
+                vec!["hello".to_string()],
+                "first input after connect must not be dropped"
+            );
+        }
     }
 }

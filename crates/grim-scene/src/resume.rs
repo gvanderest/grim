@@ -9,8 +9,7 @@ use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player};
 use grim_core::components::{Account, Client, ClientState, Description, Name as GrimName};
 use grim_core::events::LookRoom;
 use grim_networking::{
-    admin_log, Connection, ConnectionOutput, ConnectionResumed, DisconnectRequest, WiznetAlert,
-    WiznetCategory,
+    admin_log, ConnectionOutput, ConnectionResumed, DisconnectRequest, WiznetAlert, WiznetCategory,
 };
 use grim_persistence::{load_character_by_name, BanList, PersistenceConfig};
 use grim_text::tr;
@@ -31,7 +30,6 @@ pub(crate) fn handle_connection_resumed(
     starting: Res<StartingRoom>,
     persistence: Res<PersistenceConfig>,
     bans: Res<BanList>,
-    connections: Query<&Connection>,
     mut outputs: MessageWriter<ConnectionOutput>,
     mut look_room: MessageWriter<LookRoom>,
     mut disconnect: MessageWriter<DisconnectRequest>,
@@ -44,7 +42,6 @@ pub(crate) fn handle_connection_resumed(
         if refuse_banned(
             ev,
             &bans,
-            &connections,
             &characters,
             &accounts,
             &persistence,
@@ -90,7 +87,6 @@ pub(crate) fn handle_connection_resumed(
 fn refuse_banned(
     ev: &ConnectionResumed,
     bans: &BanList,
-    connections: &Query<&Connection>,
     characters: &Query<(Entity, &Character, &GrimName)>,
     accounts: &Query<(Entity, &Account)>,
     persistence: &PersistenceConfig,
@@ -103,12 +99,11 @@ fn refuse_banned(
         outputs.write(ConnectionOutput::new(conn, text));
         disconnect.write(DisconnectRequest { connection: conn });
     };
-    if let Some(ip) = connections
-        .get(conn)
-        .ok()
-        .map(|c| c.addr.ip())
-        .filter(|ip| bans.is_ip_banned(ip))
-    {
+    // The peer address rides on the message, not the `Connection` entity:
+    // the spawn may still be unapplied when this runs, and the gate must
+    // never depend on it.
+    let ip = ev.addr.ip();
+    if bans.is_ip_banned(&ip) {
         refuse(tr!("ban.banned.ip"));
         admin_log!(
             alerts,

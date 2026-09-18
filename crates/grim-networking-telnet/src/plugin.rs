@@ -13,7 +13,7 @@ use crate::copyover::{
     finish_copyover, install_copyover_signal, poll_copyover_signal, trigger_copyover_on_due,
     CopyoverDone, CopyoverSignal,
 };
-use crate::drain::drain_network_events;
+use crate::drain::{drain_creations, drain_dependents, PendingDrain};
 use crate::limits::TelnetLimits;
 use crate::server::start_telnet_server;
 
@@ -50,11 +50,15 @@ impl Plugin for TelnetPlugin {
             .insert_resource(self.limits.clone())
             .init_resource::<CopyoverSignal>()
             .init_resource::<CopyoverDone>()
+            .init_resource::<PendingDrain>()
             .add_systems(Startup, (install_copyover_signal, start_telnet_server))
             .add_systems(
                 Update,
                 (
-                    drain_network_events,
+                    // Two-phase drain: creations spawn first (applied before
+                    // the next system), dependents resolve after.
+                    drain_creations,
+                    drain_dependents,
                     send_network_commands,
                     // Bridge an expired in-game `copyover` countdown into the
                     // same latched flag `SIGUSR2` raises; `poll` picks it up

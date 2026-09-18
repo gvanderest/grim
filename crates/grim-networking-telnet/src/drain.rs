@@ -65,6 +65,7 @@ fn handle_resumed(
     resumed.write(ConnectionResumed {
         connection: entity,
         character: character.clone(),
+        addr,
     });
     admin_log!(
         alerts,
@@ -191,18 +192,21 @@ fn handle_shed(
     }
 }
 
-/// Drain the tokio→Bevy channel into messages: spawns `Connection`
-/// entities for accepts/re-adoptions, forwards input, and tears down
-/// closed sockets with a reasoned log line plus a wiznet alert.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn drain_network_events(
+/// Events drained but not yet handled: `drain_creations` buffers everything
+/// that needs a spawned `Connection` (`Input`, `Disconnected`, `Shed`
+/// reports) for `drain_dependents`, which runs after the spawns apply.
+/// Bounded in practice by one tick's channel backlog; drained every tick.
+#[derive(Resource, Default)]
+pub(crate) struct PendingDrain(pub Vec<NetworkEvent>);
+
+/// First phase: spawn `Connection` entities for accepts and re-adoptions
+/// and announce them; buffer everything else for phase two.
+pub(crate) fn drain_creations(
     bridge: Res<NetworkBridge>,
     mut commands: Commands,
     mut established: MessageWriter<ConnectionEstablished>,
     mut resumed: MessageWriter<ConnectionResumed>,
-    mut input: MessageWriter<ConnectionInput>,
-    mut closed: MessageWriter<ConnectionClosed>,
-    mut connections: Query<(Entity, &mut Connection)>,
+    mut pending: ResMut<PendingDrain>,
     mut alerts: MessageWriter<WiznetAlert>,
 ) {
     let rx = bridge.from_network.lock().unwrap();
@@ -227,6 +231,27 @@ pub(crate) fn drain_network_events(
                     echo_hidden,
                 );
             }
+            // Dependent events wait for the next phase: the spawns above
+            // apply when this system ends, so a same-pass lookup would miss
+            // them and drop the first input or close.
+            dependent => pending.0.push(dependent),
+        }
+    }
+}
+
+/// Second phase: the buffered dependent events, now that creation spawns
+/// are applied and the `connections` query resolves them.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn drain_dependents(
+    bridge: Res<NetworkBridge>,
+    mut input: MessageWriter<ConnectionInput>,
+    mut closed: MessageWriter<ConnectionClosed>,
+    mut connections: Query<(Entity, &mut Connection)>,
+    mut pending: ResMut<PendingDrain>,
+    mut alerts: MessageWriter<WiznetAlert>,
+) {
+    for ev in std::mem::take(&mut pending.0) {
+        match ev {
             NetworkEvent::Input { conn_id, text } => {
                 handle_input(&bridge, &mut connections, &mut input, conn_id, text);
             }
@@ -249,6 +274,8 @@ pub(crate) fn drain_network_events(
                     refused,
                 );
             }
+            // Creations never buffer (handled in phase one); unreachable.
+            NetworkEvent::Connected { .. } | NetworkEvent::Resumed { .. } => {}
         }
     }
 }

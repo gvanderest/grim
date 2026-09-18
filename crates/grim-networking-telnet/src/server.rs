@@ -424,4 +424,31 @@ mod tests {
         assert_eq!(shed.refused, 0);
         assert_eq!(shed.accepts.len(), 1, "the lifting accept is counted");
     }
+
+    #[test]
+    fn zero_windows_floor_instead_of_failing_open() {
+        let state = test_state(TelnetLimits {
+            max_connects_total: 2,
+            total_window_secs: 0,
+            shed_secs: 0,
+            ..TelnetLimits::default()
+        });
+        assert!(matches!(
+            gate_accept(&state.limits, &state.shed),
+            AcceptOutcome::Admit
+        ));
+        assert!(matches!(
+            gate_accept(&state.limits, &state.shed),
+            AcceptOutcome::Admit
+        ));
+        // Floored 1 s windows: the third trips and the shed holds.
+        assert!(matches!(
+            gate_accept(&state.limits, &state.shed),
+            AcceptOutcome::AdmitWith(_)
+        ));
+        assert!(matches!(
+            gate_accept(&state.limits, &state.shed),
+            AcceptOutcome::Drop
+        ));
+    }
 }
