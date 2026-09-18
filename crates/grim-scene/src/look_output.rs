@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use bevy::prelude::*;
-use grim_actor::Character;
+use grim_actor::{Character, Linkdead};
 use grim_config::ConfigRegistry;
 use grim_core::components::{Client, Description, Name as GrimName};
 use grim_core::events::{LookEntity, LookRoom};
@@ -25,6 +25,7 @@ pub(crate) fn emit_look_room(
     room_exits: &Query<(Entity, &Exits)>,
     characters: &Query<&Character>,
     clients: &Query<&Client>,
+    linkdead_chars: &Query<&Linkdead>,
     config_registry: &ConfigRegistry,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
@@ -40,63 +41,14 @@ pub(crate) fn emit_look_room(
             dirs
         })
         .unwrap_or_default();
-    // Presence lines, one per other being — plus one per ground object — in
-    // the room: player characters (standing line, position-driven once
-    // positions exist) sort above creatures (their long room line, or a plain
-    // fallback), with objects (their long room line, or the short name) last.
-    // Each group sorts by name so the listing is deterministic. Objects share
-    // the presence block with no blank line between the groups.
-    let mut players: Vec<(String, String)> = Vec::new();
-    let mut creatures: Vec<(String, String)> = Vec::new();
-    let mut objects: Vec<(String, String)> = Vec::new();
-    for (e, ir, player, occ_name, room_line, is_object) in room_occupants.iter() {
-        if ir.room != ev.room || e == ev.target {
-            continue;
-        }
-        if characters.get(e).is_ok() {
-            // AFK occupants read `Name (AFK) is standing here.`: resolve the
-            // flag off the driving session via its `Player` connection.
-            let afk = player
-                .and_then(|p| clients.iter().find(|c| c.connection == p.connection))
-                .is_some_and(|c| c.afk);
-            // Literal keys (not a variable): the tr-coverage check resolves
-            // every catalog reference statically.
-            if afk {
-                players.push((
-                    occ_name.0.clone(),
-                    tr!("room.presence.standing_afk", name = occ_name.0.as_str()),
-                ));
-            } else {
-                players.push((
-                    occ_name.0.clone(),
-                    tr!("room.presence.standing", name = occ_name.0.as_str()),
-                ));
-            }
-        } else if is_object.is_some() {
-            // Ground only: carried objects have no `InRoom`, so they never
-            // reach this loop.
-            match room_line.filter(|l| !l.0.is_empty()) {
-                Some(line) => objects.push((occ_name.0.clone(), line.0.clone())),
-                None => objects.push((occ_name.0.clone(), occ_name.0.clone())),
-            }
-        } else if let Some(line) = room_line.filter(|l| !l.0.is_empty()) {
-            creatures.push((occ_name.0.clone(), line.0.clone()));
-        } else {
-            creatures.push((
-                occ_name.0.clone(),
-                tr!("room.presence.here", name = occ_name.0.as_str()),
-            ));
-        }
-    }
-    players.sort();
-    creatures.sort();
-    objects.sort();
-    let presence: Vec<String> = players
-        .into_iter()
-        .chain(creatures)
-        .chain(objects)
-        .map(|(_, line)| line)
-        .collect();
+    let presence = collect_presence(
+        ev.room,
+        ev.target,
+        room_occupants,
+        characters,
+        clients,
+        linkdead_chars,
+    );
     // Admins see the room's ids in the title for building/debugging.
     let is_admin = characters
         .get(ev.target)
@@ -140,6 +92,85 @@ pub(crate) fn emit_look_room(
         echo: None,
         ..ConnectionOutput::new(conn, text)
     });
+}
+
+/// Presence lines, one per other being — plus one per ground object — in the
+/// room: player characters (standing line, position-driven once positions
+/// exist) sort above creatures (their long room line, or a plain fallback),
+/// with objects (their long room line, or the short name) last. Each group
+/// sorts by name so the listing is deterministic. Objects share the presence
+/// block with no blank line between the groups. Factored out of
+/// [`emit_look_room`] for the line budget.
+#[allow(clippy::too_many_arguments)]
+fn collect_presence(
+    room: Entity,
+    target: Entity,
+    room_occupants: &Occupants,
+    characters: &Query<&Character>,
+    clients: &Query<&Client>,
+    linkdead_chars: &Query<&Linkdead>,
+) -> Vec<String> {
+    let mut players: Vec<(String, String)> = Vec::new();
+    let mut creatures: Vec<(String, String)> = Vec::new();
+    let mut objects: Vec<(String, String)> = Vec::new();
+    for (e, ir, player, occ_name, room_line, is_object) in room_occupants.iter() {
+        if ir.room != room || e == target {
+            continue;
+        }
+        if characters.get(e).is_ok() {
+            // Linkdead dominates (a linkdead character has no session, so it
+            // can never also be AFK); otherwise an AFK session reads marked.
+            // Literal keys (not a variable): the tr-coverage check resolves
+            // every catalog reference statically.
+            if linkdead_chars.get(e).is_ok() {
+                players.push((
+                    occ_name.0.clone(),
+                    tr!(
+                        "room.presence.standing_linkdead",
+                        name = occ_name.0.as_str()
+                    ),
+                ));
+            } else {
+                let afk = player
+                    .and_then(|p| clients.iter().find(|c| c.connection == p.connection))
+                    .is_some_and(|c| c.afk);
+                if afk {
+                    players.push((
+                        occ_name.0.clone(),
+                        tr!("room.presence.standing_afk", name = occ_name.0.as_str()),
+                    ));
+                } else {
+                    players.push((
+                        occ_name.0.clone(),
+                        tr!("room.presence.standing", name = occ_name.0.as_str()),
+                    ));
+                }
+            }
+        } else if is_object.is_some() {
+            // Ground only: carried objects have no `InRoom`, so they never
+            // reach this loop.
+            match room_line.filter(|l| !l.0.is_empty()) {
+                Some(line) => objects.push((occ_name.0.clone(), line.0.clone())),
+                None => objects.push((occ_name.0.clone(), occ_name.0.clone())),
+            }
+        } else if let Some(line) = room_line.filter(|l| !l.0.is_empty()) {
+            creatures.push((occ_name.0.clone(), line.0.clone()));
+        } else {
+            creatures.push((
+                occ_name.0.clone(),
+                tr!("room.presence.here", name = occ_name.0.as_str()),
+            ));
+        }
+    }
+    players.sort();
+    creatures.sort();
+    objects.sort();
+    players
+        .into_iter()
+        .chain(creatures)
+        .chain(objects)
+        .map(|(_, line)| line)
+        .collect()
 }
 
 pub(crate) fn emit_look_entity(

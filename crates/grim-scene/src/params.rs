@@ -6,7 +6,7 @@
 //! dispatcher, resume, and output systems.
 
 use bevy::prelude::*;
-use grim_actor::{Actor, Character, InRoom};
+use grim_actor::{Actor, Character, InRoom, Linkdead};
 use grim_core::components::{Client, Name as GrimName};
 use grim_core::events::{Command, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce};
 use grim_world::{Area, ClassRegistry, RaceRegistry, Room, RoomLocation};
@@ -79,15 +79,14 @@ impl RoomResolver<'_, '_> {
     }
 }
 
-/// The three global-announce readers bundled into one `SystemParam`, so
-/// `format_output` stays within Bevy's 16-parameter system limit.
+/// Everything `format_output` reads besides its inputs: the session announces
+/// plus the live-session and linkdead lookups presence rendering needs.
+/// Bundled because that system is at the 16-parameter ceiling.
 #[derive(bevy::ecs::system::SystemParam)]
-pub(crate) struct AnnounceReaders<'w, 's> {
+pub(crate) struct OutputReads<'w, 's> {
     pub(crate) login: MessageReader<'w, 's, LoginAnnounce>,
     pub(crate) logout: MessageReader<'w, 's, LogoutAnnounce>,
     pub(crate) linkdead: MessageReader<'w, 's, LinkdeadAnnounce>,
-    /// Live sessions, so presence rendering can flag AFK occupants. Bundled
-    /// here because `format_output` is at the 16-parameter ceiling and a
-    /// second `Client` query would conflict with dispatchers elsewhere.
     pub(crate) clients: Query<'w, 's, &'static Client>,
+    pub(crate) linkdead_chars: Query<'w, 's, &'static Linkdead>,
 }

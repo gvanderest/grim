@@ -151,6 +151,7 @@ fn default_string(key: &str) -> String {
         "room.presence.standing" => "%{name} is standing here.",
         "room.presence.standing_afk" => "%{name} (AFK) is standing here.",
         "room.presence.here" => "%{name} is here.",
+        "room.presence.standing_linkdead" => "%{name} (Linkdead) is standing here.",
         "finger.not_found" => "You don't know anyone by that name.\n",
         "desc.cleared" => "Your description has been cleared.\n",
         "desc.added" => "Line added to your description.\n",
