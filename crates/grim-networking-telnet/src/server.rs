@@ -392,7 +392,11 @@ mod tests {
         // the entry event.
         assert!(matches!(
             gate_accept(&state.limits, &state.shed),
-            AcceptOutcome::AdmitWith(_)
+            AcceptOutcome::AdmitWith(NetworkEvent::Shed {
+                active: true,
+                refused: 0,
+                ..
+            })
         ));
         // Shedding: drops, heartbeat-suppressed (60 s interval).
         assert!(matches!(

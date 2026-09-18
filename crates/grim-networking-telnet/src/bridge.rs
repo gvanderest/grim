@@ -138,7 +138,9 @@ pub(crate) fn register_connection(
             // floor it instead of trusting configuration.
             let line_cap = limits.max_line_len.max(1);
             let buf_cap = limits.buffer_cap();
-            let window = std::time::Duration::from_secs(limits.rate_window_secs);
+            // A zero window would prune every prior timestamp and never trip
+            // (fail open); floor it like the line cap.
+            let window = std::time::Duration::from_secs(limits.rate_window_secs.max(1));
             let mut line_times: VecDeque<Instant> = VecDeque::new();
             let mut reason: Option<GuardTrip> = None;
             let mut reader = BufReader::new(read_half);

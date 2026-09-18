@@ -103,15 +103,17 @@ fn refuse_banned(
         outputs.write(ConnectionOutput::new(conn, text));
         disconnect.write(DisconnectRequest { connection: conn });
     };
-    if connections
+    if let Some(ip) = connections
         .get(conn)
-        .is_ok_and(|c| bans.is_ip_banned(&c.addr.ip()))
+        .ok()
+        .map(|c| c.addr.ip())
+        .filter(|ip| bans.is_ip_banned(ip))
     {
         refuse(tr!("ban.banned.ip"));
         admin_log!(
             alerts,
             WiznetCategory::Security,
-            "refused banned IP on resume"
+            "refused banned IP {ip} on resume"
         );
         return true;
     }

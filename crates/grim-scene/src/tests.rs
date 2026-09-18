@@ -20,6 +20,7 @@ use grim_core::events::Command;
 use grim_core::GrimId;
 use grim_networking::{
     Connection, ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest,
+    WiznetAlert, WiznetCategory,
 };
 use grim_persistence::{BanList, PersistenceConfig, PersistencePlugin};
 use grim_world::{Room, StartingRoom, WorldPlugin};
@@ -380,6 +381,14 @@ mod reconnect {
                     .any(|o| o.connection == conn
                         && o.text.contains("Your IP address has been banned")),
                 "banned-IP resume shows the ban message"
+            );
+            let alerts = app.world().resource::<Messages<WiznetAlert>>();
+            let mut cursor = alerts.get_cursor();
+            assert!(
+                cursor
+                    .read(alerts)
+                    .any(|a| a.category == WiznetCategory::Security && a.text.contains("10.9.9.9")),
+                "banned-IP resume emits a security alert with the peer IP"
             );
         }
     }

@@ -67,6 +67,7 @@ before placing (`refuse_banned` in `grim-scene/src/resume.rs`).
 | `BanList` | Resource (read at every login gate; owned by `grim-persistence`) | `src/greeter.rs`, `src/login.rs`, `src/character_select.rs`, `src/world_entry.rs` |
 | `ReconnectLimits` | Resource (per-IP throttle knobs, seconds; `init_resource`, author-overridable) | `src/throttle.rs` (`AuthPlugin`) |
 | `ReconnectThrottle` | Resource (per-IP attempt timestamps + reject windows; pruned on access) | `src/throttle.rs` (read in `src/greeter.rs`) |
+| `LoginAnnounce` / `LinkdeadAnnounce` | Message (emitted on world entry / linkdead reconnect) | `src/character_select.rs`, `src/world_entry.rs` |
 | `LookRoom` | Message (emitted at MOTD to auto-look) | `src/character_select.rs` |
 | `ConnectionOutput` / `DisconnectRequest` | Message (from `grim-networking`) | throughout |
 

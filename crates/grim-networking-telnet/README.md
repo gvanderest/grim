@@ -30,6 +30,9 @@ None. This is a transport; it produces `ConnectionInput` messages, not game comm
 |---|---|---|
 | `TelnetPort` | Resource | `src/bridge.rs` |
 | `TelnetLimits` | Resource (line/buffer/rate/connect/shed caps, seconds for time; author-overridable) | `src/limits.rs` (`TelnetPlugin::with_limits`) |
+| `NetworkBridge` | Resource (crate-internal) | `src/bridge.rs` |
+| `CopyoverSignal` | Resource (crate-internal) | `src/copyover.rs` |
+| `CopyoverDone` | Resource (crate-internal) | `src/copyover.rs` |
 
 Wire messages (`ConnectionEstablished`, `ConnectionInput`, `ConnectionClosed`, `ConnectionOutput`, `ConnectionResumed`, `DisconnectRequest`) are defined in `grim-networking`; `TelnetPlugin` re-registers them so the transport can be used standalone.
 

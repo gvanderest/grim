@@ -14,6 +14,7 @@ use grim_core::events::*;
 use grim_core::GrimId;
 use grim_networking::{
     Connection, ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest,
+    WiznetAlert, WiznetCategory,
 };
 use grim_persistence::{BanList, PersistenceConfig, PersistencePlugin};
 use grim_world::{ClassRegistry, RaceRegistry, Room, StartingRoom, WorldPlugin};
@@ -2479,6 +2480,15 @@ mod bans {
             ),
             "banned account never reaches the menu"
         );
+        let alerts = app.world().resource::<Messages<WiznetAlert>>();
+        let mut cursor = alerts.get_cursor();
+        assert!(
+            cursor
+                .read(alerts)
+                .any(|a| a.category == WiznetCategory::Security
+                    && a.text.contains("doomed@example.com")),
+            "banned-account refusal emits a security alert"
+        );
     }
 
     /// A banned character selected from the menu is refused with the ban
@@ -2559,6 +2569,14 @@ mod bans {
         assert!(
             players.iter(app.world()).next().is_none(),
             "banned character never enters the world"
+        );
+        let alerts = app.world().resource::<Messages<WiznetAlert>>();
+        let mut cursor = alerts.get_cursor();
+        assert!(
+            cursor
+                .read(alerts)
+                .any(|a| a.category == WiznetCategory::Security && a.text.contains("Doomed")),
+            "banned-character refusal emits a security alert"
         );
     }
 
