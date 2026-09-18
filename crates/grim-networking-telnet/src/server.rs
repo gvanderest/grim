@@ -21,6 +21,7 @@ use crate::bridge::{
     TelnetPort,
 };
 use crate::copyover::{perform_handoff, receive_handoff, CopyoverDone, Handoff, COPYOVER_SOCK_ENV};
+use crate::limits::TelnetLimits;
 
 /// Shared per-serve state threaded through the accept loop: the next connection
 /// id, the Bevy-bound event sender, and the live connection registry.
@@ -28,16 +29,19 @@ struct ServeState {
     next_id: AtomicUsize,
     to_bevy_tx: std_mpsc::Sender<NetworkEvent>,
     conns: Arc<Mutex<HashMap<usize, Conn>>>,
+    limits: TelnetLimits,
 }
 
 // ─── Startup: spawn the tokio network thread ────────────────────────
 
 pub(crate) fn start_telnet_server(
     port: Res<TelnetPort>,
+    limits: Res<TelnetLimits>,
     done: Res<CopyoverDone>,
     mut commands: Commands,
 ) {
     let port = port.0;
+    let limits = limits.clone();
 
     let (to_bevy_tx, from_network) = std_mpsc::channel::<NetworkEvent>();
     let (to_network, to_tokio_rx) = tokio::sync::mpsc::channel::<NetworkCommand>(64);
@@ -49,13 +53,16 @@ pub(crate) fn start_telnet_server(
 
     let copyover_done = done.0.clone();
 
-    std::thread::spawn(move || network_thread(port, to_bevy_tx, to_tokio_rx, copyover_done));
+    std::thread::spawn(move || {
+        network_thread(port, limits, to_bevy_tx, to_tokio_rx, copyover_done)
+    });
 }
 
 /// The detached network thread: receive any handoff (blocking std I/O, before
 /// the runtime touches the fds), then build the tokio runtime and serve.
 fn network_thread(
     port: u16,
+    limits: TelnetLimits,
     to_bevy_tx: std_mpsc::Sender<NetworkEvent>,
     to_tokio_rx: tokio::sync::mpsc::Receiver<NetworkCommand>,
     copyover_done: Arc<AtomicBool>,
@@ -68,6 +75,7 @@ fn network_thread(
 
     tokio::runtime::Runtime::new().unwrap().block_on(serve(
         port,
+        limits,
         to_bevy_tx,
         to_tokio_rx,
         copyover_done,
@@ -79,6 +87,7 @@ fn network_thread(
 /// readiness, resume any carried connections, then run the accept loop.
 async fn serve(
     port: u16,
+    limits: TelnetLimits,
     to_bevy_tx: std_mpsc::Sender<NetworkEvent>,
     mut to_tokio_rx: tokio::sync::mpsc::Receiver<NetworkCommand>,
     copyover_done: Arc<AtomicBool>,
@@ -88,6 +97,7 @@ async fn serve(
         next_id: AtomicUsize::new(1),
         to_bevy_tx,
         conns: Arc::new(Mutex::new(HashMap::new())),
+        limits,
     };
 
     let (listener, resumed, ack) = adopt_or_bind(handoff, port).await;
@@ -172,7 +182,14 @@ fn resume_connections(state: &ServeState, resumed: Vec<(RawFd, HandoverEntry)>) 
             continue;
         };
         let conn_id = state.next_id.fetch_add(1, Ordering::Relaxed);
-        register_connection(conn_id, socket, &state.to_bevy_tx, &state.conns, false);
+        register_connection(
+            conn_id,
+            socket,
+            &state.to_bevy_tx,
+            &state.conns,
+            false,
+            state.limits.clone(),
+        );
         let _ = state.to_bevy_tx.send(NetworkEvent::Resumed {
             conn_id,
             addr,
@@ -215,7 +232,7 @@ async fn run_accept_loop(
             Ok((socket, addr)) = listener.accept(), if accepting => {
                 let conn_id = state.next_id.fetch_add(1, Ordering::Relaxed);
                 let _ = state.to_bevy_tx.send(NetworkEvent::Connected { conn_id, addr });
-                register_connection(conn_id, socket, &state.to_bevy_tx, &state.conns, true);
+                register_connection(conn_id, socket, &state.to_bevy_tx, &state.conns, true, state.limits.clone());
             }
             Some(cmd) = to_tokio_rx.recv() => {
                 match cmd {

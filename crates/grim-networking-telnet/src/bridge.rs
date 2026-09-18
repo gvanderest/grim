@@ -3,7 +3,7 @@
 //! (`register_connection`), and the two Bevy systems that drain network events
 //! into messages and route outbound messages back to the network.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::os::fd::{AsRawFd, RawFd};
 use std::sync::mpsc as std_mpsc;
@@ -16,9 +16,12 @@ use grim_networking::{
     Connection, ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,
     ConnectionResumed, DisconnectRequest,
 };
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
+use tokio::time::Instant;
 
+use crate::guard::{discard_to_newline, frame_input, rate_tripped, GuardTrip};
+use crate::limits::TelnetLimits;
 use crate::{iac, render};
 
 // ─── Internal bridge types ─────────────────────────────────────────
@@ -55,6 +58,8 @@ pub(crate) enum NetworkEvent {
     },
     Disconnected {
         conn_id: usize,
+        /// Set when an input guard (not a clean EOF) ended the connection.
+        reason: Option<GuardTrip>,
     },
 }
 
@@ -99,12 +104,19 @@ pub(crate) struct TelnetPort(pub u16);
 /// Split `socket` into read/write tasks and register it under `conn_id`. Fresh
 /// accepts send the minimal telnet negotiation first (`handshake`); re-adopted
 /// copyover sockets have already negotiated, so they skip it.
+///
+/// The read task enforces `limits` at framing, before any byte reaches Bevy:
+/// lines past `max_line_len` are truncated (remainder discarded to the
+/// newline, so a long line never splits into two commands); a line past
+/// `max_buffer` without a newline, or more than `max_lines` inside
+/// `rate_window_secs`, drops the connection with a [`GuardTrip`] reason.
 pub(crate) fn register_connection(
     conn_id: usize,
     socket: TcpStream,
     to_bevy_tx: &std_mpsc::Sender<NetworkEvent>,
     conns: &Arc<Mutex<HashMap<usize, Conn>>>,
     handshake: bool,
+    limits: TelnetLimits,
 ) {
     let raw_fd = socket.as_raw_fd();
     let (read_half, mut write_half) = tokio::io::split(socket);
@@ -114,22 +126,58 @@ pub(crate) fn register_connection(
         let to_bevy_tx = to_bevy_tx.clone();
         let conns = conns.clone();
         async move {
+            // A zero cap would read nothing and drop every connection as EOF;
+            // floor it instead of trusting configuration.
+            let line_cap = limits.max_line_len.max(1);
+            let buf_cap = limits.buffer_cap();
+            let window = std::time::Duration::from_secs(limits.rate_window_secs);
+            let mut line_times: VecDeque<Instant> = VecDeque::new();
+            let mut reason: Option<GuardTrip> = None;
             let mut reader = BufReader::new(read_half);
             let mut buf: Vec<u8> = Vec::new();
             loop {
                 buf.clear();
-                match reader.read_until(b'\n', &mut buf).await {
+                let n = match (&mut reader)
+                    .take(line_cap as u64)
+                    .read_until(b'\n', &mut buf)
+                    .await
+                {
                     Ok(0) => break,
-                    Ok(_) => {}
+                    Ok(n) => n,
                     Err(_) => break,
+                };
+                // A short read without a newline is an EOF tail: deliver it
+                // exactly as the old uncapped loop did. Only a *full* cap
+                // without a newline is an overlong line.
+                if n == line_cap && !buf.ends_with(b"\n") {
+                    let text = frame_input(&buf);
+                    let _ = to_bevy_tx.send(NetworkEvent::Input { conn_id, text });
+                    if rate_tripped(&mut line_times, window, limits.max_lines) {
+                        reason = Some(GuardTrip::RateExceeded {
+                            lines: limits.max_lines,
+                            window_secs: limits.rate_window_secs,
+                        });
+                        break;
+                    }
+                    // buf doubles as the discard scratch: bounded by take, so
+                    // this single call can never run past the budget.
+                    if !discard_to_newline(&mut reader, &mut buf, buf_cap - line_cap).await {
+                        reason = Some(GuardTrip::BufferExceeded { bytes: buf_cap });
+                        break;
+                    }
+                    continue;
                 }
-                let clean = iac::strip_iac(&buf);
-                let text = String::from_utf8_lossy(&clean)
-                    .trim_end_matches(['\r', '\n'])
-                    .to_string();
+                let text = frame_input(&buf);
                 let _ = to_bevy_tx.send(NetworkEvent::Input { conn_id, text });
+                if rate_tripped(&mut line_times, window, limits.max_lines) {
+                    reason = Some(GuardTrip::RateExceeded {
+                        lines: limits.max_lines,
+                        window_secs: limits.rate_window_secs,
+                    });
+                    break;
+                }
             }
-            let _ = to_bevy_tx.send(NetworkEvent::Disconnected { conn_id });
+            let _ = to_bevy_tx.send(NetworkEvent::Disconnected { conn_id, reason });
             conns.lock().unwrap().remove(&conn_id);
         }
     });
@@ -237,9 +285,15 @@ pub(crate) fn drain_network_events(
                     });
                 }
             }
-            NetworkEvent::Disconnected { conn_id } => {
-                info!("Connection {} disconnected", conn_id);
-                if let Some((entity, _)) = connections.iter().find(|(_, c)| c.id == conn_id) {
+            NetworkEvent::Disconnected { conn_id, reason } => {
+                if let Some((entity, conn)) = connections.iter().find(|(_, c)| c.id == conn_id) {
+                    match reason {
+                        Some(trip) => info!(
+                            "Connection {} ({}) disconnected: input guard tripped ({})",
+                            conn_id, conn.addr, trip
+                        ),
+                        None => info!("Connection {} disconnected", conn_id),
+                    }
                     closed.write(ConnectionClosed { connection: entity });
                     // Despawn is handled by save_on_disconnect in the persistence plugin
                 }
@@ -819,6 +873,125 @@ mod tests {
             assert_eq!(n, 0, "No data should be sent for empty text");
 
             drop(stream);
+        }
+    }
+
+    /// Socket-level guard tests on loopback (ports 19996/19997/19989 —
+    /// 19990–19995/19998/19999 are taken by the neighboring suites).
+    mod guards {
+        use super::*;
+
+        fn boot(port: u16, limits: TelnetLimits) -> App {
+            let mut app = App::new();
+            app.add_plugins(MinimalPlugins);
+            app.add_plugins(TelnetPlugin::new(port).with_limits(limits));
+            add_messages(&mut app);
+            app.update();
+            std::thread::sleep(Duration::from_millis(100));
+            app
+        }
+
+        fn connect(port: u16) -> std::net::TcpStream {
+            let mut stream = std::net::TcpStream::connect_timeout(
+                &format!("127.0.0.1:{port}").parse().unwrap(),
+                Duration::from_secs(2),
+            )
+            .expect("should connect");
+            // Drain the IAC handshake so later reads see only test bytes.
+            let mut handshake = [0u8; 6];
+            stream
+                .set_read_timeout(Some(Duration::from_millis(200)))
+                .ok();
+            let _ = stream.read(&mut handshake);
+            stream
+        }
+
+        fn input_texts(app: &App) -> Vec<String> {
+            let msgs = app.world().resource::<Messages<ConnectionInput>>();
+            let mut cursor = msgs.get_cursor();
+            cursor.read(msgs).map(|e| e.text.clone()).collect()
+        }
+
+        fn closed_count(app: &App) -> usize {
+            let msgs = app.world().resource::<Messages<ConnectionClosed>>();
+            let mut cursor = msgs.get_cursor();
+            cursor.read(msgs).count()
+        }
+
+        fn small_limits() -> TelnetLimits {
+            TelnetLimits {
+                max_line_len: 16,
+                max_buffer: 64,
+                max_lines: 1000,
+                rate_window_secs: 60,
+                ..TelnetLimits::default()
+            }
+        }
+
+        #[test]
+        fn overlong_line_truncates_without_splitting() {
+            let mut app = boot(19996, small_limits());
+            let mut stream = connect(19996);
+            app.update();
+            stream.write_all(&[b'a'; 64]).ok();
+            stream.write_all(b"\n").ok();
+            stream.write_all(b"ok\n").ok();
+            std::thread::sleep(Duration::from_millis(150));
+            app.update();
+            let texts = input_texts(&app);
+            assert_eq!(
+                texts,
+                vec!["a".repeat(16), "ok".to_string()],
+                "truncated prefix then the next line, never a split line"
+            );
+        }
+
+        #[test]
+        fn newline_flood_disconnects() {
+            let mut app = boot(19997, small_limits());
+            let mut stream = connect(19997);
+            app.update();
+            // 256 lineless bytes: one truncated fragment is delivered, then
+            // the buffer guard drops the connection.
+            stream.write_all(&[b'a'; 256]).ok();
+            std::thread::sleep(Duration::from_millis(200));
+            app.update();
+            assert_eq!(
+                input_texts(&app),
+                vec!["a".repeat(16)],
+                "only the truncated fragment escapes"
+            );
+            assert_eq!(closed_count(&app), 1, "buffer guard must close the socket");
+            let mut buf = [0u8; 8];
+            stream.set_read_timeout(Some(Duration::from_secs(2))).ok();
+            assert_eq!(stream.read(&mut buf).ok(), Some(0), "client must see EOF");
+        }
+
+        #[test]
+        fn line_burst_disconnects() {
+            let limits = TelnetLimits {
+                max_lines: 5,
+                rate_window_secs: 60,
+                ..TelnetLimits::default()
+            };
+            let mut app = boot(19989, limits);
+            let mut stream = connect(19989);
+            app.update();
+            for i in 0..10 {
+                let _ = writeln!(stream, "line{i}");
+            }
+            std::thread::sleep(Duration::from_millis(200));
+            app.update();
+            let texts = input_texts(&app);
+            assert_eq!(
+                texts.len(),
+                6,
+                "five allowed lines plus the tripping one; got {texts:?}"
+            );
+            assert_eq!(closed_count(&app), 1, "rate guard must close the socket");
+            let mut buf = [0u8; 8];
+            stream.set_read_timeout(Some(Duration::from_secs(2))).ok();
+            assert_eq!(stream.read(&mut buf).ok(), Some(0), "client must see EOF");
         }
     }
 }
