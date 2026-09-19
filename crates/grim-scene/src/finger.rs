@@ -20,9 +20,10 @@ pub(crate) fn format(
     descriptions: &Query<&Description>,
     persistence: &PersistenceConfig,
 ) -> String {
-    if let Some((e, n, _, actor, character, _)) = player_chars
-        .iter()
-        .find(|(_, n, _, _, character, _)| character.is_some() && n.0.eq_ignore_ascii_case(target))
+    if let Some((e, n, _, actor, character, _, _)) =
+        player_chars.iter().find(|(_, n, _, _, character, _, _)| {
+            character.is_some() && n.0.eq_ignore_ascii_case(target)
+        })
     {
         let desc = descriptions.get(e).map(|d| d.0.clone()).unwrap_or_default();
         let actor = actor.as_ref();

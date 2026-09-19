@@ -6,7 +6,7 @@
 //! dispatcher, resume, and output systems.
 
 use bevy::prelude::*;
-use grim_actor::{Actor, Character, InRoom, Linkdead};
+use grim_actor::{Actor, Character, Creature, InRoom, Linkdead};
 use grim_core::components::{Client, Name as GrimName};
 use grim_core::events::{Command, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce};
 use grim_world::{Area, ClassRegistry, RaceRegistry, Room, RoomLocation};
@@ -16,7 +16,8 @@ use crate::session::ConnectedAt;
 /// The online-characters query shared by the WHO / WHERE renderers: each player
 /// entity with its display name, current room, optional [`Actor`] base
 /// (race/level/gender WHO stats), optional [`Character`] (admin/title/restrings
-/// WHO stats), and optional [`ConnectedAt`] (the WHO connect-time sort tiebreak).
+/// WHO stats), optional [`Creature`] mob marker (the WHERE being filter), and
+/// optional [`ConnectedAt`] (the WHO connect-time sort tiebreak).
 pub(crate) type PlayerChars<'w, 's> = Query<
     'w,
     's,
@@ -26,6 +27,7 @@ pub(crate) type PlayerChars<'w, 's> = Query<
         &'static InRoom,
         Option<&'static Actor>,
         Option<&'static Character>,
+        Option<&'static Creature>,
         Option<&'static ConnectedAt>,
     ),
 >;

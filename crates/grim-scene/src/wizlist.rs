@@ -81,7 +81,7 @@ fn offline_admin_rows<'a>(
         .filter(|stored| {
             !player_chars
                 .iter()
-                .any(|(_, n, _, _, _, _)| n.0.eq_ignore_ascii_case(&stored.name))
+                .any(|(_, n, _, _, _, _, _)| n.0.eq_ignore_ascii_case(&stored.name))
         })
         .map(|stored| WhoData {
             key: WhoKey {

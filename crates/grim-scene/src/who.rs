@@ -228,7 +228,7 @@ pub(crate) fn collect_who_data<'a>(
 ) -> Vec<WhoData<'a>> {
     player_chars
         .iter()
-        .filter_map(|(e, n, _, actor, character, connected)| {
+        .filter_map(|(e, n, _, actor, character, _, connected)| {
             let ch = character?;
             // Race/level/gender live on the shared `Actor` base now.
             let actor = actor?;
@@ -275,20 +275,27 @@ pub(crate) fn collect_who_data<'a>(
         .collect()
 }
 
-/// The `where` list: other characters in the actor's current area, by room.
+/// The `where` list: beings in the actor's current area, by room. Only
+/// characters and creatures show up — objects share `Name + InRoom` but carry
+/// neither marker. The actor themself is included.
 pub(crate) fn format_where(
     char_entity: Entity,
     player_chars: &PlayerChars,
     rooms: &RoomResolver,
 ) -> String {
-    let actor_area = player_chars
+    let (area, area_name) = player_chars
         .get(char_entity)
         .ok()
-        .and_then(|(_, _, ir, _, _, _)| rooms.rooms.get(ir.room).ok().map(|(_, r, _)| r.area));
+        .and_then(|(_, _, ir, _, _, _, _)| {
+            let (_, r, _) = rooms.rooms.get(ir.room).ok()?;
+            let name = rooms.areas.get(r.area).ok()?.name.clone();
+            Some((r.area, name))
+        })
+        .unzip();
     let mut entries: Vec<(String, String)> = Vec::new();
-    if let Some(area) = actor_area {
-        for (e, n, ir, _, _, _) in player_chars.iter() {
-            if e == char_entity {
+    if let (Some(area), Some(name)) = (area, area_name) {
+        for (_, n, ir, _, character, creature, _) in player_chars.iter() {
+            if character.is_none() && creature.is_none() {
                 continue;
             }
             if let Ok((_, r, rn)) = rooms.rooms.get(ir.room) {
@@ -298,8 +305,9 @@ pub(crate) fn format_where(
             }
         }
         entries.sort_by(|a, b| a.1.cmp(&b.1));
+        return formatter::format_where_list(&name, &entries);
     }
-    formatter::format_where_list(&entries)
+    formatter::format_where_list("", &entries)
 }
 
 /// The sorted, deduped `areas` list of `(friendly_id, name)`.
