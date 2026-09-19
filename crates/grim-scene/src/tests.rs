@@ -2243,6 +2243,53 @@ mod ingame_commands {
         }
     }
 
+    /// `where` with an unresolvable room fails closed: the empty message, no
+    /// header naming nothing, no leak of other-area beings.
+    #[test]
+    fn ingame_where_without_room_shows_empty() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = spawn_conn(&mut app, 1, 11111);
+        // `spawn_ingame` leaves `InRoom` on `PLACEHOLDER`: no room resolves.
+        spawn_ingame(&mut app, conn, named_character("Hero"));
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "where".into(),
+        });
+        app.update();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == conn)
+            .expect("expected a where response");
+        assert_eq!(out.text, "No one else in this area.\n");
+    }
+
+    /// `where` alone in an area lists just the actor under the area header.
+    #[test]
+    fn ingame_where_alone_lists_self() {
+        let mut app = test_app();
+        let town = spawn_area(&mut app, "town", "Town");
+        let tavern = spawn_room_in(&mut app, town, "tavern", "Tavern");
+        app.world_mut().insert_resource(StartingRoom(tavern));
+        let conn = spawn_conn(&mut app, 1, 11111);
+        spawn_ingame_in(&mut app, conn, named_character("Hero"), tavern);
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "where".into(),
+        });
+        app.update();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == conn)
+            .expect("expected a where response");
+        assert_eq!(out.text, "In your area (Town):\n  Hero in [Tavern]\n");
+    }
+
     // ── handle_client_input: InGame with blank line ──
     #[test]
     fn ingame_blank_line_triggers_prompt() {

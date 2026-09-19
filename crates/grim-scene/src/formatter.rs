@@ -138,7 +138,7 @@ pub fn format_move(actor: &str, direction: &str, leaving: bool) -> String {
 #[allow(dead_code)]
 pub fn format_where_list(area: &str, entries: &[(String, String)]) -> String {
     if entries.is_empty() {
-        "No other players in this area.\n".into()
+        "No one else in this area.\n".into()
     } else {
         let mut out = format!("In your area ({}):\n", area);
         for (name, room) in entries {
@@ -576,7 +576,7 @@ mod tests {
     fn where_empty() {
         assert_eq!(
             format_where_list("Town", &[]),
-            "No other players in this area.\n"
+            "No one else in this area.\n"
         );
     }
 
