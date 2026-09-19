@@ -117,6 +117,7 @@ pub(crate) fn backfill_and_enter(
         outputs,
         &mut world.announce_linkdead,
         &mut world.disconnect,
+        &mut world.alerts,
     );
 }
 

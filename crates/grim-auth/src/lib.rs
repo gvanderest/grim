@@ -8,6 +8,7 @@
 //! Cohesive concerns live in sibling modules; this file is a shell that wires
 //! them together and re-exports the public plugin.
 
+mod account;
 mod character_select;
 mod creation;
 mod finalize;
@@ -16,6 +17,7 @@ mod input;
 mod login;
 mod params;
 mod plugin;
+mod throttle;
 mod world_entry;
 
 pub mod validation;
@@ -24,4 +26,5 @@ pub mod validation;
 mod tests;
 
 pub use plugin::AuthPlugin;
+pub use throttle::ReconnectLimits;
 pub use validation::ReservedNamePrefixes;

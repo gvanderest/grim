@@ -8,7 +8,9 @@ use grim_actor::{Actor, Character, InRoom, Linkdead, OutputHistory, Player, Stor
 use grim_core::components::{Account, Client, ClientState, Description, Name as GrimName};
 use grim_core::events::LinkdeadAnnounce;
 use grim_core::GrimId;
-use grim_networking::{ConnectionOutput, DisconnectRequest};
+use grim_networking::{
+    admin_log, ConnectionOutput, DisconnectRequest, WiznetAlert, WiznetCategory,
+};
 use grim_persistence::{load_character_by_name, BanList, PersistenceConfig};
 use grim_text::tr;
 
@@ -44,6 +46,7 @@ pub(crate) fn enter_world_by_name(
     outputs: &mut MessageWriter<ConnectionOutput>,
     announce_linkdead: &mut MessageWriter<LinkdeadAnnounce>,
     disconnect: &mut MessageWriter<DisconnectRequest>,
+    alerts: &mut MessageWriter<WiznetAlert>,
 ) {
     let refuse = |client: &mut Client, outputs: &mut MessageWriter<ConnectionOutput>, msg: &str| {
         client.state = ClientState::LoginPrompt;
@@ -56,6 +59,11 @@ pub(crate) fn enter_world_by_name(
     // (menu selection or login-by-name): refuse back to the login prompt.
     if bans.is_character_banned(name) {
         refuse(client, outputs, tr!("ban.banned.character").trim_end());
+        admin_log!(
+            alerts,
+            WiznetCategory::Security,
+            "refused banned character '{name}' entering the world"
+        );
         return;
     }
     // Prefer a resident entity for this name (linkdead beats online).
@@ -127,6 +135,7 @@ pub(crate) fn refuse_banned_account(
     conn: Entity,
     outputs: &mut MessageWriter<ConnectionOutput>,
     disconnect: &mut MessageWriter<DisconnectRequest>,
+    alerts: &mut MessageWriter<WiznetAlert>,
 ) -> bool {
     let banned = accounts
         .iter()
@@ -135,6 +144,11 @@ pub(crate) fn refuse_banned_account(
     if banned {
         outputs.write(ConnectionOutput::new(conn, tr!("ban.banned.account")));
         disconnect.write(DisconnectRequest { connection: conn });
+        admin_log!(
+            alerts,
+            WiznetCategory::Security,
+            "refused banned account '{identifier}'"
+        );
     }
     banned
 }

@@ -8,7 +8,9 @@ use chrono::Utc;
 use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player};
 use grim_core::components::{Account, Client, ClientState, Description, Name as GrimName};
 use grim_core::events::LookRoom;
-use grim_networking::{Connection, ConnectionOutput, ConnectionResumed, DisconnectRequest};
+use grim_networking::{
+    admin_log, ConnectionOutput, ConnectionResumed, DisconnectRequest, WiznetAlert, WiznetCategory,
+};
 use grim_persistence::{load_character_by_name, BanList, PersistenceConfig};
 use grim_text::tr;
 use grim_world::StartingRoom;
@@ -28,10 +30,10 @@ pub(crate) fn handle_connection_resumed(
     starting: Res<StartingRoom>,
     persistence: Res<PersistenceConfig>,
     bans: Res<BanList>,
-    connections: Query<&Connection>,
     mut outputs: MessageWriter<ConnectionOutput>,
     mut look_room: MessageWriter<LookRoom>,
     mut disconnect: MessageWriter<DisconnectRequest>,
+    mut alerts: MessageWriter<WiznetAlert>,
 ) {
     for ev in resumed.read() {
         let conn = ev.connection;
@@ -40,12 +42,12 @@ pub(crate) fn handle_connection_resumed(
         if refuse_banned(
             ev,
             &bans,
-            &connections,
             &characters,
             &accounts,
             &persistence,
             &mut outputs,
             &mut disconnect,
+            &mut alerts,
         ) {
             continue;
         }
@@ -85,27 +87,39 @@ pub(crate) fn handle_connection_resumed(
 fn refuse_banned(
     ev: &ConnectionResumed,
     bans: &BanList,
-    connections: &Query<&Connection>,
     characters: &Query<(Entity, &Character, &GrimName)>,
     accounts: &Query<(Entity, &Account)>,
     persistence: &PersistenceConfig,
     outputs: &mut MessageWriter<ConnectionOutput>,
     disconnect: &mut MessageWriter<DisconnectRequest>,
+    alerts: &mut MessageWriter<WiznetAlert>,
 ) -> bool {
     let conn = ev.connection;
     let mut refuse = |text: String| {
         outputs.write(ConnectionOutput::new(conn, text));
         disconnect.write(DisconnectRequest { connection: conn });
     };
-    if connections
-        .get(conn)
-        .is_ok_and(|c| bans.is_ip_banned(&c.addr.ip()))
-    {
+    // The peer address rides on the message, not the `Connection` entity:
+    // the spawn may still be unapplied when this runs, and the gate must
+    // never depend on it.
+    let ip = ev.addr.ip();
+    if bans.is_ip_banned(&ip) {
         refuse(tr!("ban.banned.ip"));
+        admin_log!(
+            alerts,
+            WiznetCategory::Security,
+            "refused banned IP {ip} on resume"
+        );
         return true;
     }
     if bans.is_character_banned(&ev.character) {
         refuse(tr!("ban.banned.character"));
+        admin_log!(
+            alerts,
+            WiznetCategory::Security,
+            "refused banned character '{}' on resume",
+            ev.character
+        );
         return true;
     }
     let account_id = characters
@@ -118,6 +132,12 @@ fn refuse_banned(
         .is_some_and(|(_, a)| bans.is_account_banned(a))
     {
         refuse(tr!("ban.banned.account"));
+        admin_log!(
+            alerts,
+            WiznetCategory::Security,
+            "refused banned account of '{}' on resume",
+            ev.character
+        );
         return true;
     }
     false

@@ -4,16 +4,26 @@
 
 use bevy::prelude::*;
 use grim_core::components::Client;
-use grim_networking::{ConnectionEstablished, ConnectionOutput, DisconnectRequest};
+use grim_networking::{
+    admin_log, ConnectionEstablished, ConnectionOutput, DisconnectRequest, WiznetAlert,
+    WiznetCategory,
+};
 use grim_persistence::BanList;
 use grim_text::tr;
 
+use crate::throttle::{ReconnectLimits, ReconnectThrottle};
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_connection_established(
     mut established: MessageReader<ConnectionEstablished>,
     mut commands: Commands,
     mut outputs: MessageWriter<ConnectionOutput>,
     bans: Res<BanList>,
+    limits: Res<ReconnectLimits>,
+    mut throttle: ResMut<ReconnectThrottle>,
+    time: Res<Time>,
     mut disconnect: MessageWriter<DisconnectRequest>,
+    mut alerts: MessageWriter<WiznetAlert>,
 ) {
     for ev in established.read() {
         // Banned IPs never get a session: refuse with the ban message and
@@ -23,6 +33,31 @@ pub(crate) fn handle_connection_established(
             disconnect.write(DisconnectRequest {
                 connection: ev.connection,
             });
+            admin_log!(
+                alerts,
+                WiznetCategory::Security,
+                "refused banned IP {}",
+                ev.addr.ip()
+            );
+            continue;
+        }
+        // Reconnect floods never get a session either: same gate, one stage
+        // down. Throttle state is per-IP attempt timestamps, so a distributed
+        // flood passes here and meets the global shed instead.
+        if throttle.check(&ev.addr.ip(), time.elapsed_secs_f64(), &limits) {
+            outputs.write(ConnectionOutput::new(
+                ev.connection,
+                tr!("throttle.reconnect"),
+            ));
+            disconnect.write(DisconnectRequest {
+                connection: ev.connection,
+            });
+            admin_log!(
+                alerts,
+                WiznetCategory::Security,
+                "throttled reconnect flood from {}",
+                ev.addr.ip()
+            );
             continue;
         }
         commands.spawn(Client::new(ev.connection));

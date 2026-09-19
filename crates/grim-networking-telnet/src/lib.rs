@@ -16,9 +16,14 @@
 
 mod bridge;
 mod copyover;
+mod drain;
+mod guard;
 mod iac;
+mod limits;
 mod plugin;
 mod render;
 mod server;
+mod shed;
 
+pub use limits::TelnetLimits;
 pub use plugin::TelnetPlugin;

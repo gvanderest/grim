@@ -56,7 +56,10 @@ fn main() {
     if let Ok(areas) = std::env::var("GRIM_AREAS_DIR") {
         app.insert_resource(AreaBlueprintDir(areas.into()));
     }
-    app.add_plugins(GrimDefaultPlugins { telnet_port: port });
+    app.add_plugins(GrimDefaultPlugins {
+        telnet_port: port,
+        ..Default::default()
+    });
     app.add_systems(Startup, seed::seed_world);
     app.run();
 }

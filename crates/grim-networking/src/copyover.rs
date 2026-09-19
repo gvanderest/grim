@@ -4,6 +4,7 @@
 //! socket fds. See `docs/DEPLOY.md`.
 
 use bevy::prelude::*;
+use std::net::SocketAddr;
 
 /// A connection re-adopted from a previous process across a copyover. The
 /// transport rebuilt the live socket and spawned a fresh [`Connection`] entity;
@@ -16,6 +17,10 @@ pub struct ConnectionResumed {
     pub connection: Entity,
     /// The character name that was in-game on this socket before the restart.
     pub character: String,
+    /// Peer address of the re-adopted socket. Carried on the message (not
+    /// joined off the `Connection` entity) so the resume gate never depends
+    /// on a spawn having applied yet.
+    pub addr: SocketAddr,
 }
 
 /// One in-game socket carried across a copyover: the character bound to it and

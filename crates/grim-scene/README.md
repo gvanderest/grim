@@ -27,6 +27,8 @@ by `grim-auth`.
 | `check_idle` | `Update` (after `SceneSystems::InGameInput`) | `src/idle.rs` | Auto-flags quiet in-game sessions AFK (they stay connected unless `IdleConfig::disconnect_ingame_idle` opts in); warns then severs quiet pre-game sessions via `DisconnectRequest` → the normal linkdead path. |
 | `handle_connection_resumed` | `Update` | `src/resume.rs` | Re-attaches a session after copyover / reconnect (skips login). Refuses banned IPs/characters/accounts first (`refuse_banned`), before spawning or attaching anything. |
 | `handle_ban_command` | `Update` | `src/ban.rs` | Admin `ban list`/`add`/`remove` off the engine queue (defense-in-depth admin re-check): lists, persists to `bans.json`, and kicks every matching live session on `add`. |
+| `handle_wiznet` | `Update` | `src/wiznet.rs` | Admin `wiznet [on\|off\|security\|logins]` off the engine queue (defense-in-depth admin re-check): lists and flips the persisted wiznet prefs. |
+| `broadcast_wiznet` | `Update` | `src/wiznet.rs` | Fans `WiznetAlert` plus login/logout/linkdead notices to online admins whose master + category prefs are on, with best-effort socket details. |
 | `format_output` | `Update` | `src/output.rs` | Renders domain events per-recipient into `ConnectionOutput`. |
 | `format_recall` | `Update` | `src/recall_output.rs` | Renders `RecallEvent` per-recipient (attempt + disappearance left, recall-marked arrival right). Separate system: `format_output` is at Bevy's parameter ceiling. |
 | `format_server_broadcast` | `Update` | `src/output.rs` | Renders `ServerBroadcast` (e.g. shutdown warnings) to all sessions. |
@@ -44,6 +46,7 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last). |
 | `sockets` | `handle_ingame` → `format_sockets` (`src/sockets.rs`) | List live connections as an aligned table (ID/IP/State/Name/Account/Idle seconds; admin-only; masked as unknown for others). |
 | `ban list [type]` / `ban add <type> <pattern>` / `ban remove <type> <pattern>` | parser → engine queue (`src/parser.rs`, `src/ban.rs`) | Blocklist admin verbs (types `ip`/`account`/`character`; IP patterns `*`-wildcarded per octet). Admin-only + masked; an `add` persists and kicks every matching session. |
+| `wiznet [on\|off\|security\|logins]` | parser → engine queue (`src/parser.rs`, `src/wiznet.rs`) | List and toggle the admin-alert categories (persisted `grim-config` settings `wiznet`, `wiznet.security`, `wiznet.logins`). Admin-only + masked. |
 | `where` | `handle_ingame` → `format_where` (`src/who.rs`) | Show where players are located. |
 | `inventory` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/inventory.rs`) | List carried objects' short names (sorted), or the empty line. |
 | `equipment` | `handle_ingame` → `tr!("equipment.empty")` (`src/command.rs`) | Dummy: always "You are wearing nothing." (no item system yet). |
@@ -55,7 +58,7 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | `commands` | `handle_ingame` → `format_commands` (`src/formatter.rs`) | Show the command list. |
 | `help` | `handle_ingame` → `format_commands` (`src/command.rs`) | Alias for `commands` (parser maps `help` → `Command::Commands`). |
 
-Other verbs (`look`, `map`, `move`, `say`, `shutdown`, …) are parsed here then routed: most enqueue via `process_command_queue`; engine-queued admin verbs (`shutdown`/`reboot`/`copyover`/`goto`/`gecho`/`ban`) go through `dispatch_admin_gated` (masked as unknown for non-admins). `sockets` is also admin-gated + masked, but answered session-locally from a per-tick `ClientSnapshot` (a second `Client` query would conflict with the dispatcher's `&mut` borrow).
+Other verbs (`look`, `map`, `move`, `say`, `shutdown`, …) are parsed here then routed: most enqueue via `process_command_queue`; engine-queued admin verbs (`shutdown`/`reboot`/`copyover`/`goto`/`gecho`/`ban`/`wiznet`) go through `dispatch_admin_gated` (masked as unknown for non-admins). `sockets` is also admin-gated + masked, but answered session-locally from a per-tick `ClientSnapshot` (a second `Client` query would conflict with the dispatcher's `&mut` borrow).
 
 ## Resources & Events
 
@@ -74,6 +77,7 @@ Other verbs (`look`, `map`, `move`, `say`, `shutdown`, …) are parsed here then
 | `SayEvent` / `YellEvent` / `OocEvent` / `GlobalEcho` | Message (consumed → rendered) | `src/output.rs` |
 | `LoginAnnounce` / `LogoutAnnounce` / `LinkdeadAnnounce` | Message (session announces) | `src/output.rs`, `src/command.rs` |
 | `ServerBroadcast` | Message (consumed → rendered) | `src/output.rs` |
+| `WiznetAlert` | Message (consumed → broadcast to opted-in admins; from `grim-networking`) | `src/wiznet.rs` (`broadcast_wiznet`) |
 
 The shared render helpers in `src/formatter.rs` (`format_motd`, `format_selection_menu`, `parse_menu_choice`, `MenuItem`) are `pub` because the `grim-auth` pre-game flow reads them; the module is re-exported at `grim_scene::formatter`.
 

@@ -20,6 +20,7 @@ use grim_core::events::Command;
 use grim_core::GrimId;
 use grim_networking::{
     Connection, ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest,
+    WiznetAlert, WiznetCategory,
 };
 use grim_persistence::{BanList, PersistenceConfig, PersistencePlugin};
 use grim_world::{Room, StartingRoom, WorldPlugin};
@@ -166,6 +167,7 @@ mod reconnect {
         app.world_mut().write_message(ConnectionResumed {
             connection: conn,
             character: "Test".into(),
+            addr: "127.0.0.1:12377".parse().unwrap(),
         });
         app.update();
 
@@ -230,6 +232,7 @@ mod reconnect {
             app.world_mut().write_message(ConnectionResumed {
                 connection: conn,
                 character: "Doomed".into(),
+                addr: "127.0.0.1:12378".parse().unwrap(),
             });
             app.update();
 
@@ -306,6 +309,7 @@ mod reconnect {
             app.world_mut().write_message(ConnectionResumed {
                 connection: conn,
                 character: "Clean".into(),
+                addr: "127.0.0.1:12379".parse().unwrap(),
             });
             app.update();
 
@@ -365,6 +369,7 @@ mod reconnect {
             app.world_mut().write_message(ConnectionResumed {
                 connection: conn,
                 character: "Clean".into(),
+                addr: "10.9.9.9:12380".parse().unwrap(),
             });
             app.update();
 
@@ -380,6 +385,14 @@ mod reconnect {
                     .any(|o| o.connection == conn
                         && o.text.contains("Your IP address has been banned")),
                 "banned-IP resume shows the ban message"
+            );
+            let alerts = app.world().resource::<Messages<WiznetAlert>>();
+            let mut cursor = alerts.get_cursor();
+            assert!(
+                cursor
+                    .read(alerts)
+                    .any(|a| a.category == WiznetCategory::Security && a.text.contains("10.9.9.9")),
+                "banned-IP resume emits a security alert with the peer IP"
             );
         }
     }

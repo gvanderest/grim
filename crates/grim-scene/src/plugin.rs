@@ -62,6 +62,14 @@ impl Plugin for ScenePlugin {
         // init_resource so ScenePlugin stands alone; ActorPlugin seeds the
         // `minimap` definition into the same registry when present.
         app.init_resource::<grim_config::ConfigRegistry>();
+        // Wiznet prefs (master + per-category on/off switches). Seeded here
+        // because the `wiznet` command and the broadcast live in this crate.
+        {
+            let mut registry = app
+                .world_mut()
+                .resource_mut::<grim_config::ConfigRegistry>();
+            crate::wiznet::seed_registry(&mut registry);
+        }
         // Per-tick set of connections a pre-game handler advanced to InGame; the
         // in-game input system consults it to avoid re-dispatching the line that
         // triggered the transition (see input.rs).
@@ -75,6 +83,7 @@ impl Plugin for ScenePlugin {
         app.init_resource::<crate::wizlist::WizlistAdmins>();
         app.add_systems(Startup, crate::wizlist::load_wizlist_admins);
         crate::editor::register(app);
+        crate::wiznet::register(app);
         app.add_message::<ConnectionOutput>()
             .add_message::<ConnectionResumed>()
             .add_message::<DisconnectRequest>()
@@ -94,6 +103,7 @@ impl Plugin for ScenePlugin {
             .add_message::<LogoutAnnounce>()
             .add_message::<LinkdeadAnnounce>()
             .add_message::<ServerBroadcast>()
+            .add_message::<grim_networking::WiznetAlert>()
             .add_systems(
                 Update,
                 (

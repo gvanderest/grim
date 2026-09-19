@@ -3,24 +3,22 @@
 //! (`register_connection`), and the two Bevy systems that drain network events
 //! into messages and route outbound messages back to the network.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::os::fd::{AsRawFd, RawFd};
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 
-use bevy::log::info;
 use bevy::prelude::*;
 use grim_core::components::{Client, ClientState};
-use grim_networking::{
-    Connection, ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,
-    ConnectionResumed, DisconnectRequest,
-};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use grim_networking::{Connection, ConnectionOutput, DisconnectRequest};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
+use tokio::time::Instant;
 
+use crate::guard::{discard_to_newline, frame_input, rate_tripped, GuardTrip};
+use crate::limits::TelnetLimits;
 use crate::{iac, render};
-
 // ─── Internal bridge types ─────────────────────────────────────────
 
 pub(crate) struct Conn {
@@ -55,6 +53,21 @@ pub(crate) enum NetworkEvent {
     },
     Disconnected {
         conn_id: usize,
+        /// Set when an input guard (not a clean EOF) ended the connection.
+        reason: Option<GuardTrip>,
+    },
+    /// The accept loop entered, reported on, or lifted the flood shed.
+    /// Heartbeats (`active: true`, `refused > 0`) arrive at most once a
+    /// minute while shedding; the exit arrives lazily on the next accept.
+    Shed {
+        active: bool,
+        /// Configured trip threshold (connects per window).
+        connects: u32,
+        window_secs: u64,
+        shed_secs: u64,
+        /// Refused connections: 0 on entry, running total on heartbeats
+        /// and the exit report.
+        refused: u64,
     },
 }
 
@@ -99,12 +112,19 @@ pub(crate) struct TelnetPort(pub u16);
 /// Split `socket` into read/write tasks and register it under `conn_id`. Fresh
 /// accepts send the minimal telnet negotiation first (`handshake`); re-adopted
 /// copyover sockets have already negotiated, so they skip it.
+///
+/// The read task enforces `limits` at framing, before any byte reaches Bevy:
+/// lines past `max_line_len` are truncated (remainder discarded to the
+/// newline, so a long line never splits into two commands); a line past
+/// `max_buffer` without a newline, or more than `max_lines` inside
+/// `rate_window_secs`, drops the connection with a [`GuardTrip`] reason.
 pub(crate) fn register_connection(
     conn_id: usize,
     socket: TcpStream,
     to_bevy_tx: &std_mpsc::Sender<NetworkEvent>,
     conns: &Arc<Mutex<HashMap<usize, Conn>>>,
     handshake: bool,
+    limits: TelnetLimits,
 ) {
     let raw_fd = socket.as_raw_fd();
     let (read_half, mut write_half) = tokio::io::split(socket);
@@ -114,22 +134,60 @@ pub(crate) fn register_connection(
         let to_bevy_tx = to_bevy_tx.clone();
         let conns = conns.clone();
         async move {
+            // A zero cap would read nothing and drop every connection as EOF;
+            // floor it instead of trusting configuration.
+            let line_cap = limits.max_line_len.max(1);
+            let buf_cap = limits.buffer_cap();
+            // A zero window would prune every prior timestamp and never trip
+            // (fail open); floor it like the line cap.
+            let window = std::time::Duration::from_secs(limits.rate_window_secs.max(1));
+            let mut line_times: VecDeque<Instant> = VecDeque::new();
+            let mut reason: Option<GuardTrip> = None;
             let mut reader = BufReader::new(read_half);
             let mut buf: Vec<u8> = Vec::new();
             loop {
                 buf.clear();
-                match reader.read_until(b'\n', &mut buf).await {
+                let n = match (&mut reader)
+                    .take(line_cap as u64)
+                    .read_until(b'\n', &mut buf)
+                    .await
+                {
                     Ok(0) => break,
-                    Ok(_) => {}
+                    Ok(n) => n,
                     Err(_) => break,
+                };
+                // A short read without a newline is an EOF tail: deliver it
+                // exactly as the old uncapped loop did. Only a *full* cap
+                // without a newline is an overlong line.
+                if n == line_cap && !buf.ends_with(b"\n") {
+                    let text = frame_input(&buf);
+                    let _ = to_bevy_tx.send(NetworkEvent::Input { conn_id, text });
+                    if rate_tripped(&mut line_times, window, limits.max_lines) {
+                        reason = Some(GuardTrip::RateExceeded {
+                            lines: limits.max_lines,
+                            window_secs: limits.rate_window_secs,
+                        });
+                        break;
+                    }
+                    // buf doubles as the discard scratch: bounded by take, so
+                    // this single call can never run past the budget.
+                    if !discard_to_newline(&mut reader, &mut buf, buf_cap - line_cap).await {
+                        reason = Some(GuardTrip::BufferExceeded { bytes: buf_cap });
+                        break;
+                    }
+                    continue;
                 }
-                let clean = iac::strip_iac(&buf);
-                let text = String::from_utf8_lossy(&clean)
-                    .trim_end_matches(['\r', '\n'])
-                    .to_string();
+                let text = frame_input(&buf);
                 let _ = to_bevy_tx.send(NetworkEvent::Input { conn_id, text });
+                if rate_tripped(&mut line_times, window, limits.max_lines) {
+                    reason = Some(GuardTrip::RateExceeded {
+                        lines: limits.max_lines,
+                        window_secs: limits.rate_window_secs,
+                    });
+                    break;
+                }
             }
-            let _ = to_bevy_tx.send(NetworkEvent::Disconnected { conn_id });
+            let _ = to_bevy_tx.send(NetworkEvent::Disconnected { conn_id, reason });
             conns.lock().unwrap().remove(&conn_id);
         }
     });
@@ -155,97 +213,6 @@ pub(crate) fn register_connection(
             raw_fd,
         },
     );
-}
-
-// ─── Update: drain network -> Bevy events ──────────────────────────
-
-pub(crate) fn drain_network_events(
-    bridge: Res<NetworkBridge>,
-    mut commands: Commands,
-    mut established: MessageWriter<ConnectionEstablished>,
-    mut resumed: MessageWriter<ConnectionResumed>,
-    mut input: MessageWriter<ConnectionInput>,
-    mut closed: MessageWriter<ConnectionClosed>,
-    mut connections: Query<(Entity, &mut Connection)>,
-) {
-    let rx = bridge.from_network.lock().unwrap();
-    while let Ok(ev) = rx.try_recv() {
-        match ev {
-            NetworkEvent::Connected { conn_id, addr } => {
-                info!("Connection from {} (id={})", addr, conn_id);
-                let entity = commands
-                    .spawn(Connection {
-                        id: conn_id,
-                        addr,
-                        echo_hidden: false,
-                    })
-                    .id();
-                established.write(ConnectionEstablished {
-                    connection: entity,
-                    addr,
-                });
-            }
-            NetworkEvent::Resumed {
-                conn_id,
-                addr,
-                character,
-                echo_hidden,
-            } => {
-                info!(
-                    "Connection {} resumed as '{}' (copyover)",
-                    conn_id, character
-                );
-                let entity = commands
-                    .spawn(Connection {
-                        id: conn_id,
-                        addr,
-                        echo_hidden,
-                    })
-                    .id();
-                // No banner, no login: the session layer places the character
-                // straight back into the world.
-                resumed.write(ConnectionResumed {
-                    connection: entity,
-                    character,
-                });
-            }
-            NetworkEvent::Input { conn_id, text } => {
-                if let Some((entity, mut conn)) =
-                    connections.iter_mut().find(|(_, c)| c.id == conn_id)
-                {
-                    // Filter to printable ASCII (32-126) — strip ANSI/control chars
-                    let text: String = text
-                        .chars()
-                        .filter(|&c| c.is_ascii_graphic() || c == ' ')
-                        .collect();
-
-                    // If echo was hidden (password mode), auto-restore on user input.
-                    if conn.echo_hidden {
-                        let _ = bridge.to_network.try_send(NetworkCommand::SendRaw {
-                            conn_id,
-                            data: iac::WONT_ECHO.to_vec(), // IAC WONT ECHO → visible
-                        });
-                        let _ = bridge.to_network.try_send(NetworkCommand::Send {
-                            conn_id,
-                            text: "\n".into(),
-                        });
-                        conn.echo_hidden = false;
-                    }
-                    input.write(ConnectionInput {
-                        connection: entity,
-                        text,
-                    });
-                }
-            }
-            NetworkEvent::Disconnected { conn_id } => {
-                info!("Connection {} disconnected", conn_id);
-                if let Some((entity, _)) = connections.iter().find(|(_, c)| c.id == conn_id) {
-                    closed.write(ConnectionClosed { connection: entity });
-                    // Despawn is handled by save_on_disconnect in the persistence plugin
-                }
-            }
-        }
-    }
 }
 
 // ─── Update: route Bevy events -> network ──────────────────────────
@@ -297,11 +264,14 @@ pub(crate) fn send_network_commands(
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::plugin::TelnetPlugin;
+    use grim_networking::{
+        ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput,
+        DisconnectRequest, WiznetAlert, WiznetCategory,
+    };
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::time::Duration;
@@ -312,7 +282,8 @@ mod tests {
             .add_message::<ConnectionInput>()
             .add_message::<ConnectionClosed>()
             .add_message::<ConnectionOutput>()
-            .add_message::<DisconnectRequest>();
+            .add_message::<DisconnectRequest>()
+            .add_message::<WiznetAlert>();
     }
 
     /// Accept loop: a fresh connection produces `ConnectionEstablished`, input
@@ -324,7 +295,7 @@ mod tests {
         fn telnet_plugin_accepts_connection() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19999 });
+            app.add_plugins(TelnetPlugin::new(19999));
             add_messages(&mut app);
 
             app.update();
@@ -384,7 +355,7 @@ mod tests {
         fn input_filter_strips_control_chars() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19993 });
+            app.add_plugins(TelnetPlugin::new(19993));
             add_messages(&mut app);
 
             app.update();
@@ -438,7 +409,7 @@ mod tests {
         fn echo_false_sets_echo_hidden() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19995 });
+            app.add_plugins(TelnetPlugin::new(19995));
             add_messages(&mut app);
 
             app.update();
@@ -498,7 +469,7 @@ mod tests {
         fn echo_hidden_resets_on_input() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19994 });
+            app.add_plugins(TelnetPlugin::new(19994));
             add_messages(&mut app);
 
             app.update();
@@ -585,7 +556,7 @@ mod tests {
         fn send_network_commands_sends_text() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19998 });
+            app.add_plugins(TelnetPlugin::new(19998));
             add_messages(&mut app);
 
             app.update();
@@ -639,7 +610,7 @@ mod tests {
         fn send_network_commands_in_game_prompt() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19992 });
+            app.add_plugins(TelnetPlugin::new(19992));
             add_messages(&mut app);
 
             app.update();
@@ -703,7 +674,7 @@ mod tests {
         fn send_network_commands_no_prepend_in_game() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19991 });
+            app.add_plugins(TelnetPlugin::new(19991));
             add_messages(&mut app);
 
             app.update();
@@ -772,7 +743,7 @@ mod tests {
         fn send_network_commands_empty_text_ingame() {
             let mut app = App::new();
             app.add_plugins(MinimalPlugins);
-            app.add_plugins(TelnetPlugin { port: 19990 });
+            app.add_plugins(TelnetPlugin::new(19990));
             add_messages(&mut app);
 
             app.update();
@@ -819,6 +790,210 @@ mod tests {
             assert_eq!(n, 0, "No data should be sent for empty text");
 
             drop(stream);
+        }
+    }
+
+    /// Socket-level guard tests on loopback (ports 19996/19997/19989 —
+    /// 19990–19995/19998/19999 are taken by the neighboring suites).
+    mod guards {
+        use super::*;
+
+        fn boot(port: u16, limits: TelnetLimits) -> App {
+            let mut app = App::new();
+            app.add_plugins(MinimalPlugins);
+            app.add_plugins(TelnetPlugin::new(port).with_limits(limits));
+            add_messages(&mut app);
+            app.update();
+            std::thread::sleep(Duration::from_millis(100));
+            app
+        }
+
+        fn connect(port: u16) -> std::net::TcpStream {
+            let mut stream = std::net::TcpStream::connect_timeout(
+                &format!("127.0.0.1:{port}").parse().unwrap(),
+                Duration::from_secs(2),
+            )
+            .expect("should connect");
+            // Drain the IAC handshake so later reads see only test bytes.
+            let mut handshake = [0u8; 6];
+            stream
+                .set_read_timeout(Some(Duration::from_millis(200)))
+                .ok();
+            let _ = stream.read(&mut handshake);
+            stream
+        }
+
+        fn input_texts(app: &App) -> Vec<String> {
+            let msgs = app.world().resource::<Messages<ConnectionInput>>();
+            let mut cursor = msgs.get_cursor();
+            cursor.read(msgs).map(|e| e.text.clone()).collect()
+        }
+
+        fn closed_count(app: &App) -> usize {
+            let msgs = app.world().resource::<Messages<ConnectionClosed>>();
+            let mut cursor = msgs.get_cursor();
+            cursor.read(msgs).count()
+        }
+
+        fn small_limits() -> TelnetLimits {
+            TelnetLimits {
+                max_line_len: 16,
+                max_buffer: 64,
+                max_lines: 1000,
+                rate_window_secs: 60,
+                ..TelnetLimits::default()
+            }
+        }
+
+        #[test]
+        fn overlong_line_truncates_without_splitting() {
+            let mut app = boot(19996, small_limits());
+            let mut stream = connect(19996);
+            app.update();
+            stream.write_all(&[b'a'; 64]).ok();
+            stream.write_all(b"\n").ok();
+            stream.write_all(b"ok\n").ok();
+            std::thread::sleep(Duration::from_millis(150));
+            app.update();
+            let texts = input_texts(&app);
+            assert_eq!(
+                texts,
+                vec!["a".repeat(16), "ok".to_string()],
+                "truncated prefix then the next line, never a split line"
+            );
+        }
+
+        #[test]
+        fn newline_flood_disconnects() {
+            let mut app = boot(19997, small_limits());
+            let mut stream = connect(19997);
+            app.update();
+            // 256 lineless bytes: one truncated fragment is delivered, then
+            // the buffer guard drops the connection.
+            stream.write_all(&[b'a'; 256]).ok();
+            std::thread::sleep(Duration::from_millis(200));
+            app.update();
+            assert_eq!(
+                input_texts(&app),
+                vec!["a".repeat(16)],
+                "only the truncated fragment escapes"
+            );
+            assert_eq!(closed_count(&app), 1, "buffer guard must close the socket");
+            let mut buf = [0u8; 8];
+            stream.set_read_timeout(Some(Duration::from_secs(2))).ok();
+            assert_eq!(stream.read(&mut buf).ok(), Some(0), "client must see EOF");
+        }
+
+        #[test]
+        fn line_burst_disconnects() {
+            let limits = TelnetLimits {
+                max_lines: 5,
+                rate_window_secs: 60,
+                ..TelnetLimits::default()
+            };
+            let mut app = boot(19989, limits);
+            let mut stream = connect(19989);
+            app.update();
+            for i in 0..10 {
+                let _ = writeln!(stream, "line{i}");
+            }
+            std::thread::sleep(Duration::from_millis(200));
+            app.update();
+            let texts = input_texts(&app);
+            assert_eq!(
+                texts.len(),
+                6,
+                "five allowed lines plus the tripping one; got {texts:?}"
+            );
+            assert_eq!(closed_count(&app), 1, "rate guard must close the socket");
+            let mut buf = [0u8; 8];
+            stream.set_read_timeout(Some(Duration::from_secs(2))).ok();
+            assert_eq!(stream.read(&mut buf).ok(), Some(0), "client must see EOF");
+        }
+
+        #[test]
+        fn accept_flood_enters_shed_and_drops() {
+            let limits = TelnetLimits {
+                max_connects_total: 3,
+                total_window_secs: 60,
+                shed_secs: 3600,
+                ..TelnetLimits::default()
+            };
+            let mut app = boot(19988, limits);
+            let mut streams = Vec::new();
+            for _ in 0..5 {
+                streams.push(connect(19988));
+            }
+            std::thread::sleep(Duration::from_millis(300));
+            app.update();
+            // Three admits, the tripping fourth admitted with the entry
+            // event, the fifth dropped without a handshake.
+            let count = app
+                .world_mut()
+                .query::<&Connection>()
+                .iter(app.world())
+                .count();
+            assert_eq!(count, 4, "shed must admit four and drop the fifth");
+            let mut last = streams.pop().unwrap();
+            last.set_read_timeout(Some(Duration::from_secs(2))).ok();
+            let mut buf = [0u8; 8];
+            assert_eq!(
+                last.read(&mut buf).ok(),
+                Some(0),
+                "shed-dropped socket must see EOF"
+            );
+        }
+
+        fn alert_texts(app: &App) -> Vec<(WiznetCategory, String)> {
+            let msgs = app.world().resource::<Messages<WiznetAlert>>();
+            let mut cursor = msgs.get_cursor();
+            cursor
+                .read(msgs)
+                .map(|a| (a.category, a.text.clone()))
+                .collect()
+        }
+
+        #[test]
+        fn connect_and_close_emit_logins_alerts() {
+            let mut app = boot(19987, TelnetLimits::default());
+            let stream = connect(19987);
+            app.update();
+            std::thread::sleep(Duration::from_millis(100));
+            app.update();
+            let alerts = alert_texts(&app);
+            assert!(
+                alerts.iter().any(|(c, t)| *c == WiznetCategory::Logins
+                    && t.starts_with("new connection from 127.0.0.1:")),
+                "connect emits a logins alert; got {alerts:?}"
+            );
+            drop(stream);
+            std::thread::sleep(Duration::from_millis(150));
+            app.update();
+            let alerts = alert_texts(&app);
+            assert!(
+                alerts.iter().any(|(c, t)| *c == WiznetCategory::Logins
+                    && t.ends_with(" closed")
+                    && t.contains("127.0.0.1:")),
+                "clean close emits a logins alert; got {alerts:?}"
+            );
+        }
+
+        #[test]
+        fn same_tick_connect_and_input_both_land() {
+            let mut app = boot(19986, TelnetLimits::default());
+            let mut stream = connect(19986);
+            // No update between connect and input: both events queue, and
+            // one drain pass must deliver both. The spawn from Connected is
+            // deferred, so a single-phase drain cannot see it for Input.
+            stream.write_all(b"hello\n").ok();
+            std::thread::sleep(Duration::from_millis(200));
+            app.update();
+            let texts = input_texts(&app);
+            assert_eq!(
+                texts,
+                vec!["hello".to_string()],
+                "first input after connect must not be dropped"
+            );
         }
     }
 }

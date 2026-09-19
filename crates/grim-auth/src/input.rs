@@ -96,6 +96,7 @@ pub(crate) fn handle_pregame_input(
                 &mut outputs,
                 &mut world.announce_linkdead,
                 &mut world.disconnect,
+                &mut world.alerts,
             ),
             ClientState::CharacterSelect => character::character_select(
                 client_entity,
@@ -113,6 +114,7 @@ pub(crate) fn handle_pregame_input(
                 &mut outputs,
                 &mut world.announce_linkdead,
                 &mut world.disconnect,
+                &mut world.alerts,
             ),
             ClientState::CreateCharacter => {
                 creation::create_character(&mut client, conn, text, &res, &mut outputs);

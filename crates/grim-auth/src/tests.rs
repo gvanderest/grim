@@ -14,6 +14,7 @@ use grim_core::events::*;
 use grim_core::GrimId;
 use grim_networking::{
     Connection, ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest,
+    WiznetAlert, WiznetCategory,
 };
 use grim_persistence::{BanList, PersistenceConfig, PersistencePlugin};
 use grim_world::{ClassRegistry, RaceRegistry, Room, StartingRoom, WorldPlugin};
@@ -714,7 +715,9 @@ mod ordering {
     /// systems without ordering to demonstrate the problem.
     #[test]
     fn first_input_lost_without_ordering() {
+        use crate::throttle::{ReconnectLimits, ReconnectThrottle};
         use grim_channel::ChannelPlugin;
+        use grim_networking::WiznetAlert;
         use grim_persistence::PersistencePlugin;
         use grim_world::WorldPlugin;
         use std::net::SocketAddr;
@@ -739,8 +742,13 @@ mod ordering {
             .add_message::<LinkdeadAnnounce>()
             .add_message::<ConnectionEstablished>()
             .add_message::<ConnectionInput>()
+            .add_message::<WiznetAlert>()
             .add_systems(Update, handle_connection_established)
             .add_systems(Update, handle_pregame_input);
+        // The greeter's throttle gate reads these directly (no AuthPlugin
+        // in this ordering experiment, so they are seeded by hand).
+        app.init_resource::<ReconnectLimits>();
+        app.init_resource::<ReconnectThrottle>();
 
         let room = app
             .world_mut()
@@ -2472,6 +2480,15 @@ mod bans {
             ),
             "banned account never reaches the menu"
         );
+        let alerts = app.world().resource::<Messages<WiznetAlert>>();
+        let mut cursor = alerts.get_cursor();
+        assert!(
+            cursor
+                .read(alerts)
+                .any(|a| a.category == WiznetCategory::Security
+                    && a.text.contains("doomed@example.com")),
+            "banned-account refusal emits a security alert"
+        );
     }
 
     /// A banned character selected from the menu is refused with the ban
@@ -2553,6 +2570,14 @@ mod bans {
             players.iter(app.world()).next().is_none(),
             "banned character never enters the world"
         );
+        let alerts = app.world().resource::<Messages<WiznetAlert>>();
+        let mut cursor = alerts.get_cursor();
+        assert!(
+            cursor
+                .read(alerts)
+                .any(|a| a.category == WiznetCategory::Security && a.text.contains("Doomed")),
+            "banned-character refusal emits a security alert"
+        );
     }
 
     /// Login-by-name at a banned character refuses back to the login prompt
@@ -2611,6 +2636,76 @@ mod bans {
         assert!(
             conn_text(&app, conn).contains("Your character has been banned"),
             "banned login-by-name shows the ban message"
+        );
+    }
+
+    /// An IP reconnecting past the throttle never gets a session: no
+    /// `Client`, the throttle message, a disconnect, and a security alert
+    /// — while a different IP sails through the same gate.
+    #[test]
+    fn throttle_refuses_reconnect_flood() {
+        use grim_networking::{WiznetAlert, WiznetCategory};
+
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        // Default budget is 10 attempts per 60 s; all land in one update
+        // burst, far inside the window.
+        for id in 1..=10 {
+            let conn = spawn_conn(&mut app, id);
+            let addr: SocketAddr = format!("127.0.0.1:{}", 10000 + id).parse().unwrap();
+            app.world_mut().write_message(ConnectionEstablished {
+                connection: conn,
+                addr,
+            });
+            app.update();
+            assert!(
+                client_state(&mut app, conn).is_some(),
+                "attempt {id} inside budget is admitted"
+            );
+        }
+        // 11th from the same IP trips the throttle.
+        let flood = spawn_conn(&mut app, 11);
+        let flood_addr: SocketAddr = "127.0.0.1:10011".parse().unwrap();
+        app.world_mut().write_message(ConnectionEstablished {
+            connection: flood,
+            addr: flood_addr,
+        });
+        app.update();
+        assert!(
+            client_state(&mut app, flood).is_none(),
+            "throttled IP spawns no Client"
+        );
+        assert!(
+            conn_text(&app, flood).contains("connecting too quickly"),
+            "throttled IP sees the throttle message"
+        );
+        assert!(disconnects(&app).contains(&flood));
+        let msgs = app.world().resource::<Messages<WiznetAlert>>();
+        let mut cursor = msgs.get_cursor();
+        assert!(
+            cursor
+                .read(msgs)
+                .any(|a| a.category == WiznetCategory::Security && a.text.contains("127.0.0.1")),
+            "throttle refusal emits a security alert"
+        );
+        // A different IP is unaffected.
+        let other = app
+            .world_mut()
+            .spawn(Connection {
+                id: 99,
+                addr: "10.9.9.9:10099".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().write_message(ConnectionEstablished {
+            connection: other,
+            addr: "10.9.9.9:10099".parse().unwrap(),
+        });
+        app.update();
+        assert!(
+            client_state(&mut app, other).is_some(),
+            "a different IP is admitted"
         );
     }
 }

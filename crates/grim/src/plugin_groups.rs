@@ -37,18 +37,24 @@ impl bevy::app::PluginGroup for GrimHeadlessPlugins {
 pub struct GrimDefaultPlugins {
     /// TCP port the telnet transport binds.
     pub telnet_port: u16,
+    /// Input/connection caps enforced by the telnet transport.
+    pub telnet_limits: grim_networking_telnet::TelnetLimits,
 }
 
 impl Default for GrimDefaultPlugins {
     fn default() -> Self {
-        Self { telnet_port: 4000 }
+        Self {
+            telnet_port: 4000,
+            telnet_limits: grim_networking_telnet::TelnetLimits::default(),
+        }
     }
 }
 
 impl bevy::app::PluginGroup for GrimDefaultPlugins {
     fn build(self) -> bevy::app::PluginGroupBuilder {
-        GrimHeadlessPlugins
-            .build()
-            .add(grim_networking_telnet::TelnetPlugin::new(self.telnet_port))
+        GrimHeadlessPlugins.build().add(
+            grim_networking_telnet::TelnetPlugin::new(self.telnet_port)
+                .with_limits(self.telnet_limits),
+        )
     }
 }

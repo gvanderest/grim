@@ -11,12 +11,14 @@
 //!
 //! Concerns split into modules: [`connection`] (the `Connection` component),
 //! [`messages`] (the bidirectional wire message/event types), [`copyover`]
-//! (the hot-restart handover types), and [`plugin`] (message registration).
+//! (the hot-restart handover types), [`wiznet`] (admin alerts), and
+//! [`plugin`] (message registration).
 
 mod connection;
 mod copyover;
 mod messages;
 mod plugin;
+mod wiznet;
 
 pub use connection::Connection;
 pub use copyover::{ConnectionResumed, HandoverEntry, HandoverManifest};
@@ -24,3 +26,4 @@ pub use messages::{
     ConnectionClosed, ConnectionEstablished, ConnectionInput, ConnectionOutput, DisconnectRequest,
 };
 pub use plugin::GrimNetworkingPlugin;
+pub use wiznet::{WiznetAlert, WiznetCategory};
