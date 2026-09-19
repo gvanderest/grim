@@ -971,3 +971,18 @@ fn wiznet_lists_toggles_masks_and_reports_quits() {
     let _ = mud.send(bob, "quit");
     mud.recv(alice).assert_contains("[wiznet:logins] Bob quit");
 }
+
+#[test]
+fn announces_reach_only_the_subjects_room() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+
+    // Same room at entry: Alice hears Bob connect.
+    mud.recv(alice).assert_contains("Bob has connected");
+
+    // Bob leaves for another room; his quit must not reach Alice.
+    mud.send(bob, "north").assert_contains("Exits:");
+    let _ = mud.send(bob, "quit");
+    mud.recv(alice).assert_excludes("Bob has disconnected");
+}

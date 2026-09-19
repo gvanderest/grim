@@ -593,11 +593,13 @@ mod output_format {
         );
     }
 
-    /// Verify that format_output handles LoginAnnounce (broadcast_global path).
+    /// Verify that format_output handles LoginAnnounce: only the subject's
+    /// room hears it.
     #[test]
     fn format_output_login_announce() {
         let mut app = test_app();
         let room = spawn_room(&mut app);
+        let elsewhere = spawn_room(&mut app);
         app.world_mut().insert_resource(StartingRoom(room));
 
         let conn = app
@@ -614,6 +616,22 @@ mod output_format {
             Player { connection: conn },
             OutputHistory::with_max(100),
         ));
+        let far_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 2,
+                addr: "127.0.0.1:12346".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn((
+            GrimName("Bob".into()),
+            InRoom { room: elsewhere },
+            Player {
+                connection: far_conn,
+            },
+            OutputHistory::with_max(100),
+        ));
 
         app.world_mut().write_message(LoginAnnounce {
             name: "Hero".into(),
@@ -626,8 +644,14 @@ mod output_format {
         assert!(
             outputs
                 .iter()
-                .any(|o| o.text.contains("Hero has connected")),
-            "should announce login"
+                .any(|o| o.connection == conn && o.text.contains("Hero has connected")),
+            "same room should announce login"
+        );
+        assert!(
+            outputs
+                .iter()
+                .all(|o| o.connection != far_conn || !o.text.contains("has connected")),
+            "other rooms must not hear it"
         );
     }
 
@@ -669,11 +693,76 @@ mod output_format {
         );
     }
 
-    /// Verify that format_output handles LogoutAnnounce.
+    /// Verify that format_output handles LogoutAnnounce: only the room on
+    /// the message hears it (the quitter's entity is already despawned).
     #[test]
     fn format_output_logout_announce() {
         let mut app = test_app();
         let room = spawn_room(&mut app);
+        let elsewhere = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn((
+            GrimName("Witness".into()),
+            InRoom { room },
+            Player { connection: conn },
+            OutputHistory::with_max(100),
+        ));
+        let far_conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 2,
+                addr: "127.0.0.1:12346".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn((
+            GrimName("Bob".into()),
+            InRoom { room: elsewhere },
+            Player {
+                connection: far_conn,
+            },
+            OutputHistory::with_max(100),
+        ));
+
+        app.world_mut().write_message(LogoutAnnounce {
+            name: "Hero".into(),
+            room,
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
+        assert!(
+            outputs
+                .iter()
+                .any(|o| o.connection == conn && o.text.contains("Hero has disconnected")),
+            "same room should announce logout"
+        );
+        assert!(
+            outputs
+                .iter()
+                .all(|o| o.connection != far_conn || !o.text.contains("has disconnected")),
+            "other rooms must not hear it"
+        );
+    }
+
+    /// Verify that format_output handles LinkdeadAnnounce: only the
+    /// subject's room hears it.
+    #[test]
+    fn format_output_linkdead_announce() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        let elsewhere = spawn_room(&mut app);
         app.world_mut().insert_resource(StartingRoom(room));
 
         let conn = app
@@ -690,42 +779,20 @@ mod output_format {
             Player { connection: conn },
             OutputHistory::with_max(100),
         ));
-
-        app.world_mut().write_message(LogoutAnnounce {
-            name: "Hero".into(),
-        });
-        app.update();
-
-        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
-        let mut cursor = msgs.get_cursor();
-        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
-        assert!(
-            outputs
-                .iter()
-                .any(|o| o.text.contains("Hero has disconnected")),
-            "should announce logout"
-        );
-    }
-
-    /// Verify that format_output handles LinkdeadAnnounce (reconnecting).
-    #[test]
-    fn format_output_linkdead_announce() {
-        let mut app = test_app();
-        let room = spawn_room(&mut app);
-        app.world_mut().insert_resource(StartingRoom(room));
-
-        let conn = app
+        let far_conn = app
             .world_mut()
             .spawn(Connection {
-                id: 1,
-                addr: "127.0.0.1:12345".parse().unwrap(),
+                id: 2,
+                addr: "127.0.0.1:12346".parse().unwrap(),
                 echo_hidden: false,
             })
             .id();
         app.world_mut().spawn((
-            GrimName("Hero".into()),
-            InRoom { room },
-            Player { connection: conn },
+            GrimName("Bob".into()),
+            InRoom { room: elsewhere },
+            Player {
+                connection: far_conn,
+            },
             OutputHistory::with_max(100),
         ));
 
@@ -741,8 +808,14 @@ mod output_format {
         assert!(
             outputs
                 .iter()
-                .any(|o| o.text.contains("Hero has reconnected")),
-            "should announce reconnect"
+                .any(|o| o.connection == conn && o.text.contains("Hero has reconnected")),
+            "same room should announce reconnect"
+        );
+        assert!(
+            outputs
+                .iter()
+                .all(|o| o.connection != far_conn || !o.text.contains("has reconnected")),
+            "other rooms must not hear it"
         );
     }
 
