@@ -16,8 +16,9 @@ use grim_text::tr;
 
 use crate::object::CarriedBy;
 
-use super::give::{find_being, is_self, Beings};
+use super::give::{find_being, is_self};
 use crate::persist::Carried;
+use grim_actor::Beings;
 
 /// `steal <item> <target>`: move the matching objects from the victim's pack
 /// into the thief's.

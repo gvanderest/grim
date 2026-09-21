@@ -11,8 +11,8 @@
 
 use bevy::prelude::*;
 use grim_actor::placement::InRoom;
-use grim_actor::{Character, Creature, Linkdead, Player};
-use grim_core::components::{Keywords, Name as GrimName};
+use grim_actor::{beings_in, Beings};
+use grim_core::components::Name as GrimName;
 use grim_core::events::{Command, EngineCommand, InfoMessage, TransferEvent, TransferKind};
 use grim_target::{parse_target, query, ParseOptions, TargetSpec};
 use grim_text::tr;
@@ -20,27 +20,10 @@ use grim_text::tr;
 use crate::object::CarriedBy;
 use crate::persist::Carried;
 
-/// Beings that can hold or receive objects: PCs (`Character`, online or
-/// linkdead — mirroring `tell`'s `LivePc`) and creatures (`Creature`).
-/// Half-built `Character`-only entities match neither marker and are skipped.
-pub(crate) type Beings<'w, 's> = Query<
-    'w,
-    's,
-    (
-        Entity,
-        &'static InRoom,
-        &'static GrimName,
-        Option<&'static Keywords>,
-        Option<&'static Character>,
-        Option<&'static Creature>,
-        Option<&'static Player>,
-        Option<&'static Linkdead>,
-    ),
->;
-
 /// The being in `room` matching `spec` (never `actor`): exact name, exact
 /// keyword, then shortest-prefix name, ties to the lowest entity id.
 /// Returns the entity, its display name, and whether it is a creature.
+/// Beings are the canonical shape (PCs online/linkdead + creatures).
 /// Self-dealing is the caller's job (`is_self`); this only excludes the actor.
 pub(crate) fn find_being(
     spec: &TargetSpec,
@@ -48,18 +31,13 @@ pub(crate) fn find_being(
     actor: Entity,
     beings: &Beings,
 ) -> Option<(Entity, String, bool)> {
+    let here = beings_in(room, beings, Some(actor));
     let found = query(
         spec,
-        beings
-            .iter()
-            .filter(|(e, ir, _, _, ch, cr, p, l)| {
-                *e != actor
-                    && ir.room == room
-                    && (cr.is_some() || (ch.is_some() && (p.is_some() || l.is_some())))
-            })
-            .map(|(e, _, nm, kw, _, _, _, _)| {
-                (e, nm.0.as_str(), kw.map(|k| k.0.as_slice()).unwrap_or(&[]))
-            }),
+        here.into_iter().filter_map(|e| {
+            let (_, _, nm, kw, ..) = beings.get(e).ok()?;
+            Some((e, nm.0.as_str(), kw.map(|k| k.0.as_slice()).unwrap_or(&[])))
+        }),
     );
     let entity = found.into_iter().next()?;
     let (_, _, name, _, _, is_creature, _, _) = beings.get(entity).ok()?;
