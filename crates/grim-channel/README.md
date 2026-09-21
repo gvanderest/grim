@@ -43,7 +43,7 @@ Player-facing verbs and where to find their handlers.
 ## Functions
 | Name | File | Purpose |
 |---|---|---|
-| `resolve_audience` / `resolve_audience_mapped` | `src/registry.rs` | Scope → audience: room arm via `grim-actor::in_room`, area arm walks `Room.area`, global arm is everyone. The `_mapped` variant takes pre-mapped `(Entity, room)` pairs + a `same_area` closure for richer tuples (`grim-scene` delegates to it). |
+| `resolve_audience_mapped` | `src/registry.rs` | Scope → audience from pre-mapped `(Entity, room)` pairs: room arm via `grim-actor::in_room`, area arm via a `same_area` closure (fail-closed on missing `Room`), global arm is everyone (`grim-scene` delegates to it). |
 
 ## Configuration
 Channels are **data**, not code. Register channels via `ChannelRegistry`:

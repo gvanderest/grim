@@ -74,16 +74,15 @@ fn find_subject(
     }
     let spec = parse_target(raw, ParseOptions::BEING)?;
     let here = in_room(room, named.iter().map(|(e, ir, _, _)| (e, ir.room)), None);
-    let names: std::collections::HashMap<Entity, (&str, &[String])> = named
-        .iter()
-        .filter(|(e, _, _, _)| here.contains(e))
-        .map(|(e, _, n, kw)| (e, (n.0.as_str(), kw.map(|k| k.0.as_slice()).unwrap_or(&[]))))
-        .collect();
     query(
         &spec,
         here.into_iter().filter_map(|e| {
-            let (name, kw) = names.get(&e)?;
-            Some((e, *name, *kw))
+            let (_, _, name, keywords) = named.get(e).ok()?;
+            Some((
+                e,
+                name.0.as_str(),
+                keywords.map(|k| k.0.as_slice()).unwrap_or(&[]),
+            ))
         }),
     )
     .into_iter()
