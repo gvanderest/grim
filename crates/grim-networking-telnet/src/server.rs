@@ -283,6 +283,14 @@ async fn run_accept_loop(
                             conn.read_handle.abort();
                             conn.write_handle.abort();
                         }
+                        // The aborted read task can no longer report EOF, so echo
+                        // the close: without this the session layer never learns
+                        // a server-initiated sever happened (idle sweep, ban kick,
+                        // takeover) and the Client leaks (issue #141).
+                        let _ = state.to_bevy_tx.send(NetworkEvent::Disconnected {
+                            conn_id,
+                            reason: None,
+                        });
                     }
                     NetworkCommand::Copyover { conns: list } => {
                         // Stop accepting for the handoff window; resume only if it fails.

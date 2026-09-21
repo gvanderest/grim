@@ -995,5 +995,36 @@ mod tests {
                 "first input after connect must not be dropped"
             );
         }
+
+        #[test]
+        fn server_initiated_disconnect_reports_close() {
+            let mut app = boot(19985, TelnetLimits::default());
+            let mut stream = connect(19985);
+            app.update();
+            let conn_e = app
+                .world_mut()
+                .query::<(Entity, &Connection)>()
+                .iter(app.world())
+                .map(|(e, _)| e)
+                .next()
+                .expect("accepted socket must spawn a Connection");
+            // Server-side sever (idle sweep, ban kick, takeover): the network
+            // thread aborts the socket tasks, which can no longer report EOF
+            // themselves — the echoed Disconnected must close the loop
+            // (issue #141: without it no ConnectionClosed ever arrives).
+            app.world_mut()
+                .write_message(DisconnectRequest { connection: conn_e });
+            app.update();
+            std::thread::sleep(Duration::from_millis(300));
+            app.update();
+            assert_eq!(
+                closed_count(&app),
+                1,
+                "server-initiated sever must surface ConnectionClosed"
+            );
+            let mut buf = [0u8; 8];
+            stream.set_read_timeout(Some(Duration::from_secs(2))).ok();
+            assert_eq!(stream.read(&mut buf).ok(), Some(0), "client must see EOF");
+        }
     }
 }
