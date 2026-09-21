@@ -4,9 +4,8 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 
-use grim_actor::{in_room, InRoom};
+use grim_actor::in_room;
 use grim_core::channel::{Channel, Scope};
-use grim_world::Room;
 
 /// Resource that holds all registered channels.
 #[derive(Resource, Default)]
@@ -31,44 +30,13 @@ impl ChannelRegistry {
     }
 }
 
-/// Resolve the audience for a channel message based on the channel configuration.
-///
-/// Room scope funnels through the shared [`in_room`] helper; the area arm
-/// walks [`Room::area`] (ADR-0001). Call sites with richer tuples map to
-/// `(Entity, room)` pairs instead of reimplementing the predicate.
-pub fn resolve_audience(
-    channel: &Channel,
-    actor: Entity,
-    inroom: &Query<(Entity, &InRoom)>,
-    rooms: &Query<&Room>,
-) -> Vec<Entity> {
-    match channel.scope {
-        Scope::Room => {
-            let Ok(actor_room) = inroom.get(actor).map(|(_, ir)| ir.room) else {
-                return Vec::new();
-            };
-            in_room(actor_room, inroom.iter().map(|(e, ir)| (e, ir.room)), None)
-        }
-        Scope::Area => {
-            let Ok(actor_room) = inroom.get(actor).map(|(_, ir)| ir.room) else {
-                return Vec::new();
-            };
-            let Ok(actor_area) = rooms.get(actor_room).map(|r| r.area) else {
-                return Vec::new();
-            };
-            inroom
-                .iter()
-                .filter(|(_, ir)| rooms.get(ir.room).is_ok_and(|r| r.area == actor_area))
-                .map(|(e, _)| e)
-                .collect()
-        }
-        Scope::Global => inroom.iter().map(|(e, _)| e).collect(),
-    }
-}
-
 /// Audience from a pre-mapped `(Entity, room)` listing (for call sites whose
-/// query carries extra columns). Room identity and area membership arrive as
-/// closures so the caller keeps its own `Room` tuple shape.
+/// query carries extra columns). Room scope funnels through the shared
+/// [`in_room`] helper; the area arm walks [`Room::area`] (ADR-0001) via the
+/// `same_area` closure, failing closed when either `Room` row is missing.
+/// This is the one audience entry point: `grim-scene::emit_channel` delegates
+/// here (mapped from its rich tuple), keeping eligibility + rendering local
+/// per ADR-0005.
 pub fn resolve_audience_mapped(
     scope: Scope,
     actor_room: Option<Entity>,
@@ -81,9 +49,12 @@ pub fn resolve_audience_mapped(
             None => Vec::new(),
         },
         Scope::Area => match actor_room {
+            // Fail closed like `resolve_audience`: same-room reaches only via
+            // `same_area` (which requires both `Room` rows to resolve), never
+            // by bare room identity.
             Some(room) => occupants
                 .into_iter()
-                .filter(|(_, r)| *r == room || same_area(room, *r))
+                .filter(|(_, r)| same_area(room, *r))
                 .map(|(e, _)| e)
                 .collect(),
             None => Vec::new(),
@@ -116,5 +87,79 @@ mod tests {
         registry.add_channel(Channel::new("channel1"));
         registry.add_channel(Channel::new("channel2"));
         assert_eq!(registry.iter().count(), 2);
+    }
+
+    fn same_area_map(pairs: &[(Entity, Entity)]) -> impl FnMut(Entity, Entity) -> bool + '_ {
+        move |a, b| {
+            let area_of = |r: Entity| pairs.iter().find(|(e, _)| *e == r).map(|(_, a)| *a);
+            area_of(a).zip(area_of(b)).is_some_and(|(x, y)| x == y)
+        }
+    }
+
+    #[test]
+    fn audience_room_lists_only_the_room() {
+        let mut app = App::new();
+        let here = app.world_mut().spawn_empty().id();
+        let there = app.world_mut().spawn_empty().id();
+        let a = app.world_mut().spawn_empty().id();
+        let b = app.world_mut().spawn_empty().id();
+        let c = app.world_mut().spawn_empty().id();
+        let occupants = vec![(a, here), (b, here), (c, there)];
+        let mut got = resolve_audience_mapped(Scope::Room, Some(here), occupants, |_, _| false);
+        got.sort();
+        let mut want = vec![a, b];
+        want.sort();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn audience_room_without_actor_is_empty() {
+        let a = Entity::PLACEHOLDER;
+        let got =
+            resolve_audience_mapped(Scope::Room, None, vec![(a, Entity::PLACEHOLDER)], |_, _| {
+                panic!("no area lookup without an actor room")
+            });
+        assert!(got.is_empty());
+    }
+
+    #[test]
+    fn audience_area_spans_rooms_fails_closed() {
+        let mut app = App::new();
+        let r1 = app.world_mut().spawn_empty().id();
+        let r2 = app.world_mut().spawn_empty().id();
+        let r3 = app.world_mut().spawn_empty().id();
+        let area_a = app.world_mut().spawn_empty().id();
+        let area_b = app.world_mut().spawn_empty().id();
+        let missing = app.world_mut().spawn_empty().id();
+        // (room, area); `missing` has no area row.
+        let areas = vec![(r1, area_a), (r2, area_a), (r3, area_b)];
+        let a = app.world_mut().spawn_empty().id();
+        let b = app.world_mut().spawn_empty().id();
+        let c = app.world_mut().spawn_empty().id();
+        let d = app.world_mut().spawn_empty().id();
+        let occupants = vec![(a, r1), (b, r2), (c, r3), (d, missing)];
+        let mut got =
+            resolve_audience_mapped(Scope::Area, Some(r1), occupants, same_area_map(&areas));
+        got.sort();
+        let mut want = vec![a, b];
+        want.sort();
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn audience_global_lists_everyone() {
+        let mut app = App::new();
+        let a = app.world_mut().spawn_empty().id();
+        let b = app.world_mut().spawn_empty().id();
+        let mut got = resolve_audience_mapped(
+            Scope::Global,
+            None,
+            vec![(a, Entity::PLACEHOLDER), (b, Entity::PLACEHOLDER)],
+            |_, _| panic!("no area lookup on global scope"),
+        );
+        got.sort();
+        let mut want = vec![a, b];
+        want.sort();
+        assert_eq!(got, want);
     }
 }
