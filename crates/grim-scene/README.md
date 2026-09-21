@@ -47,7 +47,7 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | `sockets` | `handle_ingame` → `format_sockets` (`src/sockets.rs`) | List live connections as an aligned table (ID/IP/State/Name/Account/Idle seconds; admin-only; masked as unknown for others). |
 | `ban list [type]` / `ban add <type> <pattern>` / `ban remove <type> <pattern>` | parser → engine queue (`src/parser.rs`, `src/ban.rs`) | Blocklist admin verbs (types `ip`/`account`/`character`; IP patterns `*`-wildcarded per octet). Admin-only + masked; an `add` persists and kicks every matching session. |
 | `wiznet [on\|off\|security\|logins]` | parser → engine queue (`src/parser.rs`, `src/wiznet.rs`) | List and toggle the admin-alert categories (persisted `grim-config` settings `wiznet`, `wiznet.security`, `wiznet.logins`). Admin-only + masked. |
-| `where` | `handle_ingame` → `format_where` (`src/who.rs`) | Show where players are located. |
+| `where` | `handle_ingame` → `format_where` (`src/who.rs`) | List beings in your area by room (`In your area (<name>):`, yourself included); only `Character`/`Creature` carriers — objects excluded. |
 | `inventory` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/inventory.rs`) | List carried objects' short names (sorted), or the empty line. |
 | `equipment` | `handle_ingame` → `tr!("equipment.empty")` (`src/command.rs`) | Dummy: always "You are wearing nothing." (no item system yet). |
 | `get <target>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Pick up matches from the ground (`grim-target` selectors: `2.coin`, `3*coin`, `all [words]`); room sees "<name> picks up <short>" per item. |

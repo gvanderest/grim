@@ -835,6 +835,32 @@ mod tests {
             cursor.read(msgs).count()
         }
 
+        /// Block until the peer's FIN arrives. The guard close propagates
+        /// through the detached network thread (sender-drop → write-task exit
+        /// → socket close), so a single read races scheduler delay — poll to
+        /// a deadline instead of hoping once. Data or a reset still fails:
+        /// only patience is added, never leniency.
+        fn expect_eof(stream: &mut std::net::TcpStream) {
+            let mut buf = [0u8; 8];
+            let deadline = std::time::Instant::now() + Duration::from_secs(10);
+            loop {
+                stream
+                    .set_read_timeout(Some(Duration::from_millis(200)))
+                    .ok();
+                match stream.read(&mut buf) {
+                    Ok(0) => return,
+                    Ok(_) => panic!("client must see EOF, got data"),
+                    Err(e)
+                        if e.kind() == std::io::ErrorKind::WouldBlock
+                            || e.kind() == std::io::ErrorKind::TimedOut =>
+                    {
+                        assert!(std::time::Instant::now() < deadline, "client must see EOF");
+                    }
+                    Err(e) => panic!("client must see EOF, got {e}"),
+                }
+            }
+        }
+
         fn small_limits() -> TelnetLimits {
             TelnetLimits {
                 max_line_len: 16,
@@ -879,9 +905,7 @@ mod tests {
                 "only the truncated fragment escapes"
             );
             assert_eq!(closed_count(&app), 1, "buffer guard must close the socket");
-            let mut buf = [0u8; 8];
-            stream.set_read_timeout(Some(Duration::from_secs(2))).ok();
-            assert_eq!(stream.read(&mut buf).ok(), Some(0), "client must see EOF");
+            expect_eof(&mut stream);
         }
 
         #[test]
@@ -906,9 +930,7 @@ mod tests {
                 "five allowed lines plus the tripping one; got {texts:?}"
             );
             assert_eq!(closed_count(&app), 1, "rate guard must close the socket");
-            let mut buf = [0u8; 8];
-            stream.set_read_timeout(Some(Duration::from_secs(2))).ok();
-            assert_eq!(stream.read(&mut buf).ok(), Some(0), "client must see EOF");
+            expect_eof(&mut stream);
         }
 
         #[test]
@@ -935,13 +957,7 @@ mod tests {
                 .count();
             assert_eq!(count, 4, "shed must admit four and drop the fifth");
             let mut last = streams.pop().unwrap();
-            last.set_read_timeout(Some(Duration::from_secs(2))).ok();
-            let mut buf = [0u8; 8];
-            assert_eq!(
-                last.read(&mut buf).ok(),
-                Some(0),
-                "shed-dropped socket must see EOF"
-            );
+            expect_eof(&mut last);
         }
 
         fn alert_texts(app: &App) -> Vec<(WiznetCategory, String)> {

@@ -8,7 +8,7 @@
 use bevy::prelude::*;
 use chrono::Utc;
 use grim_actor::{
-    Actor, Character, InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter,
+    Actor, Character, Creature, InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter,
 };
 use grim_channel::{Channel, ChannelMessage, ChannelPlugin};
 use grim_core::components::Name as GrimName;
@@ -23,7 +23,7 @@ use grim_networking::{
     WiznetAlert, WiznetCategory,
 };
 use grim_persistence::{BanList, PersistenceConfig, PersistencePlugin};
-use grim_world::{Room, StartingRoom, WorldPlugin};
+use grim_world::{Area, Room, StartingRoom, WorldPlugin};
 use std::net::SocketAddr;
 
 use crate::scene_stack::{InGameScene, SceneStack};
@@ -72,6 +72,55 @@ fn spawn_room(app: &mut App) -> Entity {
             GrimName("Room".into()),
         ))
         .id()
+}
+
+fn spawn_area(app: &mut App, friendly_id: &str, name: &str) -> Entity {
+    app.world_mut()
+        .spawn(Area {
+            id: GrimId::new(),
+            friendly_id: friendly_id.into(),
+            name: name.into(),
+        })
+        .id()
+}
+
+fn spawn_room_in(app: &mut App, area: Entity, friendly_id: &str, name: &str) -> Entity {
+    app.world_mut()
+        .spawn((
+            Room {
+                id: GrimId::new(),
+                friendly_id: friendly_id.into(),
+                name: name.into(),
+                description: "A room.".into(),
+                area,
+            },
+            GrimName(name.into()),
+        ))
+        .id()
+}
+
+fn spawn_conn(app: &mut App, id: usize, port: u16) -> Entity {
+    app.world_mut()
+        .spawn(Connection {
+            id,
+            addr: format!("127.0.0.1:{port}").parse().unwrap(),
+            echo_hidden: false,
+        })
+        .id()
+}
+
+fn named_character(name: &str) -> StoredCharacter {
+    let mut stored = make_character(vec![]);
+    stored.name = name.into();
+    stored
+}
+
+fn spawn_ingame_in(app: &mut App, conn: Entity, stored: StoredCharacter, room: Entity) -> Entity {
+    let char_entity = spawn_ingame(app, conn, stored);
+    app.world_mut()
+        .entity_mut(char_entity)
+        .insert(InRoom { room });
+    char_entity
 }
 
 fn spawn_ingame(app: &mut App, conn: Entity, stored: StoredCharacter) -> Entity {
@@ -2127,6 +2176,118 @@ mod ingame_commands {
 
         let engine = app.world().resource::<Messages<EngineCommand>>();
         assert_eq!(engine.get_cursor().read(engine).count(), 0);
+    }
+
+    /// `where` lists beings in the actor's area (issue #136): objects share
+    /// `Name + InRoom` but carry neither `Character` nor `Creature`, so the
+    /// lantern stays out. The header names the area; the actor is included.
+    #[test]
+    fn ingame_where_lists_beings_not_objects() {
+        let mut app = test_app();
+        let town = spawn_area(&mut app, "town", "Town");
+        let tavern = spawn_room_in(&mut app, town, "tavern", "Tavern");
+        let garden = spawn_room_in(&mut app, town, "garden", "Garden");
+        let wilds = spawn_area(&mut app, "wilds", "Wilds");
+        let clearing = spawn_room_in(&mut app, wilds, "clearing", "Clearing");
+        app.world_mut().insert_resource(StartingRoom(tavern));
+        let hero_conn = spawn_conn(&mut app, 1, 11111);
+        let bob_conn = spawn_conn(&mut app, 2, 22222);
+        let stranger_conn = spawn_conn(&mut app, 3, 33333);
+        spawn_ingame_in(&mut app, hero_conn, named_character("Hero"), tavern);
+        spawn_ingame_in(&mut app, bob_conn, named_character("Bob"), garden);
+        spawn_ingame_in(
+            &mut app,
+            stranger_conn,
+            named_character("Stranger"),
+            clearing,
+        );
+        // Seeded mob composition: `Creature` + the shared `Actor` base.
+        app.world_mut().spawn((
+            GrimName("Goblin".into()),
+            Creature,
+            Actor {
+                race: String::new(),
+                level: 1,
+                gender: Gender::Neutral,
+            },
+            InRoom { room: tavern },
+        ));
+        // The bug: a ground object matches `Name + InRoom` like a being.
+        app.world_mut().spawn((
+            GrimName("brass lantern".into()),
+            Object,
+            InRoom { room: tavern },
+        ));
+
+        app.world_mut().write_message(ConnectionInput {
+            connection: hero_conn,
+            text: "where".into(),
+        });
+        app.update();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == hero_conn)
+            .expect("expected a where response");
+        assert!(
+            out.text.starts_with("In your area (Town):\n"),
+            "header must name the area:\n{}",
+            out.text
+        );
+        for want in ["Hero in [Tavern]", "Bob in [Garden]", "Goblin in [Tavern]"] {
+            assert!(out.text.contains(want), "missing {want}:\n{}", out.text);
+        }
+        for banned in ["lantern", "Stranger"] {
+            assert!(!out.text.contains(banned), "leaked {banned}:\n{}", out.text);
+        }
+    }
+
+    /// `where` with an unresolvable room fails closed: the empty message, no
+    /// header naming nothing, no leak of other-area beings.
+    #[test]
+    fn ingame_where_without_room_shows_empty() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = spawn_conn(&mut app, 1, 11111);
+        // `spawn_ingame` leaves `InRoom` on `PLACEHOLDER`: no room resolves.
+        spawn_ingame(&mut app, conn, named_character("Hero"));
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "where".into(),
+        });
+        app.update();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == conn)
+            .expect("expected a where response");
+        assert_eq!(out.text, "No one else in this area.\n");
+    }
+
+    /// `where` alone in an area lists just the actor under the area header.
+    #[test]
+    fn ingame_where_alone_lists_self() {
+        let mut app = test_app();
+        let town = spawn_area(&mut app, "town", "Town");
+        let tavern = spawn_room_in(&mut app, town, "tavern", "Tavern");
+        app.world_mut().insert_resource(StartingRoom(tavern));
+        let conn = spawn_conn(&mut app, 1, 11111);
+        spawn_ingame_in(&mut app, conn, named_character("Hero"), tavern);
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "where".into(),
+        });
+        app.update();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let out = cursor
+            .read(msgs)
+            .find(|o| o.connection == conn)
+            .expect("expected a where response");
+        assert_eq!(out.text, "In your area (Town):\n  Hero in [Tavern]\n");
     }
 
     // ── handle_client_input: InGame with blank line ──
