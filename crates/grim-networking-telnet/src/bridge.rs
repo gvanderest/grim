@@ -838,8 +838,11 @@ mod tests {
         /// Block until the peer's FIN arrives. The guard close propagates
         /// through the detached network thread (sender-drop → write-task exit
         /// → socket close), so a single read races scheduler delay — poll to
-        /// a deadline instead of hoping once. Data or a reset still fails:
-        /// only patience is added, never leniency.
+        /// a deadline instead of hoping once. A reset counts too: when the
+        /// guard fires while unread input still sits in the socket buffer,
+        /// the kernel answers the close with RST instead of FIN — either way
+        /// the socket is gone, which is what the guard promises. Data still
+        /// fails: only close evidence is accepted, never leniency.
         fn expect_eof(stream: &mut std::net::TcpStream) {
             let mut buf = [0u8; 8];
             let deadline = std::time::Instant::now() + Duration::from_secs(10);
@@ -856,6 +859,7 @@ mod tests {
                     {
                         assert!(std::time::Instant::now() < deadline, "client must see EOF");
                     }
+                    Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => return,
                     Err(e) => panic!("client must see EOF, got {e}"),
                 }
             }

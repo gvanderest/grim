@@ -8,6 +8,7 @@ use grim_core::components::{Keywords, Name};
 use grim_core::events::{Command, EngineCommand, InfoMessage, LookEntity, LookRoom};
 use grim_target::{parse_target, query, ParseOptions};
 
+use crate::occupants::in_room;
 use crate::placement::InRoom;
 
 /// `look` / `look <target>`: show the actor's room or a named entity in it.
@@ -72,18 +73,17 @@ fn find_subject(
         return Some(actor);
     }
     let spec = parse_target(raw, ParseOptions::BEING)?;
+    let here = in_room(room, named.iter().map(|(e, ir, _, _)| (e, ir.room)), None);
     query(
         &spec,
-        named
-            .iter()
-            .filter(|(_, ir, _, _)| ir.room == room)
-            .map(|(entity, _, name, keywords)| {
-                (
-                    entity,
-                    name.0.as_str(),
-                    keywords.map(|k| k.0.as_slice()).unwrap_or(&[]),
-                )
-            }),
+        here.into_iter().filter_map(|e| {
+            let (_, _, name, keywords) = named.get(e).ok()?;
+            Some((
+                e,
+                name.0.as_str(),
+                keywords.map(|k| k.0.as_slice()).unwrap_or(&[]),
+            ))
+        }),
     )
     .into_iter()
     .next()

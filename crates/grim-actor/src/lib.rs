@@ -21,6 +21,7 @@
 pub mod actor;
 pub mod character;
 pub mod commands;
+pub mod occupants;
 pub mod placement;
 pub mod player;
 pub mod plugin;
@@ -29,6 +30,7 @@ pub mod transition;
 
 pub use actor::{Actor, Creature};
 pub use character::{Character, Role};
+pub use occupants::{beings_in, in_room, is_addressable, Beings};
 pub use placement::InRoom;
 pub use player::{Linkdead, OutputHistory, Player};
 pub use plugin::ActorPlugin;

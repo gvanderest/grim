@@ -14,22 +14,8 @@ use grim_core::events::{Command, EngineCommand, InfoMessage, ItemEvent, ItemKind
 use grim_target::{parse_target, query, ParseOptions};
 use grim_text::tr;
 
+use crate::ground::{ground_in, Ground};
 use crate::object::{CarriedBy, Object};
-
-/// Ground objects: marker, room placement, no carrier. Carried objects match
-/// neither bound (`InRoom` is required), so they are invisible to `get` even
-/// when the holder stands in the room.
-type Ground<'w, 's> = Query<
-    'w,
-    's,
-    (
-        Entity,
-        &'static InRoom,
-        &'static GrimName,
-        Option<&'static Keywords>,
-    ),
-    (With<Object>, Without<CarriedBy>),
->;
 
 /// `get <target>`: pick up the matching objects in the actor's room.
 /// Ranking mirrors `look` (exact name, exact keyword, shortest-prefix name);
@@ -61,18 +47,17 @@ pub(crate) fn handle_get(
             });
             continue;
         };
+        let here = ground_in(actor_room.room, &objects);
         let found = query(
             &spec,
-            objects
-                .iter()
-                .filter(|(_, ir, _, _)| ir.room == actor_room.room)
-                .map(|(entity, _, name, keywords)| {
-                    (
-                        entity,
-                        name.0.as_str(),
-                        keywords.map(|k| k.0.as_slice()).unwrap_or(&[]),
-                    )
-                }),
+            here.into_iter().filter_map(|e| {
+                let (_, _, name, kw) = objects.get(e).ok()?;
+                Some((
+                    e,
+                    name.0.as_str(),
+                    kw.map(|k| k.0.as_slice()).unwrap_or(&[]),
+                ))
+            }),
         );
         if found.is_empty() {
             info.write(InfoMessage {

@@ -16,9 +16,11 @@
 //! Carried objects snapshot whole into the character file on save and re-spawn
 //! on login (`persist`); ground objects regenerate from area blueprints.
 pub mod commands;
+pub mod ground;
 pub mod object;
 pub mod persist;
 pub mod plugin;
 
+pub use ground::{ground_in, Ground};
 pub use object::{CarriedBy, Object};
 pub use plugin::ObjectPlugin;

@@ -3,7 +3,7 @@
 //! captures output for linkdead replay, and fans server broadcasts out.
 
 use bevy::prelude::*;
-use grim_actor::{Character, InRoom, OutputHistory, Player};
+use grim_actor::{in_room, Character, InRoom, OutputHistory, Player};
 use grim_channel::{ChannelMessage, ChannelRegistry};
 use grim_config::ConfigRegistry;
 use grim_core::components::{Description, Name as GrimName, RoomDescription};
@@ -221,6 +221,8 @@ pub(crate) fn capture_output(
     }
 }
 /// Send text to every player in the given room, skipping `exclude`.
+/// Membership funnels through the shared [`in_room`] helper (mapped from the
+/// rich `Occupants` tuple); the player check stays local.
 pub(crate) fn broadcast_to_room(
     room: Entity,
     exclude: &[Entity],
@@ -228,14 +230,11 @@ pub(crate) fn broadcast_to_room(
     occupants: &Occupants,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
-    for (entity, ir, player, _, _, _) in occupants.iter() {
-        if ir.room != room {
-            continue;
-        }
+    for entity in in_room(room, occupants.iter().map(|(e, ir, ..)| (e, ir.room)), None) {
         if exclude.contains(&entity) {
             continue;
         }
-        if let Some(p) = player {
+        if let Ok((_, _, Some(p), ..)) = occupants.get(entity) {
             outputs.write(ConnectionOutput {
                 prepend_newline: true,
                 ..ConnectionOutput::new(p.connection, text.to_string())
@@ -257,21 +256,29 @@ pub(crate) fn format_server_broadcast(
     }
 }
 
-/// Send text to every connected player standing in `room`.
+/// Send text to every connected player standing in `room`. Objects share the
+/// query but never speak, so they are excluded from the audience (ground
+/// objects have no `Player` either, but the explicit cut keeps the render
+/// contract obvious).
 fn broadcast_room(
     text: &str,
     room: Entity,
     occupants: &Occupants,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
-    for (_, ir, player, _, _, o) in occupants.iter() {
-        if ir.room == room && o.is_none() {
-            if let Some(p) = player {
-                outputs.write(ConnectionOutput {
-                    prepend_newline: true,
-                    ..ConnectionOutput::new(p.connection, text.to_string())
-                });
-            }
+    for entity in in_room(
+        room,
+        occupants
+            .iter()
+            .filter(|(_, _, _, _, _, o)| o.is_none())
+            .map(|(e, ir, ..)| (e, ir.room)),
+        None,
+    ) {
+        if let Ok((_, _, Some(p), ..)) = occupants.get(entity) {
+            outputs.write(ConnectionOutput {
+                prepend_newline: true,
+                ..ConnectionOutput::new(p.connection, text.to_string())
+            });
         }
     }
 }
