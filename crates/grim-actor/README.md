@@ -85,13 +85,19 @@ Non-component types this crate defines.
 | Type | Kind | File | Purpose |
 |---|---|---|---|
 | `Role` | serde enum (`Admin`) | `src/character.rs` | A privilege a character holds; stored in `Character.roles` and gates admin verbs. Not an ECS component. |
-| `StoredCharacter` | serde struct | `src/stored.rs` | The flat on-disk DTO for a PC — the **only** serde surface. `into_components()`/`from_components()` bridge it to `Name + Actor + Character`. Keeps the pre-split JSON layout (every optional field `#[serde(default)]`) so old `data/characters/<name>.json` still loads. |
+| `Beings` | query alias | `src/occupants.rs` | Canonical beings shape (identity + `InRoom` + `Name` + addressability markers). New systems declare this instead of inventing a tuple. |
+| `beings_in` / `in_room` / `is_addressable` | free functions | `src/occupants.rs` | Shared room-membership predicates: addressable beings in a room (creature, or character with `Player`/`Linkdead`), the generic `(Entity, room)` core for richer tuples, and the addressability rule. `except` covers beings-minus-self; `self` resolves at the parse layer. |
 
 ## Notes
 - **One plugin:** `ActorPlugin` (`src/plugin.rs`) calls each command's
   `pub(crate) fn register(app)` — the per-command convention: one file per
   command under `src/commands/`, each owning its systems + the messages it
   registers. `commands.rs` and `lib.rs` are declarations + re-exports only.
+- **Room membership queries** live in `src/occupants.rs` (see Types above):
+  `look` resolves targets via `in_room`, and downstream crates (`grim-object`
+  `give`/`steal`, `grim-social` roommates, `grim-channel` audience,
+  `grim-scene` broadcasts, `grim-script` watcher) funnel through the same
+  helpers instead of hand-rolled `ir.room == room` filters.
 - The world-happening events (`LookRoom`/`LookEntity`/`MoveEvent`/`RecallEvent`) are owned by
   `grim_world::WorldPlugin`; the shutdown countdown/signal machinery by
   `grim_world::ShutdownPlugin`. A full stack composes those alongside
