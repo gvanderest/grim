@@ -3,7 +3,7 @@
 //! and drain the per-client queue into engine commands under a cooldown.
 
 use bevy::prelude::*;
-use grim_actor::{Actor, Character, Linkdead, StoredCharacter};
+use grim_actor::{Actor, Character, InRoom, Linkdead, StoredCharacter};
 use grim_core::components::{Account, Client, ClientState, Description, Name as GrimName};
 use grim_core::events::{Command, DescOp, EngineCommand, LogoutAnnounce};
 use grim_networking::{Connection, ConnectionOutput, DisconnectRequest};
@@ -289,7 +289,7 @@ pub(crate) fn process_command_queue(
     mut engine_commands: MessageWriter<EngineCommand>,
     mut announce_logout: MessageWriter<LogoutAnnounce>,
     mut disconnect: MessageWriter<DisconnectRequest>,
-    player_chars: Query<(Entity, &GrimName)>,
+    player_chars: Query<(Entity, &GrimName, &InRoom)>,
     characters: Query<(&GrimName, &Actor, &Character)>,
     persistence: Res<grim_persistence::PersistenceConfig>,
     mut commands: Commands,
@@ -309,8 +309,12 @@ pub(crate) fn process_command_queue(
                 let char_name = client
                     .character
                     .and_then(|c| player_chars.get(c).ok())
-                    .map(|(_, n)| n.0.clone())
+                    .map(|(_, n, _)| n.0.clone())
                     .unwrap_or_else(|| "Someone".into());
+                let char_room = client
+                    .character
+                    .and_then(|c| player_chars.get(c).ok())
+                    .map(|(_, _, ir)| ir.room);
                 // `quit` is an intentional logout: save the character to disk,
                 // then DESPAWN its entity entirely — a logged-out character lives
                 // only on disk and is re-loaded on next login. This is NOT
@@ -341,9 +345,13 @@ pub(crate) fn process_command_queue(
                     commands.entity(char_entity).despawn();
                 }
                 commands.entity(entity).despawn();
-                announce_logout.write(LogoutAnnounce {
-                    name: char_name.clone(),
-                });
+                // The entity is gone after this: the room rides on the message.
+                if let Some(room) = char_room {
+                    announce_logout.write(LogoutAnnounce {
+                        name: char_name.clone(),
+                        room,
+                    });
+                }
                 info!("Character '{}' quit", char_name);
                 disconnect.write(DisconnectRequest { connection: conn });
                 continue;

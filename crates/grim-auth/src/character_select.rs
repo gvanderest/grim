@@ -247,7 +247,10 @@ pub(crate) fn motd_prompt(
     client.command_cooldown = Timer::from_seconds(0.5, TimerMode::Once);
     // Start output capture now that the character is in the world
     commands.entity(conn).insert(OutputHistory::with_max(100));
-    announce_login.write(LoginAnnounce { name: char_name });
+    announce_login.write(LoginAnnounce {
+        subject: char_entity,
+        name: char_name,
+    });
     let Some(char_entity) = client.character else {
         return;
     };

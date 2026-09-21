@@ -52,24 +52,35 @@ pub(crate) fn format_output(
     characters: Query<&Character>,
     mut outputs: MessageWriter<ConnectionOutput>,
 ) {
-    // ── Login / Logout / Linkdead announces ──
+    // ── Login / Logout / Linkdead announces (same-room only) ──
+    // Login and linkdead resolve the room by subject entity: the subject is
+    // alive at render time, so identity beats the name lookup (NPCs share
+    // the name query). Logout carries its room: the quitter is despawned.
     for ev in reads.login.read() {
-        broadcast_global(
-            &format!("{} has connected.\n", ev.name),
-            &room_occupants,
-            &mut outputs,
-        );
+        if let Ok((_, ir, _, _, _, _)) = room_occupants.get(ev.subject) {
+            broadcast_room(
+                &format!("{} has connected.\n", ev.name),
+                ir.room,
+                &room_occupants,
+                &mut outputs,
+            );
+        }
     }
     for ev in reads.logout.read() {
-        broadcast_global(
+        // The quitter's entity is already despawned: the room rides on the
+        // message instead of a lookup.
+        broadcast_room(
             &format!("{} has disconnected.\n", ev.name),
+            ev.room,
             &room_occupants,
             &mut outputs,
         );
     }
     for ev in reads.linkdead.read() {
-        let formatted = formatter::format_linkdead(&ev.name, ev.reconnecting);
-        broadcast_global(&formatted, &room_occupants, &mut outputs);
+        if let Ok((_, ir, _, _, _, _)) = room_occupants.get(ev.subject) {
+            let formatted = formatter::format_linkdead(&ev.name, ev.reconnecting);
+            broadcast_room(&formatted, ir.room, &room_occupants, &mut outputs);
+        }
     }
     // Causal order, not arrival order: attempt-phase speech (channel) and
     // direct lines (info) are written before the movement system writes the
@@ -243,6 +254,25 @@ pub(crate) fn format_server_broadcast(
 ) {
     for ev in broadcasts.read() {
         broadcast_global(&ev.text, &occupants, &mut outputs);
+    }
+}
+
+/// Send text to every connected player standing in `room`.
+fn broadcast_room(
+    text: &str,
+    room: Entity,
+    occupants: &Occupants,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+) {
+    for (_, ir, player, _, _, o) in occupants.iter() {
+        if ir.room == room && o.is_none() {
+            if let Some(p) = player {
+                outputs.write(ConnectionOutput {
+                    prepend_newline: true,
+                    ..ConnectionOutput::new(p.connection, text.to_string())
+                });
+            }
+        }
     }
 }
 

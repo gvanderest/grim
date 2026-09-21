@@ -371,21 +371,29 @@ pub struct InfoMessage {
     pub text: String,
 }
 
-/// A character has entered the world. Broadcast globally.
+/// A character has entered the world. Shown to players in the same room.
+/// Carries the subject entity so renderers resolve the room by identity,
+/// never by name (NPCs share the name query and could collide).
 #[derive(Message, Debug)]
 pub struct LoginAnnounce {
+    pub subject: Entity,
     pub name: String,
 }
 
-/// A character has left the world. Broadcast globally.
+/// A character quit the game cleanly. Carries the room they stood in:
+/// quit despawns the character entity first, so renderers cannot look it
+/// up afterwards.
 #[derive(Message, Debug)]
 pub struct LogoutAnnounce {
     pub name: String,
+    pub room: Entity,
 }
 
-/// A character went linkdead or reconnected.
+/// A character went linkdead or reconnected. Shown to players in the same room.
+/// Carries the subject entity (see `LoginAnnounce`).
 #[derive(Message, Debug)]
 pub struct LinkdeadAnnounce {
+    pub subject: Entity,
     pub name: String,
     pub reconnecting: bool, // true = reconnecting, false = going linkdead
 }
