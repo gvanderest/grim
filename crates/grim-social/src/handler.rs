@@ -4,7 +4,7 @@
 //! uses; the future `act()` extraction (#58) absorbs this fan-out.
 
 use bevy::prelude::*;
-use grim_actor::{Actor, InRoom};
+use grim_actor::{in_room, Actor, InRoom};
 use grim_command::CommandRegistry;
 use grim_core::character::Gender;
 use grim_core::components::Name;
@@ -116,12 +116,13 @@ pub(crate) fn handle_social(
     }
 }
 
-/// Everyone standing in `room`: entity + display name.
+/// Everyone standing in `room`: entity + display name. Funnels through the
+/// shared [`in_room`](grim_actor::in_room) helper (mapped from this handler's
+/// narrow tuple) instead of a local filter.
 fn roommates(occupants: &Query<(Entity, &InRoom, &Name)>, room: Entity) -> Vec<(Entity, String)> {
-    occupants
-        .iter()
-        .filter(|(_, ir, _)| ir.room == room)
-        .map(|(e, _, n)| (e, n.0.clone()))
+    let here = in_room(room, occupants.iter().map(|(e, ir, _)| (e, ir.room)), None);
+    here.into_iter()
+        .filter_map(|e| occupants.get(e).map(|(_, _, n)| (e, n.0.clone())).ok())
         .collect()
 }
 

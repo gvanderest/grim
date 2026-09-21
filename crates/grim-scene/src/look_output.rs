@@ -113,10 +113,16 @@ fn collect_presence(
     let mut players: Vec<(String, String)> = Vec::new();
     let mut creatures: Vec<(String, String)> = Vec::new();
     let mut objects: Vec<(String, String)> = Vec::new();
-    for (e, ir, player, occ_name, room_line, is_object) in room_occupants.iter() {
-        if ir.room != room || e == target {
+    // Membership funnels through the shared helper (mapped from the rich
+    // tuple); the per-kind rendering below stays local.
+    for e in grim_actor::in_room(
+        room,
+        room_occupants.iter().map(|(e, ir, ..)| (e, ir.room)),
+        Some(target),
+    ) {
+        let Ok((_, _, player, occ_name, room_line, is_object)) = room_occupants.get(e) else {
             continue;
-        }
+        };
         if characters.get(e).is_ok() {
             // Linkdead dominates (a linkdead character has no session, so it
             // can never also be AFK); otherwise an AFK session reads marked.

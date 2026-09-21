@@ -11,7 +11,8 @@
 //! log, and never disables anything.
 use bevy::prelude::*;
 use grim_actor::{
-    AttemptEnter, AttemptLeave, AttemptWalk, Character, Creature, Enter, InRoom, Leave, Player,
+    in_room, AttemptEnter, AttemptLeave, AttemptWalk, Character, Creature, Enter, InRoom, Leave,
+    Player,
 };
 use grim_channel::{ChannelMessage, ChannelRegistry};
 use grim_core::components::Name as GrimName;
@@ -174,10 +175,14 @@ fn fire(
         TriggerKind::AttemptWalk | TriggerKind::AttemptLeave | TriggerKind::AttemptEnter
     );
     let mut denied = false;
-    for (mob, triggers, inroom) in creatures.iter() {
-        if mob == mover || inroom.room != room {
+    for mob in in_room(
+        room,
+        creatures.iter().map(|(mob, _, ir)| (mob, ir.room)),
+        Some(mover),
+    ) {
+        let Ok((_, triggers, _)) = creatures.get(mob) else {
             continue;
-        }
+        };
         let mob_name = mob_names_or_entity(mob_names, mob);
         for trigger in &triggers.0 {
             if trigger.on != on {

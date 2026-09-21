@@ -2,8 +2,8 @@
 
 use bevy::prelude::*;
 use grim_actor::{Character, Player};
-use grim_channel::{ChannelMessage, ChannelRegistry};
-use grim_core::channel::{ListenEligibility, Scope};
+use grim_channel::{resolve_audience_mapped, ChannelMessage, ChannelRegistry};
+use grim_core::channel::ListenEligibility;
 use grim_core::components::Name as GrimName;
 use grim_networking::ConnectionOutput;
 use grim_world::Room;
@@ -34,46 +34,24 @@ pub fn emit_channel(
 
     // Format the message using the catalog (third_party for recipients)
     let formatted = formatter::format_channel_message(catalog_key, &actor_name.0, &ev.text);
-
-    // Resolve the audience based on channel scope
-    let mut audience = Vec::new();
-
-    match channel.scope {
-        Scope::Room => {
-            // Message goes to everyone in the actor's room
-            if let Ok((_, ir, _, _, _, _)) = room_occupants.get(ev.actor) {
-                let actor_room = ir.room;
-                // Find all entities in the same room
-                for (entity, ir, _, _, _, _) in room_occupants.iter() {
-                    if ir.room == actor_room {
-                        audience.push(entity);
-                    }
-                }
-            }
-        }
-        Scope::Area => {
-            // Message goes to everyone in the actor's area
-            if let Ok((_, ir, _, _, _, _)) = room_occupants.get(ev.actor) {
-                if let Ok((_, room, _)) = rooms.get(ir.room) {
-                    let actor_area = room.area;
-                    // Find all entities in rooms in this area
-                    for (entity, ir, _, _, _, _) in room_occupants.iter() {
-                        if let Ok((_, room, _)) = rooms.get(ir.room) {
-                            if room.area == actor_area {
-                                audience.push(entity);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Scope::Global => {
-            // Message goes to all connected players
-            for (entity, _, _, _, _, _) in room_occupants.iter() {
-                audience.push(entity);
-            }
-        }
-    }
+    // Scope resolves through the shared registry helper (mapped from the
+    // rich `Occupants` tuple; area membership closes over this system's own
+    // `rooms` shape); eligibility + rendering stay here per ADR-0005. The
+    // actor is excluded below, not here.
+    let actor_room = room_occupants.get(ev.actor).map(|(_, ir, ..)| ir.room).ok();
+    let audience = resolve_audience_mapped(
+        channel.scope,
+        actor_room,
+        room_occupants.iter().map(|(e, ir, ..)| (e, ir.room)),
+        |a, b| {
+            rooms
+                .get(a)
+                .map(|(_, ra, _)| ra.area)
+                .ok()
+                .zip(rooms.get(b).map(|(_, rb, _)| rb.area).ok())
+                .is_some_and(|(x, y)| x == y)
+        },
+    );
 
     // Send to each audience member (excluding the actor), checking listen eligibility
     for entity in audience {
