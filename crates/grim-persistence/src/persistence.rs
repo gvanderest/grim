@@ -214,6 +214,7 @@ fn save_on_disconnect(
                 if let Ok(name) = names.get(char_e) {
                     info!("Character '{}' went linkdead", name.0);
                     announce_linkdead.write(LinkdeadAnnounce {
+                        subject: char_e,
                         name: name.0.clone(),
                         reconnecting: false,
                     });

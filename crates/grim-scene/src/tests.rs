@@ -610,12 +610,15 @@ mod output_format {
                 echo_hidden: false,
             })
             .id();
-        app.world_mut().spawn((
-            GrimName("Hero".into()),
-            InRoom { room },
-            Player { connection: conn },
-            OutputHistory::with_max(100),
-        ));
+        let hero = app
+            .world_mut()
+            .spawn((
+                GrimName("Hero".into()),
+                InRoom { room },
+                Player { connection: conn },
+                OutputHistory::with_max(100),
+            ))
+            .id();
         let far_conn = app
             .world_mut()
             .spawn(Connection {
@@ -634,6 +637,7 @@ mod output_format {
         ));
 
         app.world_mut().write_message(LoginAnnounce {
+            subject: hero,
             name: "Hero".into(),
         });
         app.update();
@@ -773,12 +777,15 @@ mod output_format {
                 echo_hidden: false,
             })
             .id();
-        app.world_mut().spawn((
-            GrimName("Hero".into()),
-            InRoom { room },
-            Player { connection: conn },
-            OutputHistory::with_max(100),
-        ));
+        let hero = app
+            .world_mut()
+            .spawn((
+                GrimName("Hero".into()),
+                InRoom { room },
+                Player { connection: conn },
+                OutputHistory::with_max(100),
+            ))
+            .id();
         let far_conn = app
             .world_mut()
             .spawn(Connection {
@@ -797,6 +804,7 @@ mod output_format {
         ));
 
         app.world_mut().write_message(LinkdeadAnnounce {
+            subject: hero,
             name: "Hero".into(),
             reconnecting: true,
         });

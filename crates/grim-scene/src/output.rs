@@ -53,11 +53,14 @@ pub(crate) fn format_output(
     mut outputs: MessageWriter<ConnectionOutput>,
 ) {
     // ── Login / Logout / Linkdead announces (same-room only) ──
+    // Login and linkdead resolve the room by subject entity: the subject is
+    // alive at render time, so identity beats the name lookup (NPCs share
+    // the name query). Logout carries its room: the quitter is despawned.
     for ev in reads.login.read() {
-        if let Some(room) = room_of(&ev.name, &room_occupants) {
+        if let Ok((_, ir, _, _, _, _)) = room_occupants.get(ev.subject) {
             broadcast_room(
                 &format!("{} has connected.\n", ev.name),
-                room,
+                ir.room,
                 &room_occupants,
                 &mut outputs,
             );
@@ -74,9 +77,9 @@ pub(crate) fn format_output(
         );
     }
     for ev in reads.linkdead.read() {
-        if let Some(room) = room_of(&ev.name, &room_occupants) {
+        if let Ok((_, ir, _, _, _, _)) = room_occupants.get(ev.subject) {
             let formatted = formatter::format_linkdead(&ev.name, ev.reconnecting);
-            broadcast_room(&formatted, room, &room_occupants, &mut outputs);
+            broadcast_room(&formatted, ir.room, &room_occupants, &mut outputs);
         }
     }
     // Causal order, not arrival order: attempt-phase speech (channel) and
@@ -252,16 +255,6 @@ pub(crate) fn format_server_broadcast(
     for ev in broadcasts.read() {
         broadcast_global(&ev.text, &occupants, &mut outputs);
     }
-}
-
-/// The room an occupant stands in, by character name. Objects share the
-/// query but never speak, so they are excluded from both subject and
-/// audience matching.
-fn room_of(name: &str, occupants: &Occupants) -> Option<Entity> {
-    occupants
-        .iter()
-        .find(|(_, _, _, n, _, o)| n.0 == name && o.is_none())
-        .map(|(_, ir, _, _, _, _)| ir.room)
 }
 
 /// Send text to every connected player standing in `room`.

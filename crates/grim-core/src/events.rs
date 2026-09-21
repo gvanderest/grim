@@ -372,8 +372,11 @@ pub struct InfoMessage {
 }
 
 /// A character has entered the world. Shown to players in the same room.
+/// Carries the subject entity so renderers resolve the room by identity,
+/// never by name (NPCs share the name query and could collide).
 #[derive(Message, Debug)]
 pub struct LoginAnnounce {
+    pub subject: Entity,
     pub name: String,
 }
 
@@ -387,8 +390,10 @@ pub struct LogoutAnnounce {
 }
 
 /// A character went linkdead or reconnected. Shown to players in the same room.
+/// Carries the subject entity (see `LoginAnnounce`).
 #[derive(Message, Debug)]
 pub struct LinkdeadAnnounce {
+    pub subject: Entity,
     pub name: String,
     pub reconnecting: bool, // true = reconnecting, false = going linkdead
 }

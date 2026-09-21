@@ -478,6 +478,7 @@ mod tests {
             .unwrap()
             .character = Some(hero);
         app.world_mut().write_message(LoginAnnounce {
+            subject: hero,
             name: "Hero".into(),
         });
         app.update();

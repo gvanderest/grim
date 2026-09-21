@@ -185,6 +185,7 @@ fn reconnect_linkdead(
         history.drain();
     }
     announce_linkdead.write(LinkdeadAnnounce {
+        subject: char_entity,
         name: name.to_string(),
         reconnecting: true,
     });
