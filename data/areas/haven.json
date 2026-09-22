@@ -9,7 +9,7 @@
       "id": "C7Ee6NQVAfBr",
       "slug": "tavern",
       "name": "The Rusted Anvil",
-      "description": "Smoke and the clang of hammer on steel fill the air.\nSawdust covers the floor of this cozy tavern. A staircase leads up\nto the second floor, a door leads north to the town square, a\nprivy door stands ajar to the east, and a narrow trail slips\nsouth toward the valley wall.",
+      "description": "Smoke and the clang of hammer on steel fill the air.\nSawdust covers the floor of this cozy tavern. A staircase leads up\nto the second floor, a door leads north to the town square, a\nclosed privy door stands to the east, and a narrow trail slips\nsouth toward the valley wall.",
       "exits": { "north": "y0vjzSNtWQo3", "south": "ADG0C9DN6xaA", "east": "E8nqnXhQcQX4" },
       "doors": { "east": { "name": "the privy door", "keywords": ["privy door"] } },
       "npcs": [
