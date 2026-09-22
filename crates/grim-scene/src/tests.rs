@@ -1023,6 +1023,65 @@ mod output_format {
         );
     }
 
+    // ── format_output: door facts render per-recipient ──
+    #[test]
+    fn format_output_door_broadcasts() {
+        let mut app = test_app();
+        let from_room = spawn_room(&mut app);
+        let to_room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(from_room));
+        let mk_conn = |app: &mut App, id: usize| {
+            app.world_mut()
+                .spawn(Connection {
+                    id,
+                    addr: format!("127.0.0.1:{id}").parse().unwrap(),
+                    echo_hidden: false,
+                })
+                .id()
+        };
+        let mk_watcher = |app: &mut App, room: Entity, name: &str, conn: Entity| {
+            app.world_mut()
+                .spawn((
+                    GrimName(name.into()),
+                    InRoom { room },
+                    Player { connection: conn },
+                    OutputHistory::with_max(100),
+                ))
+                .id()
+        };
+        let actor_conn = mk_conn(&mut app, 4001);
+        let witness_conn = mk_conn(&mut app, 4002);
+        let far_conn = mk_conn(&mut app, 4003);
+        let actor = mk_watcher(&mut app, from_room, "Alice", actor_conn);
+        mk_watcher(&mut app, from_room, "Witness", witness_conn);
+        mk_watcher(&mut app, to_room, "Far", far_conn);
+        app.world_mut().write_message(DoorEvent {
+            actor,
+            from: from_room,
+            to: to_room,
+            direction: grim_core::cardinal::Cardinal::East,
+            opened: true,
+            name: "the privy door".into(),
+        });
+        app.update();
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
+        let text_for = |conn: Entity| {
+            outputs
+                .iter()
+                .filter(|o| o.connection == conn)
+                .map(|o| o.text.clone())
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        // Actor + witness name their side; the far room hears the opposite
+        // side with a sentence-cased door name.
+        assert!(text_for(actor_conn).contains("You open the privy door to the east."));
+        assert!(text_for(witness_conn).contains("Alice opens the privy door to the east."));
+        assert!(text_for(far_conn).contains("The privy door opens to the west."));
+    }
+
     // ── recall echoes: attempt + disappearance left, marked arrival right ──
     #[test]
     fn format_output_recall_broadcasts() {

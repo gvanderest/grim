@@ -5,6 +5,7 @@
 
 pub mod config;
 pub mod desc;
+pub mod doors;
 pub mod look;
 pub mod map;
 pub mod movement;

@@ -11,6 +11,7 @@ mod channel_output;
 mod command;
 mod countdown;
 mod directions;
+mod doors;
 mod editor;
 mod finger;
 mod idle;

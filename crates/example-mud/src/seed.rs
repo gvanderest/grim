@@ -23,8 +23,8 @@ use std::path::PathBuf;
 use bevy::log::{error, info, warn};
 use bevy::prelude::*;
 use grim::prelude::{
-    compile, Actor, Area, Cardinal, CompiledTrigger, Creature, Description, Exits, Gender, GrimId,
-    InRoom, Keywords, Name as GrimName, Object, Room, RoomDescription, ScriptTriggers,
+    compile, Actor, Area, Cardinal, CompiledTrigger, Creature, Description, Doors, Exits, Gender,
+    GrimId, InRoom, Keywords, Name as GrimName, Object, Room, RoomDescription, ScriptTriggers,
     StartingRoom, TriggerDef,
 };
 use serde::Deserialize;
@@ -70,6 +70,10 @@ struct RoomBlueprint {
     /// so renaming a room's slug never breaks the link.
     #[serde(default)]
     exits: HashMap<String, GrimId>,
+    /// direction name (`"east"`) -> the door guarding that exit. `open`
+    /// defaults to closed; the privy omits it.
+    #[serde(default)]
+    pub(crate) doors: HashMap<String, crate::seed_doors::DoorBlueprint>,
     #[serde(default)]
     npcs: Vec<NpcBlueprint>,
     #[serde(default)]
@@ -270,6 +274,9 @@ fn wire_area_contents(
         commands.entity(from).insert(Exits {
             exits: resolve_exits(&bp.slug, &r.slug, &r.exits, room_ents),
         });
+        commands.entity(from).insert(Doors {
+            doors: crate::seed_doors::resolve_doors(&bp.slug, &r.slug, &r.doors),
+        });
 
         for npc in &r.npcs {
             spawn_npc(commands, &bp.slug, npc, from);
@@ -376,7 +383,7 @@ mod tests {
         let bp: AreaBlueprint = serde_json::from_str(&raw).unwrap();
         assert_eq!(bp.slug, "haven");
         assert!(bp.canonical);
-        assert_eq!(bp.rooms.len(), 11);
+        assert_eq!(bp.rooms.len(), 12);
 
         let tavern = &bp.rooms[0];
         let square = &bp.rooms[1];
@@ -385,6 +392,19 @@ mod tests {
         assert_eq!(bp.starting_room, Some(tavern.id));
         // The tavern's north exit references the square by Grim ID.
         assert_eq!(tavern.exits.get("north"), Some(&square.id));
+        // The privy hangs east of the tavern behind a closed door.
+        let privy = bp
+            .rooms
+            .iter()
+            .find(|r| r.slug == "privy")
+            .expect("privy room");
+        assert_eq!(tavern.exits.get("east"), Some(&privy.id));
+        let door = tavern.doors.get("east").expect("tavern east door");
+        assert_eq!(door.name, "the privy door");
+        assert!(!door.open);
+        let back = privy.doors.get("west").expect("privy west door");
+        assert_eq!(back.name, "the privy door");
+        assert!(!back.open);
     }
 
     #[test]
@@ -394,7 +414,7 @@ mod tests {
         app.add_systems(Startup, seed_world);
         app.update();
 
-        // Two areas: Haven (11 rooms) plus Whisperwood (4 rooms).
+        // Two areas: Haven (12 rooms) plus Whisperwood (4 rooms).
         let areas = app.world_mut().query::<&Area>().iter(app.world()).count();
         assert_eq!(areas, 2);
         let rooms: Vec<String> = app
@@ -403,7 +423,7 @@ mod tests {
             .iter(app.world())
             .map(|r| r.friendly_id.clone())
             .collect();
-        assert_eq!(rooms.len(), 15);
+        assert_eq!(rooms.len(), 16);
         assert!(rooms.contains(&"tavern".to_string()));
         assert!(rooms.contains(&"bear-cavern".to_string()));
 

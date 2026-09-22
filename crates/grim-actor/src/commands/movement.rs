@@ -5,9 +5,10 @@
 //! `grim_world`'s room topology + address lookups.
 
 use bevy::prelude::*;
+use grim_core::cardinal::Cardinal;
 use grim_core::events::{Command, EngineCommand, InfoMessage, LookRoom, MoveEvent};
 use grim_world::{
-    resolve_room_address, room_location, Area, Exits, Room, RoomLocation, RoomLookup,
+    resolve_room_address, room_location, Area, Doors, Exits, Room, RoomLocation, RoomLookup,
 };
 
 use crate::character::Character;
@@ -50,6 +51,27 @@ pub(super) fn place_actor(
             character.last_room = Some(loc);
         }
     }
+}
+/// Whether a closed door blocks `actor`'s walk from `from` toward
+/// `direction`: replies "%{name} is closed." and returns true, else false.
+/// Runs inside the queued placement closure (world access only) so the check
+/// is atomic with placement.
+fn door_blocks(world: &mut World, actor: Entity, from: Entity, direction: Cardinal) -> bool {
+    let closed_name: Option<String> = world
+        .get::<Doors>(from)
+        .and_then(|d| d.doors.get(&direction))
+        .filter(|door| !door.open)
+        .map(|door| door.name.clone());
+    if let Some(name) = closed_name {
+        world
+            .resource_mut::<Messages<InfoMessage>>()
+            .write(InfoMessage {
+                target: actor,
+                text: grim_text::tr("door.error.closed", &[("name", name.as_str())]),
+            });
+        return true;
+    }
+    false
 }
 
 /// A committed room transition waiting for its facts to fire next tick.
@@ -129,6 +151,12 @@ pub(crate) fn handle_move(
                         // intent rather than walking from the wrong room.
                         let current = world.get::<InRoom>(actor).map(|ir| ir.room);
                         if current != Some(from) {
+                            return;
+                        }
+                        // A closed door blocks the walk (checked inside the
+                        // atomic closure, not at dispatch — same TOCTOU shape
+                        // as the serial-move guard above): reply and stop.
+                        if door_blocks(world, actor, from, direction) {
                             return;
                         }
                         let mut walk = AttemptWalk {
@@ -325,7 +353,6 @@ pub(crate) fn register(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_core::cardinal::Cardinal;
     use grim_core::character::Gender;
     // The project display-name component, aliased to dodge Bevy's prelude `Name`
     // (the glob above brings Bevy's in scope). See AGENTS.md.
@@ -426,6 +453,79 @@ mod tests {
             command: Command::Recall,
         });
         app.update();
+    }
+
+    fn send_move(app: &mut App, actor: Entity, direction: Cardinal) {
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Move { direction },
+        });
+        app.update();
+    }
+
+    fn hang_door(app: &mut App, room: Entity, dir: Cardinal, open: bool) {
+        if app.world().get::<Doors>(room).is_none() {
+            app.world_mut().entity_mut(room).insert(Doors::default());
+        }
+        app.world_mut()
+            .get_mut::<Doors>(room)
+            .unwrap()
+            .doors
+            .insert(
+                dir,
+                grim_world::Door {
+                    name: "the privy door".into(),
+                    keywords: vec!["privy door".into()],
+                    open,
+                },
+            );
+    }
+
+    #[test]
+    fn closed_door_blocks_move_without_placement_or_events() {
+        let mut app = test_app();
+        let a = spawn_room(&mut app, "haven", "tavern", Exits::default());
+        let b = spawn_room(&mut app, "haven", "privy", Exits::default());
+        app.world_mut()
+            .get_mut::<Exits>(a)
+            .unwrap()
+            .exits
+            .insert(Cardinal::East, b);
+        app.world_mut()
+            .get_mut::<Exits>(b)
+            .unwrap()
+            .exits
+            .insert(Cardinal::West, a);
+        hang_door(&mut app, a, Cardinal::East, false);
+        let before_looks = look_room_count(&app);
+        let actor = spawn_actor_in(&mut app, a, false);
+        send_move(&mut app, actor, Cardinal::East);
+        assert_eq!(room_of(&app, actor), a);
+        assert!(info_texts(&app).iter().any(|t| t.contains("is closed")));
+        assert_eq!(look_room_count(&app), before_looks);
+        assert_eq!(move_event_count(&app), 0);
+    }
+
+    #[test]
+    fn open_door_allows_move() {
+        let mut app = test_app();
+        let a = spawn_room(&mut app, "haven", "tavern", Exits::default());
+        let b = spawn_room(&mut app, "haven", "privy", Exits::default());
+        app.world_mut()
+            .get_mut::<Exits>(a)
+            .unwrap()
+            .exits
+            .insert(Cardinal::East, b);
+        app.world_mut()
+            .get_mut::<Exits>(b)
+            .unwrap()
+            .exits
+            .insert(Cardinal::West, a);
+        hang_door(&mut app, a, Cardinal::East, true);
+        let actor = spawn_actor_in(&mut app, a, false);
+        send_move(&mut app, actor, Cardinal::East);
+        app.update();
+        assert_eq!(room_of(&app, actor), b);
     }
 
     fn info_texts(app: &App) -> Vec<String> {

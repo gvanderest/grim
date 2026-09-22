@@ -11,6 +11,7 @@ use bevy::prelude::*;
 
 use crate::commands::config;
 use crate::commands::desc;
+use crate::commands::doors;
 use crate::commands::look;
 use crate::commands::map;
 use crate::commands::movement;
@@ -18,7 +19,6 @@ use crate::commands::quit;
 use crate::commands::recall;
 use crate::commands::shutdown;
 use crate::commands::title;
-
 /// Registers the actor command verbs: `look`, `map`, `config`, `desc`,
 /// `move`/`goto`/`recall`, `quit`, `title`, and the admin `shutdown` gate.
 /// Also seeds the player-config registry (`minimap`, default on) — the
@@ -42,6 +42,7 @@ impl Plugin for ActorPlugin {
         desc::register(app);
         config::register(app);
         movement::register(app);
+        doors::register(app);
         recall::register(app);
         quit::register(app);
         title::register(app);

@@ -30,6 +30,24 @@ pub struct Room {
     pub area: Entity,
 }
 
+/// A door hung on one side of an exit: its display name, look keywords, and
+/// whether passage is currently allowed. Both linked rooms carry their own
+/// copy; `open`/`close` flip the pair (see `grim-actor` doors handler).
+#[derive(Debug, Clone)]
+pub struct Door {
+    pub name: String,
+    pub keywords: Vec<String>,
+    pub open: bool,
+}
+
+/// Doors on a room entity: direction → the door guarding that exit. A
+/// direction absent here has no door (free passage); present-but-closed
+/// blocks `move`.
+#[derive(Component, Debug, Default)]
+pub struct Doors {
+    pub doors: HashMap<Cardinal, Door>,
+}
+
 /// Exits on a room entity: direction → destination room entity.
 #[derive(Component, Debug, Default)]
 pub struct Exits {

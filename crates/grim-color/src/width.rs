@@ -92,6 +92,33 @@ pub fn visible_width(s: &str) -> usize {
     }
     w
 }
+/// Uppercase the first *visible* character of `s`, skipping colour markup
+/// (`{X` codes, `@xRGB`/`@bRGB`, `@r`) so a sentence-initial name capitalizes
+/// after its leading codes. Escaped `{{`/`@@` render literally and count as
+/// the first visible character when they lead.
+pub fn capitalize_first(s: &str) -> String {
+    let mut cs = s.chars().peekable();
+    let mut out = String::with_capacity(s.len());
+    while let Some((src, vis)) = next_unit(&mut cs) {
+        if vis > 0 {
+            if src == "{{" || src == "@@" {
+                out.push_str(&src);
+            } else if src.chars().count() == 1 {
+                let first = src.chars().next().unwrap_or_default();
+                out.extend(first.to_uppercase());
+            } else {
+                // Unknown `{X`/`@X` codes render literally; capitalizing a
+                // markup introducer is a no-op, so pass through untouched.
+                out.push_str(&src);
+            }
+            let rest: String = cs.collect();
+            out.push_str(&rest);
+            return out;
+        }
+        out.push_str(&src);
+    }
+    s.to_string()
+}
 
 /// Truncate `s` to at most `max` *visible* columns without splitting a colour
 /// token. Colour/reset codes (zero-width) are always kept as they are reached,
@@ -167,5 +194,18 @@ mod tests {
     fn truncate_drops_a_boundary_unknown_code_whole() {
         // "{z" is a 2-wide literal; with one column left it is dropped, not split.
         assert_eq!(truncate_visible("a{z", 2), "a");
+    }
+    #[test]
+    fn capitalize_plain_and_markup_prefixed() {
+        assert_eq!(capitalize_first("the privy door"), "The privy door");
+        assert_eq!(capitalize_first("{Rthe privy door"), "{RThe privy door");
+        assert_eq!(capitalize_first("@xf00the door@r"), "@xf00The door@r");
+        assert_eq!(capitalize_first(""), "");
+        assert_eq!(capitalize_first("{R"), "{R");
+    }
+    #[test]
+    fn capitalize_preserves_escaped_markup() {
+        assert_eq!(capitalize_first("{{Rusted door"), "{{Rusted door");
+        assert_eq!(capitalize_first("@@reset"), "@@reset");
     }
 }

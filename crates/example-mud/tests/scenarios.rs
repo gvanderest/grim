@@ -42,6 +42,31 @@ fn create_char(mud: &mut Mud, email: &str, name: &str) -> Session {
 }
 
 #[test]
+fn privy_door_blocks_until_opened() {
+    // #143 slice: the tavern's east exit hides behind a closed privy door.
+    // Walking east is refused, `open east` flips both sides and announces
+    // per-recipient, then the walk lands in the privy.
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+
+    // Closed: the walk is refused and Alice stays in the tavern.
+    mud.send(alice, "east").assert_contains("is closed");
+    mud.send(alice, "look").assert_contains("The Rusted Anvil");
+
+    // Bob waits in the tavern: he witnesses Alice's open.
+    let opened = mud.send(alice, "open east");
+    opened.assert_contains("You open the privy door to the east.");
+    mud.send(bob, "look")
+        .assert_contains("Alice opens the privy door to the east.");
+
+    // Now the walk lands in the privy; closing from inside announces west.
+    mud.send(alice, "east").assert_contains("The Privy");
+    mud.send(alice, "close west")
+        .assert_contains("You close the privy door to the west.");
+}
+
+#[test]
 fn connect_shows_login_banner_and_prompt() {
     let mut mud = Mud::new();
     let (_s, banner) = mud.connect();
@@ -59,7 +84,7 @@ fn account_creation_places_character_in_the_world() {
     assert!(mud.character_names().contains(&"Alice".to_string()));
     mud.send(alice, "look")
         .assert_contains("The Rusted Anvil")
-        .assert_contains("Exits: north");
+        .assert_contains("Exits: east, north");
 }
 
 #[test]
@@ -783,7 +808,10 @@ fn map_centers_self_repeats_stably_and_recenters_on_move() {
     assert_eq!(first, second_out.text(), "map must not flicker");
     let rows: Vec<&str> = first.lines().collect();
     assert_eq!(rows.len(), 20);
-    assert_eq!(rows[10], format!("{:40}{ME}              {RM}", ""));
+    assert_eq!(
+        rows[10],
+        format!("{:40}{ME}{HL}{HL}{RM}           {RM}", "")
+    );
     assert_eq!(rows[9], format!("{:40}{VL}              {VL}", ""));
     assert_eq!(
         rows[8],
@@ -806,7 +834,10 @@ fn map_centers_self_repeats_stably_and_recenters_on_move() {
         )
     );
     assert_eq!(rows[11], format!("{:40}{VL}              {VL}", ""));
-    assert_eq!(rows[12], format!("{:40}{RM}              {RM}", ""));
+    assert_eq!(
+        rows[12],
+        format!("{:40}{RM}{HL}{HL}{RM}           {RM}", "")
+    );
 }
 
 #[test]
@@ -826,14 +857,14 @@ fn look_staples_minimap_left_of_room_text() {
         lines[1]
     );
     assert!(
-        lines[3].starts_with(&format!("    {ME}  ")),
-        "self row:\n{}",
+        lines[3].starts_with(&format!("    {ME}{HL}{HL}{RM}")),
+        "self row (privy east):\n{}",
         lines[3]
     );
     // Past the 7-row canvas the gutter runs blank (11 spaces).
     let exits = lines
         .iter()
-        .find(|l| l.contains("Exits: north"))
+        .find(|l| l.contains("Exits: east"))
         .expect("exits line");
     assert!(exits.starts_with("           "), "blank gutter:\n{exits}");
 }
@@ -848,8 +879,8 @@ fn config_minimap_toggles_look_map_persists_and_rejects() {
     assert!(
         out.text()
             .lines()
-            .any(|l| l.starts_with(&format!("    {ME}  "))),
-        "minimap on by default:\n{}",
+            .any(|l| l.starts_with(&format!("    {ME}{HL}{HL}{RM}"))),
+        "minimap on by default (privy east):\n{}",
         out.text()
     );
     // Bare `config` lists the setting with its valid values.
@@ -894,8 +925,8 @@ fn config_minimap_toggles_look_map_persists_and_rejects() {
     assert!(
         out.text()
             .lines()
-            .any(|l| l.starts_with(&format!("    {ME}  "))),
-        "minimap back on:\n{}",
+            .any(|l| l.starts_with(&format!("    {ME}{HL}{HL}{RM}"))),
+        "minimap back on (privy east):\n{}",
         out.text()
     );
 }

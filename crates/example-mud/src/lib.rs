@@ -5,3 +5,4 @@
 //! divergent copy.
 
 pub mod seed;
+mod seed_doors;

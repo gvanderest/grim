@@ -5,13 +5,12 @@
 //! `#[derive(SystemParam)]` structs here and shared across the in-game
 //! dispatcher, resume, and output systems.
 
+use crate::session::ConnectedAt;
 use bevy::prelude::*;
 use grim_actor::{Actor, Character, Creature, InRoom, Linkdead};
 use grim_core::components::{Client, Name as GrimName};
-use grim_core::events::{Command, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce};
+use grim_core::events::{Command, DoorEvent, LinkdeadAnnounce, LoginAnnounce, LogoutAnnounce};
 use grim_world::{Area, ClassRegistry, RaceRegistry, Room, RoomLocation};
-
-use crate::session::ConnectedAt;
 
 /// The online-characters query shared by the WHO / WHERE renderers: each player
 /// entity with its display name, current room, optional [`Actor`] base
@@ -82,13 +81,14 @@ impl RoomResolver<'_, '_> {
 }
 
 /// Everything `format_output` reads besides its inputs: the session announces
-/// plus the live-session and linkdead lookups presence rendering needs.
-/// Bundled because that system is at the 16-parameter ceiling.
+/// plus the door facts plus the live-session and linkdead lookups presence
+/// rendering needs. Bundled because that system is at the 16-parameter ceiling.
 #[derive(bevy::ecs::system::SystemParam)]
 pub(crate) struct OutputReads<'w, 's> {
     pub(crate) login: MessageReader<'w, 's, LoginAnnounce>,
     pub(crate) logout: MessageReader<'w, 's, LogoutAnnounce>,
     pub(crate) linkdead: MessageReader<'w, 's, LinkdeadAnnounce>,
+    pub(crate) doors: MessageReader<'w, 's, DoorEvent>,
     pub(crate) clients: Query<'w, 's, &'static Client>,
     pub(crate) linkdead_chars: Query<'w, 's, &'static Linkdead>,
 }
