@@ -5,8 +5,8 @@
 //! `grim_world`'s room topology + address lookups.
 
 use bevy::prelude::*;
+use grim_core::cardinal::Cardinal;
 use grim_core::events::{Command, EngineCommand, InfoMessage, LookRoom, MoveEvent};
-use grim_text::tr;
 use grim_world::{
     resolve_room_address, room_location, Area, Doors, Exits, Room, RoomLocation, RoomLookup,
 };
@@ -51,6 +51,27 @@ pub(super) fn place_actor(
             character.last_room = Some(loc);
         }
     }
+}
+/// Whether a closed door blocks `actor`'s walk from `from` toward
+/// `direction`: replies "%{name} is closed." and returns true, else false.
+/// Runs inside the queued placement closure (world access only) so the check
+/// is atomic with placement.
+fn door_blocks(world: &mut World, actor: Entity, from: Entity, direction: Cardinal) -> bool {
+    let closed_name: Option<String> = world
+        .get::<Doors>(from)
+        .and_then(|d| d.doors.get(&direction))
+        .filter(|door| !door.open)
+        .map(|door| door.name.clone());
+    if let Some(name) = closed_name {
+        world
+            .resource_mut::<Messages<InfoMessage>>()
+            .write(InfoMessage {
+                target: actor,
+                text: grim_text::tr("door.error.closed", &[("name", name.as_str())]),
+            });
+        return true;
+    }
+    false
 }
 
 /// A committed room transition waiting for its facts to fire next tick.
@@ -103,7 +124,6 @@ pub(crate) fn handle_move(
     mut commands: Commands,
     inroom: Query<&InRoom>,
     exits: Query<&Exits>,
-    doors: Query<&Doors>,
     rooms: Query<&Room>,
     areas: Query<&Area>,
 ) {
@@ -116,17 +136,6 @@ pub(crate) fn handle_move(
             Ok(ir) => ir.room,
             Err(_) => continue,
         };
-        // A closed door blocks the walk: reply and stop, never place.
-        if let Some(door) = doors.get(from).ok().and_then(|d| d.doors.get(&direction)) {
-            if !door.open {
-                let name: &str = &door.name;
-                commands.write_message(InfoMessage {
-                    target: actor,
-                    text: tr!("door.error.closed", name = name),
-                });
-                continue;
-            }
-        }
         match exits.get(from) {
             Ok(room_exits) => match room_exits.exits.get(&direction).copied() {
                 Some(to) => {
@@ -142,6 +151,12 @@ pub(crate) fn handle_move(
                         // intent rather than walking from the wrong room.
                         let current = world.get::<InRoom>(actor).map(|ir| ir.room);
                         if current != Some(from) {
+                            return;
+                        }
+                        // A closed door blocks the walk (checked inside the
+                        // atomic closure, not at dispatch — same TOCTOU shape
+                        // as the serial-move guard above): reply and stop.
+                        if door_blocks(world, actor, from, direction) {
                             return;
                         }
                         let mut walk = AttemptWalk {
@@ -338,7 +353,6 @@ pub(crate) fn register(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim_core::cardinal::Cardinal;
     use grim_core::character::Gender;
     // The project display-name component, aliased to dodge Bevy's prelude `Name`
     // (the glob above brings Bevy's in scope). See AGENTS.md.
