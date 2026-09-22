@@ -58,6 +58,11 @@ pub enum Command {
     Desc { op: DescOp },
     /// Movement via cardinal direction
     Move { direction: Cardinal },
+    /// `open <direction>` — open the door guarding that exit.
+    /// Bare `open` is rejected as unknown (like `get`/`drop`).
+    Open { direction: Cardinal },
+    /// `close <direction>` — close the door guarding that exit.
+    Close { direction: Cardinal },
     /// `recall` — return to the Town Square (`haven:square`). No-op with a
     /// reply when already there. Available to every player.
     Recall,
@@ -352,6 +357,19 @@ pub struct MoveEvent {
     pub from: Entity,
     pub to: Entity,
     pub direction: Cardinal,
+}
+
+/// A character opened or closed a door on an exit. Rendered per-recipient:
+/// the actor gets a first-party line, same-room witnesses an attributed
+/// line, and the far room hears the door move on its own side.
+#[derive(Message, Debug)]
+pub struct DoorEvent {
+    pub actor: Entity,
+    pub from: Entity,
+    pub to: Entity,
+    pub direction: Cardinal,
+    pub opened: bool,
+    pub name: String,
 }
 
 /// A character recalled to the Town Square. Rendered per-recipient in both

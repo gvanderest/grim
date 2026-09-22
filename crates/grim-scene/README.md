@@ -54,6 +54,7 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | `drop <target>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Drop matches from the pack (same selectors); room sees "<name> drops <short>" per item. |
 | `give <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/give.rs`) | Hand matches to a PC here (creatures refuse); quote-aware split (`give "brass lantern" bob`; `all`-headed items run to the last word). Mover/other/room each see a named line (`format_transfer_events`). |
 | `steal <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/steal.rs`) | Take matches from a being here (same split/selectors); same three-way echo. Existence checks only. |
+| `open <direction>` / `close <direction>` | parser → engine queue (`src/doors.rs`, `grim-actor/src/commands/doors.rs`) | Flip the exit door, both sides; needs a direction (bare is unknown). |
 | `areas` | `handle_ingame` → `format_areas` (`src/who.rs`) | List known areas. |
 | `commands` | `handle_ingame` → `format_commands` (`src/formatter.rs`) | Show the command list. |
 | `help` | `handle_ingame` → `format_commands` (`src/command.rs`) | Alias for `commands` (parser maps `help` → `Command::Commands`). |
@@ -73,7 +74,7 @@ Other verbs (`look`, `map`, `move`, `say`, `shutdown`, …) are parsed here then
 | `ConnectionOutput` | Message (emitted; from `grim-networking`) | `src/output.rs` |
 | `ItemEvent` / `TransferEvent` | Message (consumed → rendered per-recipient) | `src/item_output.rs` (`format_item_events`, `format_transfer_events`, `format_look_pack`) |
 | `OpenEditor` / `EditorDone` | Message (consumed/emitted; the editor callback) | `src/editor.rs` (`open_editor`, `handle_editor_line`) |
-| `LookRoom` / `LookEntity` / `MoveEvent` / `RecallEvent` | Message (consumed → rendered) | `src/output.rs` (`LookRoom`/`LookEntity` in `src/look_output.rs`, `RecallEvent` in `src/recall_output.rs`) |
+| `LookRoom` / `LookEntity` / `MoveEvent` / `DoorEvent` / `RecallEvent` | Message (consumed → rendered) | `src/output.rs` (`LookRoom`/`LookEntity` in `src/look_output.rs`, `RecallEvent` in `src/recall_output.rs`) |
 | `SayEvent` / `YellEvent` / `OocEvent` / `GlobalEcho` | Message (consumed → rendered) | `src/output.rs` |
 | `LoginAnnounce` / `LogoutAnnounce` / `LinkdeadAnnounce` | Message (session announces) | `src/output.rs`, `src/command.rs` |
 | `ServerBroadcast` | Message (consumed → rendered) | `src/output.rs` |

@@ -8,10 +8,11 @@ use grim_channel::{ChannelMessage, ChannelRegistry};
 use grim_config::ConfigRegistry;
 use grim_core::components::{Description, Name as GrimName, RoomDescription};
 use grim_core::events::{
-    GlobalEcho, InfoMessage, LookEntity, LookRoom, MoveEvent, ServerBroadcast,
+    DoorEvent, GlobalEcho, InfoMessage, LookEntity, LookRoom, MoveEvent, ServerBroadcast,
 };
 use grim_networking::ConnectionOutput;
 use grim_object::Object;
+use grim_text::tr;
 use grim_world::{Exits, Room};
 
 use crate::channel_output::emit_channel;
@@ -120,6 +121,9 @@ pub(crate) fn format_output(
     for ev in move_events.read() {
         emit_move(ev, &names, &room_occupants, &mut outputs);
     }
+    for ev in reads.doors.read() {
+        emit_door(ev, &names, &room_occupants, &mut outputs);
+    }
     for ev in gecho_events.read() {
         emit_gecho(ev, &names, &characters, &room_occupants, &mut outputs);
     }
@@ -150,6 +154,59 @@ fn emit_move(
     broadcast_to_room(ev.from, &[ev.actor], &leave_msg, room_occupants, outputs);
     let arrive_msg = formatter::format_move(&actor_name.0, &dir_str, false);
     broadcast_to_room(ev.to, &[ev.actor], &arrive_msg, room_occupants, outputs);
+}
+
+/// Per-recipient door rendering: the actor gets the first-party line, the
+/// actor's room gets the attributed line, and the far room hears the door
+/// move on its own side (recipient-relative direction + sentence-case name).
+fn emit_door(
+    ev: &DoorEvent,
+    names: &Query<&GrimName>,
+    room_occupants: &Occupants,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+) {
+    let Ok(actor_name) = names.get(ev.actor) else {
+        return;
+    };
+    let dir = ev.direction.to_string();
+    // Actor: "You open the privy door to the east."
+    let first_key = if ev.opened {
+        "door.open.first"
+    } else {
+        "door.close.first"
+    };
+    let conn = find_conn(ev.actor, room_occupants);
+    outputs.write(ConnectionOutput {
+        prepend_newline: true,
+        ..ConnectionOutput::new(
+            conn,
+            tr!(first_key, name = ev.name.as_str(), heading = dir.as_str()),
+        )
+    });
+    // Same-room witnesses: "Alice opens the privy door to the east."
+    let third_key = if ev.opened {
+        "door.open.third"
+    } else {
+        "door.close.third"
+    };
+    let witness = tr!(
+        third_key,
+        actor = actor_name.0.as_str(),
+        name = ev.name.as_str(),
+        heading = dir.as_str()
+    );
+    broadcast_to_room(ev.from, &[ev.actor], &witness, room_occupants, outputs);
+    // Far room: "The privy door opens to the west." — recipient-relative
+    // direction, sentence-cased after any leading colour markup.
+    let far_key = if ev.opened {
+        "door.open.far"
+    } else {
+        "door.close.far"
+    };
+    let far_dir = ev.direction.opposite().to_string();
+    let capped = grim_color::capitalize_first(&ev.name);
+    let far = tr!(far_key, name = capped.as_str(), heading = far_dir.as_str());
+    broadcast_to_room(ev.to, &[], &far, room_occupants, outputs);
 }
 
 fn emit_info(

@@ -19,6 +19,7 @@ their only users (the `quit` handler and the `goto`/`title` escapes) moved into
 | `Area` | `src/world/topology.rs` | A named region grouping rooms (yell scope). |
 | `Room` | `src/world/topology.rs` | A single location; carries its owning `area`. |
 | `Exits` | `src/world/topology.rs` | Directional links from a room to adjacent rooms. |
+| `Door` / `Doors` | `src/world/topology.rs` | A door on one exit side (name/keywords/open) + the per-room direction map; closed blocks `move`. |
 
 (The `Npc` marker moved to `grim_actor::Creature` — creatures are beings, so the
 marker belongs in the actor layer, not the being-free world.)
@@ -58,7 +59,7 @@ stay here.
 | `ShutdownSet` | `SystemSet` (Poll → Command → Tick ordering seam) | `src/shutdown.rs` |
 | `ShutdownSignal` | Resource (private; SIGTERM flag) | `src/shutdown.rs` |
 | `ServerBroadcast` | Message (shutdown warnings) | `src/shutdown.rs` |
-| `LookRoom` / `LookEntity` / `MoveEvent` / `RecallEvent` | Message (registered by `WorldPlugin`; emitted by `grim-actor`) | `src/world/plugin.rs` |
+| `LookRoom` / `LookEntity` / `MoveEvent` / `DoorEvent` / `RecallEvent` | Message (registered by `WorldPlugin`; emitted by `grim-actor`) | `src/world/plugin.rs` |
 
 ## Types
 Non-component types this crate defines.

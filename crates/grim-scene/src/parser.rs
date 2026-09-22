@@ -337,6 +337,9 @@ fn build_registry() -> CommandRegistry<Command> {
             target: target.to_string(),
         })
     });
+    // Door verbs (`open|close <direction>`) live in `doors.rs`
+    // (factories + priority); register them here with the rest.
+    crate::doors::register(&mut r);
     // `give <item> <target>` / `steal <item> <target>` — quote-aware split
     // (`split_transfer`): the item is one token (selector prefixes and
     // `"quoted phrases"` stay glued), the being the rest — except an
@@ -1126,6 +1129,54 @@ mod tests {
         assert_eq!(parse("c"), Some(Command::Commands));
         assert_eq!(parse("co"), Some(Command::Commands));
         assert_eq!(parse("copy 10"), Some(Command::Copyover { seconds: 10 }));
+    }
+
+    #[test]
+    fn test_open_close_parse_and_keep_prefixes() {
+        // Bare `open`/`close` are unknown (like get/drop); directions parse
+        // full or abbreviated. Deprioritized: `o` still reaches `ooc`, `c`
+        // still reaches `commands`/`config`, only long prefixes reach these.
+        assert_eq!(parse("open"), None);
+        assert_eq!(parse("close"), None);
+        assert_eq!(
+            parse("open east"),
+            Some(Command::Open {
+                direction: Cardinal::East
+            })
+        );
+        assert_eq!(
+            parse("open e"),
+            Some(Command::Open {
+                direction: Cardinal::East
+            })
+        );
+        assert_eq!(
+            parse("close north"),
+            Some(Command::Close {
+                direction: Cardinal::North
+            })
+        );
+        assert_eq!(parse("open nowhere"), None);
+        assert_eq!(
+            parse("ooc anyone here?"),
+            Some(Command::Channel {
+                channel: "ooc".to_string(),
+                text: "anyone here?".to_string()
+            })
+        );
+        assert_eq!(parse("c"), Some(Command::Commands));
+        assert_eq!(
+            parse("op east"),
+            Some(Command::Open {
+                direction: Cardinal::East
+            })
+        );
+        assert_eq!(
+            parse("cl north"),
+            Some(Command::Close {
+                direction: Cardinal::North
+            })
+        );
     }
 
     // ── Edge cases ────────────────────────────────────────────────

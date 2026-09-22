@@ -26,4 +26,4 @@ pub mod palette;
 pub use convert::convert_16color;
 pub use escape::escape_codes;
 pub use render::ansi;
-pub use width::{truncate_visible, visible_width};
+pub use width::{capitalize_first, truncate_visible, visible_width};

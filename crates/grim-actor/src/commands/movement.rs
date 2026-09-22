@@ -6,8 +6,9 @@
 
 use bevy::prelude::*;
 use grim_core::events::{Command, EngineCommand, InfoMessage, LookRoom, MoveEvent};
+use grim_text::tr;
 use grim_world::{
-    resolve_room_address, room_location, Area, Exits, Room, RoomLocation, RoomLookup,
+    resolve_room_address, room_location, Area, Doors, Exits, Room, RoomLocation, RoomLookup,
 };
 
 use crate::character::Character;
@@ -102,6 +103,7 @@ pub(crate) fn handle_move(
     mut commands: Commands,
     inroom: Query<&InRoom>,
     exits: Query<&Exits>,
+    doors: Query<&Doors>,
     rooms: Query<&Room>,
     areas: Query<&Area>,
 ) {
@@ -114,6 +116,17 @@ pub(crate) fn handle_move(
             Ok(ir) => ir.room,
             Err(_) => continue,
         };
+        // A closed door blocks the walk: reply and stop, never place.
+        if let Some(door) = doors.get(from).ok().and_then(|d| d.doors.get(&direction)) {
+            if !door.open {
+                let name: &str = &door.name;
+                commands.write_message(InfoMessage {
+                    target: actor,
+                    text: tr!("door.error.closed", name = name),
+                });
+                continue;
+            }
+        }
         match exits.get(from) {
             Ok(room_exits) => match room_exits.exits.get(&direction).copied() {
                 Some(to) => {
@@ -426,6 +439,79 @@ mod tests {
             command: Command::Recall,
         });
         app.update();
+    }
+
+    fn send_move(app: &mut App, actor: Entity, direction: Cardinal) {
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Move { direction },
+        });
+        app.update();
+    }
+
+    fn hang_door(app: &mut App, room: Entity, dir: Cardinal, open: bool) {
+        if app.world().get::<Doors>(room).is_none() {
+            app.world_mut().entity_mut(room).insert(Doors::default());
+        }
+        app.world_mut()
+            .get_mut::<Doors>(room)
+            .unwrap()
+            .doors
+            .insert(
+                dir,
+                grim_world::Door {
+                    name: "the privy door".into(),
+                    keywords: vec!["privy door".into()],
+                    open,
+                },
+            );
+    }
+
+    #[test]
+    fn closed_door_blocks_move_without_placement_or_events() {
+        let mut app = test_app();
+        let a = spawn_room(&mut app, "haven", "tavern", Exits::default());
+        let b = spawn_room(&mut app, "haven", "privy", Exits::default());
+        app.world_mut()
+            .get_mut::<Exits>(a)
+            .unwrap()
+            .exits
+            .insert(Cardinal::East, b);
+        app.world_mut()
+            .get_mut::<Exits>(b)
+            .unwrap()
+            .exits
+            .insert(Cardinal::West, a);
+        hang_door(&mut app, a, Cardinal::East, false);
+        let before_looks = look_room_count(&app);
+        let actor = spawn_actor_in(&mut app, a, false);
+        send_move(&mut app, actor, Cardinal::East);
+        assert_eq!(room_of(&app, actor), a);
+        assert!(info_texts(&app).iter().any(|t| t.contains("is closed")));
+        assert_eq!(look_room_count(&app), before_looks);
+        assert_eq!(move_event_count(&app), 0);
+    }
+
+    #[test]
+    fn open_door_allows_move() {
+        let mut app = test_app();
+        let a = spawn_room(&mut app, "haven", "tavern", Exits::default());
+        let b = spawn_room(&mut app, "haven", "privy", Exits::default());
+        app.world_mut()
+            .get_mut::<Exits>(a)
+            .unwrap()
+            .exits
+            .insert(Cardinal::East, b);
+        app.world_mut()
+            .get_mut::<Exits>(b)
+            .unwrap()
+            .exits
+            .insert(Cardinal::West, a);
+        hang_door(&mut app, a, Cardinal::East, true);
+        let actor = spawn_actor_in(&mut app, a, false);
+        send_move(&mut app, actor, Cardinal::East);
+        app.update();
+        assert_eq!(room_of(&app, actor), b);
     }
 
     fn info_texts(app: &App) -> Vec<String> {

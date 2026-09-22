@@ -14,5 +14,6 @@ pub use grim_object::{CarriedBy, Object};
 pub use grim_scene::ConnectedAt;
 pub use grim_script::{compile, CompiledTrigger, ScriptTriggers, TriggerDef, TriggerKind};
 pub use grim_world::{
-    Area, ClassDef, ClassRegistry, Exits, RaceDef, RaceRegistry, Room, RoomLocation, StartingRoom,
+    Area, ClassDef, ClassRegistry, Door, Doors, Exits, RaceDef, RaceRegistry, Room, RoomLocation,
+    StartingRoom,
 };

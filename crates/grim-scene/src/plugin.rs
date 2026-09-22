@@ -6,8 +6,9 @@
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::prelude::*;
 use grim_core::events::{
-    EngineCommand, GlobalEcho, InfoMessage, ItemEvent, LinkdeadAnnounce, LookEntity, LookRoom,
-    MoveEvent, OocEvent, RecallEvent, SayEvent, ServerBroadcast, TransferEvent, YellEvent,
+    DoorEvent, EngineCommand, GlobalEcho, InfoMessage, ItemEvent, LinkdeadAnnounce, LookEntity,
+    LookRoom, MoveEvent, OocEvent, RecallEvent, SayEvent, ServerBroadcast, TransferEvent,
+    YellEvent,
 };
 use grim_core::events::{LoginAnnounce, LogoutAnnounce};
 use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
@@ -95,6 +96,7 @@ impl Plugin for ScenePlugin {
             .add_message::<OocEvent>()
             .add_message::<GlobalEcho>()
             .add_message::<MoveEvent>()
+            .add_message::<DoorEvent>()
             .add_message::<RecallEvent>()
             .add_message::<ItemEvent>()
             .add_message::<TransferEvent>()

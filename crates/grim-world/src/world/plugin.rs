@@ -8,10 +8,10 @@
 //! `InfoMessage`, `DisconnectRequest`) it owns.
 
 use bevy::prelude::*;
-use grim_core::events::{LookEntity, LookRoom, MoveEvent, RecallEvent};
+use grim_core::events::{DoorEvent, LookEntity, LookRoom, MoveEvent, RecallEvent};
 
 /// Registers the world-happening event vocabulary (`LookRoom`, `LookEntity`,
-/// `MoveEvent`, `RecallEvent`).
+/// `MoveEvent`, `DoorEvent`, `RecallEvent`).
 pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
@@ -19,6 +19,7 @@ impl Plugin for WorldPlugin {
         app.add_message::<LookRoom>()
             .add_message::<LookEntity>()
             .add_message::<MoveEvent>()
+            .add_message::<DoorEvent>()
             .add_message::<RecallEvent>();
     }
 }
@@ -34,6 +35,7 @@ mod tests {
         assert!(app.world().get_resource::<Messages<LookRoom>>().is_some());
         assert!(app.world().get_resource::<Messages<LookEntity>>().is_some());
         assert!(app.world().get_resource::<Messages<MoveEvent>>().is_some());
+        assert!(app.world().get_resource::<Messages<DoorEvent>>().is_some());
         assert!(app
             .world()
             .get_resource::<Messages<RecallEvent>>()

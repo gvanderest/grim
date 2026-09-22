@@ -9,8 +9,9 @@
       "id": "C7Ee6NQVAfBr",
       "slug": "tavern",
       "name": "The Rusted Anvil",
-      "description": "Smoke and the clang of hammer on steel fill the air.\nSawdust covers the floor of this cozy tavern. A staircase leads up\nto the second floor, a door leads north to the town square, and a\nnarrow trail slips south toward the valley wall.",
-      "exits": { "north": "y0vjzSNtWQo3", "south": "ADG0C9DN6xaA" },
+      "description": "Smoke and the clang of hammer on steel fill the air.\nSawdust covers the floor of this cozy tavern. A staircase leads up\nto the second floor, a door leads north to the town square, a\nprivy door stands ajar to the east, and a narrow trail slips\nsouth toward the valley wall.",
+      "exits": { "north": "y0vjzSNtWQo3", "south": "ADG0C9DN6xaA", "east": "E8nqnXhQcQX4" },
+      "doors": { "east": { "name": "the privy door", "keywords": ["privy door"] } },
       "npcs": [
         {
           "name": "Grimmok Ironhand",
@@ -101,6 +102,14 @@
       "name": "East Road",
       "description": "A dirt road switchbacks east out of the valley.\nThe forge lies west behind you, and a dark treeline looms east.",
       "exits": { "west": "dSWS6Y77CtwJ", "east": "PCjTmircfbBy" }
+    },
+    {
+      "id": "E8nqnXhQcQX4",
+      "slug": "privy",
+      "name": "The Privy",
+      "description": "A cramped privy tucked against the tavern's east wall.\nA wooden bench with a hole sits over a dark pit. The tavern\nlies west through the privy door.",
+      "exits": { "west": "C7Ee6NQVAfBr" },
+      "doors": { "west": { "name": "the privy door", "keywords": ["privy door"] } }
     }
   ]
 }
