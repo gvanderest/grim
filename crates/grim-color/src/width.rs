@@ -101,10 +101,8 @@ pub fn capitalize_first(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     while let Some((src, vis)) = next_unit(&mut cs) {
         if vis > 0 {
-            if src == "{{" {
-                out.push('{');
-            } else if src == "@@" {
-                out.push('@');
+            if src == "{{" || src == "@@" {
+                out.push_str(&src);
             } else if src.chars().count() == 1 {
                 let first = src.chars().next().unwrap_or_default();
                 out.extend(first.to_uppercase());
@@ -204,5 +202,10 @@ mod tests {
         assert_eq!(capitalize_first("@xf00the door@r"), "@xf00The door@r");
         assert_eq!(capitalize_first(""), "");
         assert_eq!(capitalize_first("{R"), "{R");
+    }
+    #[test]
+    fn capitalize_preserves_escaped_markup() {
+        assert_eq!(capitalize_first("{{Rusted door"), "{{Rusted door");
+        assert_eq!(capitalize_first("@@reset"), "@@reset");
     }
 }
