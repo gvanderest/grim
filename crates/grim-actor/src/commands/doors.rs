@@ -16,8 +16,12 @@ use grim_world::{Doors, Exits};
 
 use crate::placement::InRoom;
 
-/// `open <direction>`: open the door on that exit, if any.
-pub(crate) fn handle_open(
+/// `open` / `close`: flip the door on that exit, in message order.
+///
+/// One system reads `EngineCommand` once so an `open` + `close` pair for the
+/// same door in one tick resolves in the order the player typed it, not in
+/// system-execution order.
+fn handle_door(
     mut engine: MessageReader<EngineCommand>,
     mut info: MessageWriter<InfoMessage>,
     mut doors_events: MessageWriter<DoorEvent>,
@@ -26,39 +30,15 @@ pub(crate) fn handle_open(
     mut doors: Query<&mut Doors>,
 ) {
     for cmd in engine.read() {
-        let Command::Open { direction } = cmd.command else {
-            continue;
+        let (direction, open) = match cmd.command {
+            Command::Open { direction } => (direction, true),
+            Command::Close { direction } => (direction, false),
+            _ => continue,
         };
         set_door(
             cmd.client,
             direction,
-            true,
-            &mut info,
-            &mut doors_events,
-            &inroom,
-            &exits,
-            &mut doors,
-        );
-    }
-}
-
-/// `close <direction>`: close the door on that exit, if any.
-pub(crate) fn handle_close(
-    mut engine: MessageReader<EngineCommand>,
-    mut info: MessageWriter<InfoMessage>,
-    mut doors_events: MessageWriter<DoorEvent>,
-    inroom: Query<&InRoom>,
-    exits: Query<&Exits>,
-    mut doors: Query<&mut Doors>,
-) {
-    for cmd in engine.read() {
-        let Command::Close { direction } = cmd.command else {
-            continue;
-        };
-        set_door(
-            cmd.client,
-            direction,
-            false,
+            open,
             &mut info,
             &mut doors_events,
             &inroom,
@@ -108,7 +88,31 @@ fn set_door(
             return;
         }
     };
-    if name.1 == open {
+    // Mirror bookkeeping, resolved before any mutation: when the reverse exit
+    // points back, the far `Doors` entry must exist. A linked-back room with
+    // no far door is a data bug — fail closed (reply, touch nothing) rather
+    // than leave the pair divergent.
+    let back = direction.opposite();
+    let reverse_ok = exits.get(to).ok().and_then(|e| e.exits.get(&back).copied()) == Some(from);
+    let far_open = reverse_ok
+        .then(|| {
+            doors
+                .get(to)
+                .ok()
+                .and_then(|d| d.doors.get(&back))
+                .map(|door| door.open)
+        })
+        .flatten();
+    if reverse_ok && far_open.is_none() {
+        info.write(InfoMessage {
+            target: actor,
+            text: tr!("door.error.no_door"),
+        });
+        return;
+    }
+    // Already-state only when both sides agree: a divergent far side heals
+    // below instead of replying "already" and freezing the split.
+    if name.1 == open && (!reverse_ok || far_open == Some(open)) {
         info.write(InfoMessage {
             target: actor,
             text: if open {
@@ -125,9 +129,7 @@ fn set_door(
         }
     }
     // Mirror the far side: the reverse exit's door flips too, when the link
-    // points back at us.
-    let back = direction.opposite();
-    let reverse_ok = exits.get(to).ok().and_then(|e| e.exits.get(&back).copied()) == Some(from);
+    // points back at us (the entry's existence was checked above).
     if reverse_ok {
         if let Ok(mut far) = doors.get_mut(to) {
             if let Some(door) = far.doors.get_mut(&back) {
@@ -145,12 +147,12 @@ fn set_door(
     });
 }
 
-/// Wire the `open`/`close` handlers and the delivery messages they own. The
-/// `DoorEvent` facts they emit are registered by `grim_world::WorldPlugin`.
+/// Wire the `open`/`close` handler and the delivery messages it owns. The
+/// `DoorEvent` facts it emits are registered by `grim_world::WorldPlugin`.
 pub(crate) fn register(app: &mut App) {
     app.add_message::<EngineCommand>()
         .add_message::<InfoMessage>()
-        .add_systems(Update, (handle_open, handle_close));
+        .add_systems(Update, handle_door);
 }
 
 #[cfg(test)]
@@ -412,5 +414,89 @@ mod tests {
         );
         assert!(app.world().get::<Doors>(a).unwrap().doors[&Cardinal::East].open);
         assert_eq!(door_events(&app).len(), 1);
+    }
+
+    #[test]
+    fn linked_back_room_without_far_door_rejects_without_mutation() {
+        // Reverse exit points back but the far `Doors` entry is missing:
+        // fail closed — neither side mutates, no fact fires.
+        let mut app = test_app();
+        let a = spawn_room(&mut app, Exits::default(), Doors::default());
+        let b = spawn_room(&mut app, Exits::default(), Doors::default());
+        link(&mut app, a, b);
+        hang(&mut app, a, Cardinal::East, false);
+        let actor = spawn_actor_in(&mut app, a);
+        send(
+            &mut app,
+            actor,
+            Command::Open {
+                direction: Cardinal::East,
+            },
+        );
+        assert!(!app.world().get::<Doors>(a).unwrap().doors[&Cardinal::East].open);
+        assert_eq!(
+            infos(&app),
+            vec!["There is no door in that direction.\n".to_string()]
+        );
+        assert!(door_events(&app).is_empty());
+    }
+
+    #[test]
+    fn divergent_far_side_heals_instead_of_replying_already() {
+        // Local already open but far closed: open again heals the far side.
+        let mut app = test_app();
+        let a = spawn_room(&mut app, Exits::default(), Doors::default());
+        let b = spawn_room(&mut app, Exits::default(), Doors::default());
+        link(&mut app, a, b);
+        hang(&mut app, a, Cardinal::East, true);
+        hang(&mut app, b, Cardinal::West, false);
+        let actor = spawn_actor_in(&mut app, a);
+        send(
+            &mut app,
+            actor,
+            Command::Open {
+                direction: Cardinal::East,
+            },
+        );
+        assert!(app.world().get::<Doors>(b).unwrap().doors[&Cardinal::West].open);
+        assert_eq!(
+            door_events(&app),
+            vec![(true, "the privy door".to_string())]
+        );
+        assert!(infos(&app).is_empty());
+    }
+
+    #[test]
+    fn open_then_close_in_one_tick_resolves_in_message_order() {
+        // Both commands queued before the tick: last writer wins.
+        let mut app = test_app();
+        let a = spawn_room(&mut app, Exits::default(), Doors::default());
+        let b = spawn_room(&mut app, Exits::default(), Doors::default());
+        link(&mut app, a, b);
+        hang(&mut app, a, Cardinal::East, false);
+        hang(&mut app, b, Cardinal::West, false);
+        let actor = spawn_actor_in(&mut app, a);
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Open {
+                direction: Cardinal::East,
+            },
+        });
+        app.world_mut().write_message(EngineCommand {
+            client: actor,
+            command: Command::Close {
+                direction: Cardinal::East,
+            },
+        });
+        app.update();
+        assert!(!app.world().get::<Doors>(a).unwrap().doors[&Cardinal::East].open);
+        assert!(!app.world().get::<Doors>(b).unwrap().doors[&Cardinal::West].open);
+        assert_eq!(
+            door_events(&app),
+            vec![
+                (true, "the privy door".to_string()),
+                (false, "the privy door".to_string())
+            ]
+        );
     }
 }
