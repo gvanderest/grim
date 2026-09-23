@@ -50,6 +50,12 @@ fn spawn_room(app: &mut App) -> Entity {
         ))
         .id()
 }
+/// Connections the auth flow asked the transport to sever.
+fn disconnects(app: &App) -> Vec<Entity> {
+    let msgs = app.world().resource::<Messages<DisconnectRequest>>();
+    let mut cursor = msgs.get_cursor();
+    cursor.read(msgs).map(|m| m.connection).collect()
+}
 
 /// Fresh app rooted at a unique temp data dir so on-disk fixtures are
 /// isolated (no `data/` contention with the other tests).
@@ -76,6 +82,47 @@ fn unique_dir(tag: &str) -> std::path::PathBuf {
     static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     std::env::temp_dir().join(format!("grim-auth-{tag}-{}-{}", std::process::id(), n))
+}
+
+/// A live session parked at `NewAccountPrompt`, with a spawned `Connection`.
+fn app_at_new_account_prompt() -> (App, Entity) {
+    let mut app = test_app();
+    let room = spawn_room(&mut app);
+    app.world_mut().insert_resource(StartingRoom(room));
+    let conn = app
+        .world_mut()
+        .spawn(Connection {
+            id: 1,
+            addr: "127.0.0.1:12345".parse().unwrap(),
+            echo_hidden: false,
+        })
+        .id();
+    app.world_mut().spawn(Client {
+        state: ClientState::NewAccountPrompt,
+        ..Client::new(conn)
+    });
+    (app, conn)
+}
+
+/// The `ClientState` for a connection.
+fn client_state_of(app: &mut App, conn: Entity) -> ClientState {
+    app.world_mut()
+        .query::<&Client>()
+        .iter(app.world())
+        .find(|c| c.connection == conn)
+        .map(|c| c.state.clone())
+        .unwrap()
+}
+
+/// All output text for one connection.
+fn conn_text(app: &mut App, conn: Entity) -> String {
+    let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+    let mut cursor = msgs.get_cursor();
+    cursor
+        .read(msgs)
+        .filter(|o| o.connection == conn)
+        .map(|o| o.text.clone())
+        .collect()
 }
 
 /// Write a character to the configured `characters/` dir as if it were saved
@@ -817,9 +864,9 @@ mod ordering {
 mod login_flow {
     use super::*;
 
-    // ── LoginPrompt: empty password → wrong_password path ──
+    // ── LoginPrompt: empty password aborts to the login prompt ──
     #[test]
-    fn login_prompt_empty_password_goes_wrong_password() {
+    fn login_prompt_empty_password_aborts_to_login_prompt() {
         let mut app = test_app();
         let room = spawn_room(&mut app);
         app.world_mut().insert_resource(StartingRoom(room));
@@ -862,7 +909,7 @@ mod login_flow {
             }
         );
 
-        // Step 2: Empty password → should fall back to LoginPrompt with wrong_password msg
+        // Step 2: Empty password → should fall back to LoginPrompt with the login prompt
         app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "".into(),
@@ -884,12 +931,15 @@ mod login_flow {
         assert!(
             outputs
                 .iter()
-                .any(|o| o.connection == conn && o.text.contains("Invalid password")),
-            "Should emit wrong_password output"
+                .any(|o| o.connection == conn && o.text.contains("Character name or account email")),
+            "Should re-show the login prompt on abort"
+        );
+        assert!(
+            disconnects(&app).is_empty(),
+            "Aborting with empty input must not disconnect"
         );
     }
-
-    // ── PasswordPrompt: wrong password (non-empty) ──
+    // ── PasswordPrompt: wrong password disconnects + wiznets (one attempt) ──
     #[test]
     fn password_prompt_wrong_password() {
         let mut app = test_app();
@@ -922,41 +972,40 @@ mod login_flow {
         });
         app.update();
 
-        // Step 2: Wrong password → stays in PasswordPrompt, shows error
+        // Step 2: Wrong password → told so, alerted, disconnected.
         app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "wrongpassword".into(),
         });
         app.update();
 
-        let mut query = app.world_mut().query::<(Entity, &Client)>();
-        let found = query.iter(app.world()).find(|(_, c)| c.connection == conn);
-        let (_client_entity, client) = found.unwrap();
-        assert_eq!(
-            client.state,
-            ClientState::PasswordPrompt {
-                identifier: "test@example.com".into(),
-                is_new: false,
-                character: None,
-            },
-            "Should remain in PasswordPrompt after wrong password"
-        );
-
         let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
         let outputs: Vec<&ConnectionOutput> = cursor.read(msgs).collect();
+        let told = outputs
+            .iter()
+            .find(|o| o.connection == conn && o.text.contains("Incorrect password"))
+            .expect("wrong password must be reported");
+        assert_eq!(told.echo, Some(true), "echo must be restored on disconnect");
+        assert_eq!(
+            disconnects(&app),
+            vec![conn],
+            "one failed attempt disconnects"
+        );
+        let alerts = app.world().resource::<Messages<WiznetAlert>>();
+        let mut acursor = alerts.get_cursor();
         assert!(
-            outputs
-                .iter()
-                .any(|o| o.connection == conn && o.text.contains("Invalid password")),
-            "Should show invalid password message"
+            acursor
+                .read(alerts)
+                .any(|a| a.category == WiznetCategory::Security
+                    && a.text.contains("test@example.com")
+                    && a.text.contains("127.0.0.1:12345")),
+            "wrong password emits an account security alert with the peer"
         );
     }
-    // ── PasswordPrompt: wrong password re-masks the retry prompt ──
-    // The transport auto-restores echo when a line is submitted, so the
-    // retry prompt must hide input again or the password shows plaintext.
+    // ── PasswordPrompt: wrong password for a named login names the character ──
     #[test]
-    fn password_prompt_wrong_password_remasks() {
+    fn password_prompt_wrong_password_for_character_names_character() {
         let mut app = test_app();
         let room = spawn_room(&mut app);
         app.world_mut().insert_resource(StartingRoom(room));
@@ -978,31 +1027,270 @@ mod login_flow {
             characters: vec![],
             created_at: Utc::now(),
         };
+        let account_id = account.id;
         app.world_mut().spawn(account);
+        let stored = StoredCharacter {
+            id: GrimId::new(),
+            name: "Gwen".into(),
+            account_id,
+            created_at: Utc::now(),
+            last_room: None,
+            roles: Vec::new(),
+            gender: Gender::Neutral,
+            race: "human".into(),
+            class: "warrior".into(),
+            level: 1,
+            title: None,
+            restrings: std::collections::HashMap::new(),
+            config: std::collections::HashMap::new(),
+            inventory: Vec::new(),
+        };
+        let (name, actor, character) = stored.into_components();
+        app.world_mut().spawn((
+            name,
+            actor,
+            character,
+            Description(vec!["A test character.".into()]),
+            InRoom { room },
+            Linkdead,
+            OutputHistory::with_max(100),
+        ));
 
         app.world_mut().write_message(ConnectionInput {
             connection: conn,
-            text: "test@example.com".into(),
+            text: "Gwen".into(),
         });
         app.update();
-
         app.world_mut().write_message(ConnectionInput {
             connection: conn,
             text: "wrongpassword".into(),
         });
         app.update();
 
+        assert_eq!(
+            disconnects(&app),
+            vec![conn],
+            "one failed attempt disconnects even for a named login"
+        );
+        let alerts = app.world().resource::<Messages<WiznetAlert>>();
+        let mut acursor = alerts.get_cursor();
+        assert!(
+            acursor
+                .read(alerts)
+                .any(|a| a.category == WiznetCategory::Security
+                    && a.text.contains("Gwen")
+                    && a.text.contains("127.0.0.1:12345")),
+            "named-login alert names the character, not the account"
+        );
+    }
+
+    // ── LoginPrompt: `help` shows the onboarding text, stays at the prompt ──
+    #[test]
+    fn login_prompt_help_shows_help_and_stays() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "help".into(),
+        });
+        app.update();
+        let mut query = app.world_mut().query::<(Entity, &Client)>();
+        let state = query
+            .iter(app.world())
+            .find(|(_, c)| c.connection == conn)
+            .map(|(_, c)| c.state.clone())
+            .unwrap();
+        assert_eq!(state, ClientState::LoginPrompt);
         let msgs = app.world().resource::<Messages<ConnectionOutput>>();
         let mut cursor = msgs.get_cursor();
-        let retry = cursor
+        let text: String = cursor
             .read(msgs)
-            .filter(|o| o.connection == conn && o.text.contains("Password: "))
-            .last()
-            .expect("expected a password retry prompt");
+            .filter(|o| o.connection == conn)
+            .map(|o| o.text.clone())
+            .collect();
+        assert!(
+            text.contains("Multi-User Dungeon"),
+            "help must show the onboarding text"
+        );
+        assert!(
+            text.contains("Character name or account email"),
+            "help must re-show the login prompt"
+        );
+    }
+
+    // ── LoginPrompt: `new` opens the new-account email prompt ──
+    #[test]
+    fn login_prompt_new_opens_new_account_prompt() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "new".into(),
+        });
+        app.update();
+        let mut query = app.world_mut().query::<(Entity, &Client)>();
+        let state = query
+            .iter(app.world())
+            .find(|(_, c)| c.connection == conn)
+            .map(|(_, c)| c.state.clone())
+            .unwrap();
+        assert_eq!(state, ClientState::NewAccountPrompt);
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        assert!(
+            cursor
+                .read(msgs)
+                .any(|o| o.connection == conn && o.text.contains("New account email address")),
+            "new must show the new-account prompt"
+        );
+    }
+
+    // ── LoginPrompt: garbage input gets guidance, not a bare error ──
+    #[test]
+    fn login_prompt_garbage_gets_guidance() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "!!!".into(),
+        });
+        app.update();
+        let mut query = app.world_mut().query::<(Entity, &Client)>();
+        let state = query
+            .iter(app.world())
+            .find(|(_, c)| c.connection == conn)
+            .map(|(_, c)| c.state.clone())
+            .unwrap();
+        assert_eq!(state, ClientState::LoginPrompt);
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let text: String = cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn)
+            .map(|o| o.text.clone())
+            .collect();
+        assert!(
+            text.contains("valid character name (letters only) or email address"),
+            "garbage input must explain what is valid"
+        );
+        assert!(
+            text.contains("Character name or account email"),
+            "garbage input must re-show the login prompt"
+        );
+    }
+
+    // ── LoginPrompt: unknown character name suggests `new` ──
+    #[test]
+    fn login_prompt_unknown_name_suggests_new() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "Nobody".into(),
+        });
+        app.update();
+        let mut query = app.world_mut().query::<(Entity, &Client)>();
+        let state = query
+            .iter(app.world())
+            .find(|(_, c)| c.connection == conn)
+            .map(|(_, c)| c.state.clone())
+            .unwrap();
+        assert_eq!(state, ClientState::LoginPrompt);
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let text: String = cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn)
+            .map(|o| o.text.clone())
+            .collect();
+        assert!(
+            text.contains("not found") && text.contains("type \"new\""),
+            "unknown name must suggest creating an account"
+        );
+    }
+
+    // ── LoginPrompt: unknown email goes to confirm with the not-found line ──
+    #[test]
+    fn login_prompt_unknown_email_asks_to_confirm() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "fresh@example.com".into(),
+        });
+        app.update();
+        let mut query = app.world_mut().query::<(Entity, &Client)>();
         assert_eq!(
-            retry.echo,
-            Some(false),
-            "retry prompt must re-mask input or the password shows plaintext"
+            query
+                .iter(app.world())
+                .find(|(_, c)| c.connection == conn)
+                .map(|(_, c)| c.state.clone())
+                .unwrap(),
+            ClientState::ConfirmCreate {
+                identifier: "fresh@example.com".into(),
+            }
+        );
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let text: String = cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn)
+            .map(|o| o.text.clone())
+            .collect();
+        assert!(
+            text.contains("not found")
+                && text.contains("Do you want to create an account using fresh@@example.com?"),
+            "unknown email must report not-found then ask to confirm"
         );
     }
 
@@ -1064,6 +1352,143 @@ mod login_flow {
             retry.echo,
             Some(false),
             "retry prompt must re-mask input or the password shows plaintext"
+        );
+    }
+
+    // ── PasswordPrompt: a failed attempt is terminal — pipelined input is ignored ──
+    #[test]
+    fn password_prompt_failed_attempt_ignores_pipelined_input() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+        let account = Account {
+            id: GrimId::new(),
+            identifier: "test@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![],
+            created_at: Utc::now(),
+        };
+        app.world_mut().spawn(account);
+        // Two lines in one tick: a wrong password immediately followed by the
+        // right one. The first consumes the one attempt; the second must be
+        // ignored, not authenticated.
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "test@example.com".into(),
+        });
+        app.update();
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "wrongpassword".into(),
+        });
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "password".into(),
+        });
+        app.update();
+        assert_eq!(
+            client_state_of(&mut app, conn),
+            ClientState::Disconnecting,
+            "failed attempt must park the session in the terminal state"
+        );
+        assert_eq!(
+            disconnects(&app),
+            vec![conn],
+            "exactly one disconnect for the burst"
+        );
+        let alerts = app.world().resource::<Messages<WiznetAlert>>();
+        let mut acursor = alerts.get_cursor();
+        assert_eq!(
+            acursor.read(alerts).count(),
+            1,
+            "pipelined correct password must not emit a second alert or log in"
+        );
+    }
+
+    // ── NewAccountPrompt: valid unused email advances to confirm ──
+    #[test]
+    fn new_account_prompt_valid_email_asks_to_confirm() {
+        let (mut app, conn) = app_at_new_account_prompt();
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "fresh@example.com".into(),
+        });
+        app.update();
+        assert_eq!(
+            client_state_of(&mut app, conn),
+            ClientState::ConfirmCreate {
+                identifier: "fresh@example.com".into(),
+            }
+        );
+        assert!(
+            conn_text(&mut app, conn)
+                .contains("Do you want to create an account using fresh@@example.com?"),
+            "valid unused email must ask to confirm"
+        );
+    }
+
+    // ── NewAccountPrompt: in-use email returns to login with guidance ──
+    #[test]
+    fn new_account_prompt_used_email_returns_to_login() {
+        let (mut app, conn) = app_at_new_account_prompt();
+        let account = Account {
+            id: GrimId::new(),
+            identifier: "taken@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![],
+            created_at: Utc::now(),
+        };
+        app.world_mut().spawn(account);
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "taken@example.com".into(),
+        });
+        app.update();
+        assert_eq!(client_state_of(&mut app, conn), ClientState::LoginPrompt);
+        assert!(
+            conn_text(&mut app, conn).contains("already in use"),
+            "in-use email must be refused with guidance"
+        );
+    }
+
+    // ── NewAccountPrompt: bad email shape returns to login with guidance ──
+    #[test]
+    fn new_account_prompt_bad_email_returns_to_login() {
+        let (mut app, conn) = app_at_new_account_prompt();
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "not-an-email".into(),
+        });
+        app.update();
+        assert_eq!(client_state_of(&mut app, conn), ClientState::LoginPrompt);
+        assert!(
+            conn_text(&mut app, conn).contains("not a valid email address"),
+            "bad email shape must be refused with guidance"
+        );
+    }
+
+    // ── NewAccountPrompt: character names are refused like bad emails ──
+    #[test]
+    fn new_account_prompt_name_returns_to_login() {
+        let (mut app, conn) = app_at_new_account_prompt();
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "Somebody".into(),
+        });
+        app.update();
+        assert_eq!(client_state_of(&mut app, conn), ClientState::LoginPrompt);
+        assert!(
+            conn_text(&mut app, conn).contains("not a valid email address"),
+            "character names are not searched at this prompt"
         );
     }
 
@@ -1547,7 +1972,7 @@ mod connection {
             outputs
                 .iter()
                 .any(|o| o.connection == conn
-                    && o.text.contains("character name or email address")),
+                    && o.text.contains("Character name or account email")),
             "Banner output should contain login prompt"
         );
     }

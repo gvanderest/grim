@@ -9,7 +9,7 @@
 //! ```ignore
 //! let mut mud = Mud::new();
 //! let (alice, banner) = mud.connect();
-//! banner.assert_contains("character name or email");
+//! banner.assert_contains("Character name or account email");
 //! mud.send(alice, "alice@example.com").assert_contains("create an account");
 //! ```
 

@@ -17,7 +17,7 @@
 use bevy::prelude::*;
 use grim_core::components::{Account, Client, ClientState};
 use grim_core::events::{LoginAnnounce, LookRoom};
-use grim_networking::{ConnectionInput, ConnectionOutput};
+use grim_networking::{Connection, ConnectionInput, ConnectionOutput};
 use grim_scene::JustEnteredWorld;
 
 use crate::character_select as character;
@@ -32,6 +32,7 @@ pub(crate) fn handle_pregame_input(
     mut inputs: MessageReader<ConnectionInput>,
     mut clients: Query<(Entity, &mut Client)>,
     mut accounts: Query<(Entity, &mut Account)>,
+    connections: Query<&Connection>,
     player_chars: PlayerChars,
     res: SessionRes,
     mut just_entered: ResMut<JustEnteredWorld>,
@@ -52,12 +53,15 @@ pub(crate) fn handle_pregame_input(
         };
         let text = ev.text.as_str();
         let conn = client.connection;
-
+        let peer = connections
+            .get(conn)
+            .map(|c| c.addr.to_string())
+            .unwrap_or_else(|_| "unknown".to_string());
         // Match on a clone of the state so each handler can freely mutate the
         // borrowed `Client` (including its `state`) without a borrow conflict.
         match client.state.clone() {
-            // In-game input is the scene system's job; skip it here.
-            ClientState::InGame => continue,
+            // In-game input is the scene system's job; disconnects are terminal.
+            ClientState::InGame | ClientState::Disconnecting => continue,
             ClientState::LoginPrompt => login::login_prompt(
                 &mut client,
                 conn,
@@ -70,6 +74,9 @@ pub(crate) fn handle_pregame_input(
             ),
             ClientState::ConfirmCreate { identifier } => {
                 login::confirm_create(&mut client, conn, text, identifier, &mut outputs);
+            }
+            ClientState::NewAccountPrompt => {
+                login::new_account_prompt(&mut client, conn, text, &accounts, &mut outputs);
             }
             ClientState::PasswordPrompt {
                 identifier,
@@ -84,6 +91,7 @@ pub(crate) fn handle_pregame_input(
                 client_entity,
                 &mut client,
                 conn,
+                peer.as_str(),
                 text,
                 &accounts,
                 &world.characters,

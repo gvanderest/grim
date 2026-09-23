@@ -36,8 +36,8 @@ one-file-per-command layout, which is for in-game command handlers).
 | `ClientState` | Handler | File |
 |---|---|---|
 | `LoginPrompt` | `login_prompt` | `src/login.rs` |
-| `ConfirmCreate` | `confirm_create` | `src/login.rs` |
-| `PasswordPrompt` | `password_prompt` (→ `create_account` in `src/account.rs` / `authenticate`) | `src/login.rs` |
+| `NewAccountPrompt` | `new_account_prompt` | `src/new_account.rs` |
+| `PasswordPrompt` (failed attempt → `Disconnecting`, terminal) | `password_prompt` (→ `create_account` in `src/account.rs` / `authenticate`) | `src/password.rs` |
 | `CharacterSelect` | `character_select` (+ `show_character_menu`, `account_character_list`) | `src/character_select.rs` |
 | `CreateCharacter` | `create_character` | `src/creation.rs` |
 | `SelectGender` / `SelectRace` / `SelectClass` | `select_gender` / `select_race` / `select_class` | `src/creation.rs` |
@@ -64,7 +64,7 @@ before placing (`refuse_banned` in `grim-scene/src/resume.rs`).
 | `ReservedNamePrefixes` | Resource (character-name prefix blocklist; author-overridable) | `src/validation.rs` |
 | `RaceRegistry` / `ClassRegistry` | Resource (read for the creation menus; `init_resource`, from `grim-world`) | `src/plugin.rs` |
 | `PersistenceConfig` | Resource (account/character JSON dir; `init_resource`, from `grim-persistence`) | `src/plugin.rs` |
-| `BanList` | Resource (read at every login gate; owned by `grim-persistence`) | `src/greeter.rs`, `src/login.rs`, `src/character_select.rs`, `src/world_entry.rs` |
+| `BanList` | Resource (read at every login gate; owned by `grim-persistence`) | `src/greeter.rs`, `src/password.rs`, `src/character_select.rs`, `src/world_entry.rs` |
 | `ReconnectLimits` | Resource (per-IP throttle knobs, seconds; `init_resource`, author-overridable) | `src/throttle.rs` (`AuthPlugin`) |
 | `ReconnectThrottle` | Resource (per-IP attempt timestamps + reject windows; pruned on access) | `src/throttle.rs` (read in `src/greeter.rs`) |
 | `LoginAnnounce` / `LinkdeadAnnounce` | Message (emitted on world entry / linkdead reconnect) | `src/character_select.rs`, `src/world_entry.rs` |

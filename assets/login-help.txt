@@ -1,0 +1,7 @@
+A MUD (Multi-User Dungeon) is a text-based online world you explore by typing
+commands: you move between rooms, talk to other players, and build a character
+who persists between sessions.
+
+If you already have an account, type your character name or account email
+address at the login prompt, then your password. If you are new here, type
+"new" to create an account first.

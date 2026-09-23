@@ -89,6 +89,13 @@ pub enum ClientState {
     },
     /// "No account found. Create one? (y/n)"
     ConfirmCreate { identifier: String },
+    /// Waiting for an email at the new-account prompt (reached via `new`).
+    NewAccountPrompt,
+    /// A failed password attempt asked the transport to sever the socket.
+    /// Terminal: the pre-game dispatcher ignores input in this state so a
+    /// pipelined burst cannot test further passwords while the disconnect
+    /// is in flight (`DisconnectRequest` → `ConnectionClosed`).
+    Disconnecting,
     /// Showing the character selection menu.
     CharacterSelect,
     /// Waiting for the user to type a new character name.
