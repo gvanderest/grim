@@ -866,7 +866,7 @@ mod login_flow {
 
     // ── LoginPrompt: empty password aborts to the login prompt ──
     #[test]
-    fn login_prompt_empty_password_goes_wrong_password() {
+    fn login_prompt_empty_password_aborts_to_login_prompt() {
         let mut app = test_app();
         let room = spawn_room(&mut app);
         app.world_mut().insert_resource(StartingRoom(room));
