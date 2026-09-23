@@ -211,6 +211,7 @@ fn default_string(key: &str) -> String {
         "sockets.state.password" => "Password",
         "sockets.state.confirm" => "Confirm",
         "sockets.state.newaccount" => "NewAccount",
+        "sockets.state.disconnecting" => "Disconnecting",
         "sockets.state.select" => "Select",
         "sockets.state.newchar" => "NewChar",
         "sockets.state.gender" => "Gender",

@@ -1355,6 +1355,65 @@ mod login_flow {
         );
     }
 
+    // ── PasswordPrompt: a failed attempt is terminal — pipelined input is ignored ──
+    #[test]
+    fn password_prompt_failed_attempt_ignores_pipelined_input() {
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        app.world_mut().spawn(Client::new(conn));
+        let account = Account {
+            id: GrimId::new(),
+            identifier: "test@example.com".into(),
+            password_hash: hash_password("password"),
+            characters: vec![],
+            created_at: Utc::now(),
+        };
+        app.world_mut().spawn(account);
+        // Two lines in one tick: a wrong password immediately followed by the
+        // right one. The first consumes the one attempt; the second must be
+        // ignored, not authenticated.
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "test@example.com".into(),
+        });
+        app.update();
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "wrongpassword".into(),
+        });
+        app.world_mut().write_message(ConnectionInput {
+            connection: conn,
+            text: "password".into(),
+        });
+        app.update();
+        assert_eq!(
+            client_state_of(&mut app, conn),
+            ClientState::Disconnecting,
+            "failed attempt must park the session in the terminal state"
+        );
+        assert_eq!(
+            disconnects(&app),
+            vec![conn],
+            "exactly one disconnect for the burst"
+        );
+        let alerts = app.world().resource::<Messages<WiznetAlert>>();
+        let mut acursor = alerts.get_cursor();
+        assert_eq!(
+            acursor.read(alerts).count(),
+            1,
+            "pipelined correct password must not emit a second alert or log in"
+        );
+    }
+
     // ── NewAccountPrompt: valid unused email advances to confirm ──
     #[test]
     fn new_account_prompt_valid_email_asks_to_confirm() {

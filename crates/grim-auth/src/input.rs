@@ -60,8 +60,8 @@ pub(crate) fn handle_pregame_input(
         // Match on a clone of the state so each handler can freely mutate the
         // borrowed `Client` (including its `state`) without a borrow conflict.
         match client.state.clone() {
-            // In-game input is the scene system's job; skip it here.
-            ClientState::InGame => continue,
+            // In-game input is the scene system's job; disconnects are terminal.
+            ClientState::InGame | ClientState::Disconnecting => continue,
             ClientState::LoginPrompt => login::login_prompt(
                 &mut client,
                 conn,

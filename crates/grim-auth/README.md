@@ -37,8 +37,7 @@ one-file-per-command layout, which is for in-game command handlers).
 |---|---|---|
 | `LoginPrompt` | `login_prompt` | `src/login.rs` |
 | `NewAccountPrompt` | `new_account_prompt` | `src/new_account.rs` |
-| `ConfirmCreate` | `confirm_create` | `src/login.rs` |
-| `PasswordPrompt` | `password_prompt` (→ `create_account` in `src/account.rs` / `authenticate`) | `src/password.rs` |
+| `PasswordPrompt` (failed attempt → `Disconnecting`, terminal) | `password_prompt` (→ `create_account` in `src/account.rs` / `authenticate`) | `src/password.rs` |
 | `CharacterSelect` | `character_select` (+ `show_character_menu`, `account_character_list`) | `src/character_select.rs` |
 | `CreateCharacter` | `create_character` | `src/creation.rs` |
 | `SelectGender` / `SelectRace` / `SelectClass` | `select_gender` / `select_race` / `select_class` | `src/creation.rs` |

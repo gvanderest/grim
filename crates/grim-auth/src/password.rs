@@ -192,9 +192,12 @@ pub(crate) fn authenticate(
                     );
                 }
             } else {
-                // One attempt: report, alert the wizards, and sever the
-                // socket. The transport restores echo on its own when the
-                // connection closes.
+                // One attempt: enter the terminal state FIRST so a pipelined
+                // burst in the same tick cannot test further passwords, then
+                // report, alert the wizards, and sever the socket. The
+                // transport restores echo on its own when the connection
+                // closes.
+                client.state = ClientState::Disconnecting;
                 outputs.write(ConnectionOutput {
                     echo: Some(true),
                     ..ConnectionOutput::new(conn, tr!("login.bad_password"))
