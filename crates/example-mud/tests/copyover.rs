@@ -163,7 +163,7 @@ fn copyover_keeps_player_connected_and_resumes_last_room() {
     // ── Create an account + character, enter the world (in the tavern) ──
     expect(
         &mut stream,
-        "character name or email",
+        "Character name or account email",
         Duration::from_secs(20),
     );
     send(&mut stream, "alice@example.com");

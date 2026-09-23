@@ -10,6 +10,7 @@ use grim_core::components::{Account, Client, ClientState, Name as GrimName};
 use grim_core::GrimId;
 use grim_networking::ConnectionOutput;
 use grim_persistence::PersistenceConfig;
+use grim_text::tr;
 
 use crate::character_select as character;
 use crate::validation::{hash_password, validate_password};
@@ -74,7 +75,7 @@ pub(crate) fn create_account(
                 echo: Some(false),
                 ..ConnectionOutput::new(
                     conn,
-                    format!("Invalid password: {}\nChoose a password: ", e),
+                    format!("Invalid password: {}\n{}", e, tr!("login.choose_password")),
                 )
             });
         }

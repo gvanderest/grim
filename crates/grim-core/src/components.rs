@@ -89,6 +89,8 @@ pub enum ClientState {
     },
     /// "No account found. Create one? (y/n)"
     ConfirmCreate { identifier: String },
+    /// Waiting for an email at the new-account prompt (reached via `new`).
+    NewAccountPrompt,
     /// Showing the character selection menu.
     CharacterSelect,
     /// Waiting for the user to type a new character name.

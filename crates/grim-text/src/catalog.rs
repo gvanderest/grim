@@ -36,8 +36,17 @@ pub fn render(template: &str, args: &[(&str, &str)]) -> String {
 #[allow(clippy::too_many_lines)] // reason: flat key-default table, one line per key
 fn default_string(key: &str) -> String {
     match key {
-        "login.prompt" => "Enter your character name or email address: ",
-        "login.wrong_password" => "Invalid password.\nEnter your character name or email address: ",
+        "login.prompt" => "Character name or account email address (\"help\" for more info): ",
+        "login.password_prompt" => "Password: ",
+        "login.choose_password" => "Choose a password: ",
+        "login.invalid_input" => "You must provide a valid character name (letters only) or email address.\n",
+        "login.character_not_found" => "That character name is not found, did you want to create a new account? (type \"new\")\n",
+        "login.account_not_found" => "Account with that email address is not found.\n",
+        "login.confirm_create" => "Do you want to create an account using %{addr}? [Y/n] ",
+        "login.new_account_prompt" => "New account email address (e.g. email@example.com): ",
+        "login.new_account_invalid" => "That is not a valid email address with a format of email@address.com\n",
+        "login.email_in_use" => "That email address is already in use, try logging in.\n",
+        "login.bad_password" => "Incorrect password\n",
         "social.say.first_party" => "{MYou say {x'{m%{text}{x'\n",
         "social.say.third_party" => "{M%{speaker} says {x'{m%{text}{x'\n",
         "social.error.unknown_target" => "You don't see anyone by that name here.\n",
@@ -201,6 +210,7 @@ fn default_string(key: &str) -> String {
         "sockets.state.login" => "Login",
         "sockets.state.password" => "Password",
         "sockets.state.confirm" => "Confirm",
+        "sockets.state.newaccount" => "NewAccount",
         "sockets.state.select" => "Select",
         "sockets.state.newchar" => "NewChar",
         "sockets.state.gender" => "Gender",

@@ -70,7 +70,7 @@ fn privy_door_blocks_until_opened() {
 fn connect_shows_login_banner_and_prompt() {
     let mut mud = Mud::new();
     let (_s, banner) = mud.connect();
-    banner.assert_contains("character name or email");
+    banner.assert_contains("Character name or account email");
 }
 
 #[test]

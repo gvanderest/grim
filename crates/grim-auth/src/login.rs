@@ -1,25 +1,24 @@
-//! Login flow: resolve a character-name-or-email at the prompt, confirm account
-//! creation, and handle the password prompt (creating a new account or
-//! authenticating an existing one, then routing into the world or the menu).
+//! Login flow: resolve a character-name-or-email at the prompt (`help`/`new`
+//! keywords, per-case guidance), confirm account creation for a new email,
+//! and handle the password prompt (creating a new account or authenticating
+//! an existing one, then routing into the world or the menu).
 
 use bevy::prelude::*;
-use grim_actor::{Actor, Character, Linkdead, OutputHistory, Player};
+use grim_actor::{Actor, Character, Linkdead};
 use grim_core::components::{Account, Client, ClientState, Name as GrimName};
-use grim_core::events::LinkdeadAnnounce;
 use grim_core::GrimId;
-use grim_networking::{ConnectionOutput, DisconnectRequest, WiznetAlert};
+use grim_networking::ConnectionOutput;
 use grim_persistence::{load_character_by_name, PersistenceConfig};
 use grim_text::tr;
 
-use crate::account;
-use crate::character_select as character;
-use crate::creation;
-use crate::params::{RoomResolver, SessionRes};
-use crate::validation::{normalize_character_name, validate_identifier, verify_password};
-use crate::world_entry;
+use crate::validation::{normalize_character_name, validate_character_name, validate_identifier};
 
-/// LoginPrompt: try the input as a character name first (resident, linkdead
-/// beating online, else disk), falling back to email-identifier validation.
+pub(crate) use crate::new_account::new_account_prompt;
+pub(crate) use crate::password::{password_prompt, PasswordPromptArgs};
+
+/// LoginPrompt: `help`/`new` keywords first, then a character name (resident,
+/// linkdead beating online, else disk), falling back to email-identifier
+/// validation. Unknown names/emails get guidance, not a bare error.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn login_prompt(
     client: &mut Client,
@@ -31,31 +30,94 @@ pub(crate) fn login_prompt(
     persistence: &PersistenceConfig,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
-    if text.trim().is_empty() {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
         outputs.write(ConnectionOutput {
             echo: None,
             ..ConnectionOutput::new(conn, tr!("login.prompt"))
         });
         return;
     }
-    // First, try as a character name. Normalize the raw input to the canonical
-    // name once (this is the login-input boundary), then resolve to (account_id,
-    // name) WITHOUT needing a resident entity: prefer a resident character
-    // (linkdead beats online for the same name), else read from disk.
-    let trimmed = text.trim();
-    let canonical = normalize_character_name(trimmed);
-    let resolved: Option<(GrimId, String)> = (!canonical.is_empty())
-        .then(|| {
-            characters
-                .iter()
-                .filter(|(_, _, _, n)| n.0 == canonical)
-                .max_by_key(|(e, _, _, _)| if linkdead.get(*e).is_ok() { 1 } else { 0 })
-                .map(|(_, c, _, n)| (c.account_id, n.0.clone()))
-                .or_else(|| {
-                    load_character_by_name(persistence, &canonical).map(|c| (c.account_id, c.name))
-                })
-        })
-        .flatten();
+    if handle_login_keyword(client, conn, trimmed, outputs) {
+        return;
+    }
+    if try_login_by_name(
+        client,
+        conn,
+        trimmed,
+        accounts,
+        characters,
+        linkdead,
+        persistence,
+        outputs,
+    ) {
+        return;
+    }
+    resolve_login_email(client, conn, text, accounts, outputs);
+}
+
+/// `help`/`new` keywords at the login prompt. Returns true when handled.
+fn handle_login_keyword(
+    client: &mut Client,
+    conn: Entity,
+    trimmed: &str,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+) -> bool {
+    let keyword = trimmed.to_lowercase();
+    if keyword == "help" {
+        outputs.write(ConnectionOutput {
+            echo: None,
+            ..ConnectionOutput::new(
+                conn,
+                format!(
+                    "{}\n{}",
+                    include_str!("../../../assets/login-help.txt"),
+                    tr!("login.prompt")
+                ),
+            )
+        });
+        return true;
+    }
+    if keyword == "new" {
+        client.state = ClientState::NewAccountPrompt;
+        outputs.write(ConnectionOutput {
+            echo: None,
+            ..ConnectionOutput::new(conn, tr!("login.new_account_prompt"))
+        });
+        return true;
+    }
+    false
+}
+
+/// Try the input as a character name: enter the password flow when it
+/// resolves, report not-found guidance when it is name-shaped but unknown.
+/// Returns true when handled (the email phase is skipped).
+#[allow(clippy::too_many_arguments)]
+fn try_login_by_name(
+    client: &mut Client,
+    conn: Entity,
+    trimmed: &str,
+    accounts: &Query<(Entity, &mut Account)>,
+    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
+    linkdead: &Query<&Linkdead>,
+    persistence: &PersistenceConfig,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+) -> bool {
+    // A valid character name resolves to (account_id, name) WITHOUT needing a
+    // resident entity: prefer a resident character (linkdead beats online),
+    // else read from disk.
+    let mut resolved: Option<(GrimId, String)> = None;
+    if validate_character_name(trimmed).is_ok() {
+        let canonical = normalize_character_name(trimmed);
+        resolved = characters
+            .iter()
+            .filter(|(_, _, _, n)| n.0 == canonical)
+            .max_by_key(|(e, _, _, _)| i32::from(linkdead.get(*e).is_ok()))
+            .map(|(_, c, _, n)| (c.account_id, n.0.clone()))
+            .or_else(|| {
+                load_character_by_name(persistence, &canonical).map(|c| (c.account_id, c.name))
+            });
+    }
     if let Some((acct_id, name)) = resolved {
         // Only enter the password flow if the owning account is known (accounts
         // are all loaded at startup); otherwise fall through to email validation.
@@ -67,12 +129,40 @@ pub(crate) fn login_prompt(
             };
             outputs.write(ConnectionOutput {
                 echo: Some(false),
-                ..ConnectionOutput::new(conn, "Password: ")
+                ..ConnectionOutput::new(conn, tr!("login.password_prompt"))
             });
-            return;
+            return true;
         }
     }
-    // Fall back to email validation
+    // The input was a valid character name but matched nothing: guidance, not
+    // a bare error. A valid email shape that matched nothing is handled by the
+    // email branch below.
+    if validate_character_name(trimmed).is_ok() && validate_identifier(trimmed).is_err() {
+        outputs.write(ConnectionOutput {
+            echo: None,
+            ..ConnectionOutput::new(
+                conn,
+                format!(
+                    "{}{}",
+                    tr!("login.character_not_found"),
+                    tr!("login.prompt")
+                ),
+            )
+        });
+        return true;
+    }
+    false
+}
+
+/// Fall back to email validation: known addresses enter the password flow,
+/// unknown ones are offered account creation, anything else gets guidance.
+fn resolve_login_email(
+    client: &mut Client,
+    conn: Entity,
+    text: &str,
+    accounts: &Query<(Entity, &mut Account)>,
+    outputs: &mut MessageWriter<ConnectionOutput>,
+) {
     match validate_identifier(text) {
         Ok(identifier) => {
             let exists = accounts.iter().any(|(_, a)| a.identifier == identifier);
@@ -84,7 +174,7 @@ pub(crate) fn login_prompt(
                 };
                 outputs.write(ConnectionOutput {
                     echo: Some(false),
-                    ..ConnectionOutput::new(conn, "Password: ")
+                    ..ConnectionOutput::new(conn, tr!("login.password_prompt"))
                 });
             } else {
                 client.state = ClientState::ConfirmCreate {
@@ -94,20 +184,21 @@ pub(crate) fn login_prompt(
                     echo: None,
                     ..ConnectionOutput::new(
                         conn,
-                        "Did not find that email address, do you want to create an account? [Y/n] ",
+                        format!(
+                            "{}{}",
+                            tr!("login.account_not_found"),
+                            tr!("login.confirm_create", addr = identifier.as_str())
+                        ),
                     )
                 });
             }
         }
-        Err(e) => {
+        Err(_) => {
             outputs.write(ConnectionOutput {
                 echo: None,
                 ..ConnectionOutput::new(
                     conn,
-                    format!(
-                        "Invalid identifier: {}\nEnter your character name or email address: ",
-                        e
-                    ),
+                    format!("{}{}", tr!("login.invalid_input"), tr!("login.prompt")),
                 )
             });
         }
@@ -132,7 +223,7 @@ pub(crate) fn confirm_create(
         };
         outputs.write(ConnectionOutput {
             echo: Some(false),
-            ..ConnectionOutput::new(conn, "Choose a password: ")
+            ..ConnectionOutput::new(conn, tr!("login.choose_password"))
         });
     } else {
         client.state = ClientState::LoginPrompt;
@@ -140,193 +231,5 @@ pub(crate) fn confirm_create(
             echo: None,
             ..ConnectionOutput::new(conn, tr!("login.prompt"))
         });
-    }
-}
-
-/// The destructured `PasswordPrompt` state, passed as one argument so the
-/// dispatcher stays under clippy's argument limit at the call site.
-pub(crate) struct PasswordPromptArgs {
-    pub(crate) identifier: String,
-    pub(crate) is_new: bool,
-    pub(crate) character: Option<String>,
-}
-
-/// PasswordPrompt: empty reverts to the login prompt; otherwise create a new
-/// account (`is_new`) or authenticate an existing one.
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn password_prompt(
-    args: PasswordPromptArgs,
-    client_entity: Entity,
-    client: &mut Client,
-    conn: Entity,
-    text: &str,
-    accounts: &Query<(Entity, &mut Account)>,
-    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
-    players: &Query<&Player>,
-    linkdead: &Query<&Linkdead>,
-    histories: &mut Query<&mut OutputHistory>,
-    rooms: &RoomResolver,
-    res: &SessionRes,
-    commands: &mut Commands,
-    outputs: &mut MessageWriter<ConnectionOutput>,
-    announce_linkdead: &mut MessageWriter<LinkdeadAnnounce>,
-    disconnect: &mut MessageWriter<DisconnectRequest>,
-    alerts: &mut MessageWriter<WiznetAlert>,
-) {
-    let PasswordPromptArgs {
-        identifier,
-        is_new,
-        character,
-    } = args;
-    let auto_select = character;
-    if text.trim().is_empty() {
-        client.state = ClientState::LoginPrompt;
-        outputs.write(ConnectionOutput {
-            echo: Some(true),
-            ..ConnectionOutput::new(conn, tr!("login.wrong_password"))
-        });
-        return;
-    }
-    if is_new {
-        account::create_account(
-            client,
-            client_entity,
-            conn,
-            text,
-            &identifier,
-            &res.persistence,
-            characters,
-            accounts,
-            players,
-            linkdead,
-            commands,
-            outputs,
-        );
-    } else {
-        authenticate(
-            client,
-            client_entity,
-            conn,
-            text,
-            &identifier,
-            auto_select,
-            accounts,
-            characters,
-            players,
-            linkdead,
-            histories,
-            rooms,
-            res,
-            commands,
-            outputs,
-            announce_linkdead,
-            disconnect,
-            alerts,
-        );
-    }
-}
-/// Verify the password for an existing account, then enter the world directly
-/// (login-by-name auto-select) or show the character menu.
-#[allow(clippy::too_many_arguments)]
-fn authenticate(
-    client: &mut Client,
-    client_entity: Entity,
-    conn: Entity,
-    text: &str,
-    identifier: &str,
-    auto_select: Option<String>,
-    accounts: &Query<(Entity, &mut Account)>,
-    characters: &Query<(Entity, &Character, &Actor, &GrimName)>,
-    players: &Query<&Player>,
-    linkdead: &Query<&Linkdead>,
-    histories: &mut Query<&mut OutputHistory>,
-    rooms: &RoomResolver,
-    res: &SessionRes,
-    commands: &mut Commands,
-    outputs: &mut MessageWriter<ConnectionOutput>,
-    announce_linkdead: &mut MessageWriter<LinkdeadAnnounce>,
-    disconnect: &mut MessageWriter<DisconnectRequest>,
-    alerts: &mut MessageWriter<WiznetAlert>,
-) {
-    let account_found = accounts
-        .iter()
-        .find(|(_, a)| a.identifier == *identifier)
-        .map(|(e, a)| (e, a.id));
-    match account_found {
-        Some((account_entity, account_id)) => {
-            let ok = accounts
-                .get(account_entity)
-                .map(|(_, a)| verify_password(text.trim(), &a.password_hash))
-                .unwrap_or(false);
-            if ok {
-                // Banned accounts are refused before any game state loads.
-                if world_entry::refuse_banned_account(
-                    accounts, identifier, &res.bans, conn, outputs, disconnect, alerts,
-                ) {
-                    return;
-                }
-                client.account = Some(account_entity);
-                if let Some(name) = auto_select {
-                    // A legacy character (no race/class yet) is routed through the
-                    // creation picker once before entering — same as the
-                    // menu-selection path (character_select). Otherwise: straight
-                    // into the world (reconnect / takeover / spawn).
-                    let legacy = load_character_by_name(&res.persistence, &name)
-                        .map(|c| {
-                            c.account_id == account_id && c.race.is_empty() && c.class.is_empty()
-                        })
-                        .unwrap_or(false);
-                    if legacy {
-                        creation::start_gender_pick(client, conn, name, outputs);
-                    } else {
-                        world_entry::enter_world_by_name(
-                            conn,
-                            client,
-                            account_id,
-                            &name,
-                            commands,
-                            characters,
-                            players,
-                            linkdead,
-                            histories,
-                            rooms,
-                            res.starting.0,
-                            &res.persistence,
-                            &res.bans,
-                            outputs,
-                            announce_linkdead,
-                            disconnect,
-                            alerts,
-                        );
-                    }
-                } else {
-                    client.state = ClientState::CharacterSelect;
-                    character::show_character_menu(
-                        client_entity,
-                        client,
-                        characters,
-                        accounts,
-                        outputs,
-                        linkdead,
-                        players,
-                        &res.persistence,
-                    );
-                }
-            } else {
-                // The transport auto-restored echo when the wrong password was
-                // submitted, so re-mask before re-prompting.
-                outputs.write(ConnectionOutput {
-                    echo: Some(false),
-                    ..ConnectionOutput::new(conn, "Invalid password.\nPassword: ")
-                });
-            }
-        }
-        None => {
-            client.state = ClientState::LoginPrompt;
-            outputs.write(ConnectionOutput {
-                echo: Some(true),
-                ..ConnectionOutput::new(conn, "Account not found.\nEnter your email address: ")
-            });
-        }
     }
 }

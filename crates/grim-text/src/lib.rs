@@ -40,18 +40,19 @@ mod tests {
     }
 
     #[test]
-    fn plain_key_has_no_markup() {
+    fn login_prompt_names_both_identifier_kinds() {
         assert_eq!(
             tr("login.prompt", &[]),
-            "Enter your character name or email address: "
+            "Character name or account email address (\"help\" for more info): "
         );
     }
 
     #[test]
-    fn wrong_password_keeps_newline() {
+    fn login_confirm_create_names_the_address() {
+        let out = tr("login.confirm_create", &[("addr", "new@example.com")]);
         assert_eq!(
-            tr("login.wrong_password", &[]),
-            "Invalid password.\nEnter your character name or email address: "
+            out,
+            "Do you want to create an account using new@@example.com? [Y/n] "
         );
     }
 

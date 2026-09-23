@@ -40,6 +40,7 @@ fn client_state_label(state: &ClientState) -> String {
         ClientState::LoginPrompt => tr!("sockets.state.login"),
         ClientState::PasswordPrompt { .. } => tr!("sockets.state.password"),
         ClientState::ConfirmCreate { .. } => tr!("sockets.state.confirm"),
+        ClientState::NewAccountPrompt => tr!("sockets.state.newaccount"),
         ClientState::CharacterSelect => tr!("sockets.state.select"),
         ClientState::CreateCharacter => tr!("sockets.state.newchar"),
         ClientState::SelectGender { .. } => tr!("sockets.state.gender"),
@@ -112,6 +113,7 @@ mod tests {
                 },
                 "Confirm",
             ),
+            (ClientState::NewAccountPrompt, "NewAccount"),
             (ClientState::CharacterSelect, "Select"),
             (ClientState::CreateCharacter, "NewChar"),
             (
