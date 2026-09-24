@@ -704,6 +704,39 @@ fn who_list_is_ordered_and_formatted_mud_style() {
 }
 
 #[test]
+fn who_excludes_linkdead_but_look_shows_them() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+
+    // Both online: the list counts two.
+    mud.send(alice, "who")
+        .assert_contains("Players online (2):");
+
+    // Bob's socket drops without `quit`: he goes linkdead (body stays in
+    // the room, no session drives him).
+    mud.disconnect(bob);
+
+    // `who` is the live-session list: Bob vanishes entirely, not marked. The
+    // same tick also delivers his room linkdead announce, so scope the
+    // assertions to the list itself.
+    let out = mud.send(alice, "who");
+    let text = out.text();
+    let list = &text[text.find("Players online").expect("who list")..];
+    assert!(list.contains("Players online (1):"), "count wrong:\n{text}");
+    assert!(list.contains("Alice"), "missing Alice:\n{text}");
+    assert!(!list.contains("Bob"), "linkdead Bob listed:\n{text}");
+    assert!(
+        !list.contains("(Linkdead)"),
+        "linkdead marker in who:\n{text}"
+    );
+
+    // The room still shows his body with the linkdead marker.
+    mud.send(alice, "look")
+        .assert_contains("Bob (Linkdead) is standing here.");
+}
+
+#[test]
 fn wizlist_shows_online_and_offline_admins_only() {
     let mut mud = Mud::new();
     let alice = create_char(&mut mud, "alice@example.com", "Alice");
