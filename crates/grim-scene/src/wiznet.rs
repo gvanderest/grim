@@ -188,7 +188,8 @@ fn broadcast_wiznet(
         ));
     }
     for (category, text) in pending {
-        let line = format!("[wiznet:{category}] {text}\n");
+        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
+        let line = format!("{ts} [wiznet:{category}] {text}\n");
         for conn in wiznet_audience(&online, &registry, category) {
             // Unsolicited like any other game event: stay off the prompt line.
             outputs.write(ConnectionOutput {
@@ -486,6 +487,31 @@ mod tests {
         assert!(
             a_out.contains("[wiznet:logins] Hero entered the world from 127.0.0.1:4567"),
             "got: {a_out:?}"
+        );
+    }
+
+    #[test]
+    fn broadcast_lines_carry_utc_timestamp_prefix() {
+        let mut app = wiznet_app();
+        let conn = spawn_conn(&mut app, 1, 4001);
+        let _admin = spawn_char(&mut app, "Root", true, conn);
+        app.world_mut().write_message(WiznetAlert {
+            category: WiznetCategory::Security,
+            text: "conn 7 tripped".into(),
+        });
+        app.update();
+        let out = outputs_for(&app, conn).join("");
+        let line = out.lines().next().expect("one wiznet line");
+        // `YYYY-MM-DDTHH:mm:ssZ [wiznet:security] conn 7 tripped`
+        assert_eq!(&line[4..5], "-", "got: {line:?}");
+        assert_eq!(&line[7..8], "-", "got: {line:?}");
+        assert_eq!(&line[10..11], "T", "got: {line:?}");
+        assert_eq!(&line[13..14], ":", "got: {line:?}");
+        assert_eq!(&line[16..17], ":", "got: {line:?}");
+        assert_eq!(&line[19..20], "Z", "got: {line:?}");
+        assert!(
+            line[20..].starts_with(" [wiznet:security] conn 7 tripped"),
+            "tag and body intact after the timestamp; got: {line:?}"
         );
     }
 }
