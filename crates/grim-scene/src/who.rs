@@ -204,8 +204,9 @@ pub(crate) fn afk_chars(snapshot: &[ClientSnapshot]) -> HashSet<Entity> {
 /// The MUD-style `who` list. Each online character renders as
 /// `LLL G RRRRR CCC GGGGG Name Title` (admins show `IMM` for level; restrings
 /// override columns — see [`WhoRow`]). Sort: admins first, alphabetical; then
-/// everyone else by level DESC, connect-time ASC, name ASC. Linkdead characters
-/// still appear, marked. AFK characters carry an `(AFK)` marker.
+/// everyone else by level DESC, connect-time ASC, name ASC. Linkdead
+/// characters (no live session) are excluded — they stay visible in rooms via
+/// `look`, not here. AFK characters carry an `(AFK)` marker.
 pub(crate) fn format_who(
     player_chars: &PlayerChars,
     linkdead: &Query<&Linkdead>,
@@ -213,6 +214,10 @@ pub(crate) fn format_who(
     res: &SessionRes,
 ) -> String {
     let mut data = collect_who_data(player_chars, linkdead, afk_chars, res);
+    // Linkdead bodies stay seeable in rooms (`look`); the online list is for
+    // live sessions only. `wizlist` keeps its own marked rows via the shared
+    // collector — this filter is `who`-only.
+    data.retain(|d| !d.row.linkdead);
     data.sort_by(|a, b| who_order(&a.key, &b.key));
     let rows: Vec<WhoRow> = data.into_iter().map(|d| d.row).collect();
     format_who_list(&rows)

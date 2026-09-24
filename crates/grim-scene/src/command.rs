@@ -101,7 +101,7 @@ fn answer_commands(
     });
 }
 
-/// Answer `who` from the player list plus the snapshot-derived AFK set.
+/// Answer `who` from the online (non-linkdead) player list plus the snapshot-derived AFK set.
 /// Factored out of [`handle_ingame`] to hold that dispatcher under the line
 /// budget (same reason as [`answer_equipment`]).
 fn answer_who(

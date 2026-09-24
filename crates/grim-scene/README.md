@@ -40,7 +40,7 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 
 | Command | Handler | Summary |
 | `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last, `edit` opens the line editor). |
-| `who` | `handle_ingame` → `format_who` (`src/who.rs`) | List online characters (admins first, then level/connect/name); AFK sessions carry an `(AFK)` marker. |
+| `who` | `handle_ingame` → `format_who` (`src/who.rs`) | List online characters (admins first, then level/connect/name); linkdead characters are excluded (no live session — still visible in rooms via `look`); AFK sessions carry an `(AFK)` marker. |
 | `afk` | `handle_ingame` → `flag_afk` (`src/command.rs`) | Flag yourself AFK (auto-set after `IdleConfig::afk_after_secs` idle; any input clears; prompt becomes `<AFK> `). |
 | `wizlist` | `handle_ingame` → `format_wizlist` (`src/wizlist.rs`) | List every admin: online rows plus `(offline)` rows from the `WizlistAdmins` startup snapshot (`load_wizlist_admins`). |
 | `desc …` | parser → engine queue (`src/parser.rs`, `grim-actor/src/commands/desc.rs`) | View/edit your description paragraphs (`clear`, `+ <line>`, `-` drops last). |
