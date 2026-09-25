@@ -23,23 +23,56 @@ use crate::output::{find_conn, Occupants};
 pub(crate) type RoomLinks<'w, 's> = Query<'w, 's, (Entity, &'static Exits, Option<&'static Doors>)>;
 
 /// Split a room's exits into the open directions (plain exits plus open
-/// doors) and the closed-door directions. Both lists sort in `Cardinal`
-/// display order (north, east, south, west, up, down) via the derived `Ord`.
-fn partition_exits(exits: &Exits, doors: Option<&Doors>) -> (Vec<String>, Vec<String>) {
+/// doors), the closed-door directions, and the hidden directions. All three
+/// lists sort in `Cardinal` display order (north, east, south, west, up,
+/// down) via the derived `Ord`. Hidden exits land in `secret` regardless of
+/// open state — even open, a secret lists only for admins (discovery is by
+/// walking through it, not by listing). Pass `admin: true` to populate the
+/// secret group; players get an empty third list (rendered as `none`).
+/// Each direction renders colour-wrapped ([`colored_direction`]) with the
+/// `{x` reset *inside* the item, so a `{x`-unaware join keeps every run
+/// self-terminated.
+fn partition_exits(
+    exits: &Exits,
+    doors: Option<&Doors>,
+    admin: bool,
+) -> (Vec<String>, Vec<String>, Vec<String>) {
     let mut open = Vec::new();
     let mut closed = Vec::new();
+    let mut secret = Vec::new();
     for dir in exits.exits.keys() {
-        let is_closed = doors
-            .and_then(|d| d.doors.get(dir))
-            .is_some_and(|door| !door.open);
+        let door = doors.and_then(|d| d.doors.get(dir));
+        if door.is_some_and(|d| d.hidden) {
+            if admin {
+                secret.push(*dir);
+            }
+            continue;
+        }
+        let is_closed = door.is_some_and(|d| !d.open);
         (if is_closed { &mut closed } else { &mut open }).push(*dir);
     }
     open.sort();
     closed.sort();
-    (
-        open.iter().map(|d| d.to_string()).collect(),
-        closed.iter().map(|d| d.to_string()).collect(),
-    )
+    secret.sort();
+    let names =
+        |dirs: Vec<grim_core::cardinal::Cardinal>| dirs.iter().map(colored_direction).collect();
+    (names(open), names(closed), names(secret))
+}
+
+/// One listing direction with its compass colour: north `{R`, south `{r`,
+/// east `{M`, west `{m`, up `{Y`, down `{y` (the MUD's compass palette),
+/// each self-terminated with `{x` so joined runs never bleed into the
+/// label punctuation or each other.
+fn colored_direction(dir: &grim_core::cardinal::Cardinal) -> String {
+    let code = match dir {
+        grim_core::cardinal::Cardinal::North => "{R",
+        grim_core::cardinal::Cardinal::South => "{r",
+        grim_core::cardinal::Cardinal::East => "{M",
+        grim_core::cardinal::Cardinal::West => "{m",
+        grim_core::cardinal::Cardinal::Up => "{Y",
+        grim_core::cardinal::Cardinal::Down => "{y",
+    };
+    format!("{code}{dir}{{x}}")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -57,10 +90,16 @@ pub(crate) fn emit_look_room(
     let Ok((_, room, name)) = rooms.get(ev.room) else {
         return;
     };
-    let (exits, doors) = room_exits
+    // Admins see the room's ids in the title plus the hidden exits under
+    // `Secret:`; players see neither.
+    let is_admin = characters
+        .get(ev.target)
+        .map(|c| c.is_admin())
+        .unwrap_or(false);
+    let (exits, doors, secret) = room_exits
         .get(ev.room)
         .ok()
-        .map(|(_, e, d)| partition_exits(e, d))
+        .map(|(_, e, d)| partition_exits(e, d, is_admin))
         .unwrap_or_default();
     let presence = collect_presence(
         ev.room,
@@ -70,11 +109,6 @@ pub(crate) fn emit_look_room(
         clients,
         linkdead_chars,
     );
-    // Admins see the room's ids in the title for building/debugging.
-    let is_admin = characters
-        .get(ev.target)
-        .map(|c| c.is_admin())
-        .unwrap_or(false);
     let grim = room.id.to_string();
     let title = formatter::room_title(
         &name.0,
@@ -85,7 +119,14 @@ pub(crate) fn emit_look_room(
         }),
     );
     let conn = find_conn(ev.target, room_occupants);
-    let body = formatter::format_room(&title, &room.description, &exits, &doors, &presence);
+    let body = formatter::format_room(
+        &title,
+        &room.description,
+        &exits,
+        &doors,
+        &secret,
+        &presence,
+    );
     // Minimap: the same renderer as `map` on the small canvas, stapled left
     // when the looker's resolved `minimap` setting is on. Actors without a
     // `Character` and unseeded registries (unit tests) keep the map, matching
@@ -101,8 +142,15 @@ pub(crate) fn emit_look_room(
         .unwrap_or(true);
     let text = if minimap_on {
         let mut snapshot = HashMap::new();
-        for (room_entity, links, _) in room_exits.iter() {
-            snapshot.insert(room_entity, links.exits.clone());
+        for (room_entity, links, doors) in room_exits.iter() {
+            // Secrets never draw: strip hidden exits from the map snapshot so
+            // neither the minimap nor `map` leaks them (admin view included —
+            // admins get the `Secret:` suffix in text instead).
+            let mut visible = links.exits.clone();
+            if let Some(d) = doors {
+                visible.retain(|dir, _| !d.doors.get(dir).is_some_and(|door| door.hidden));
+            }
+            snapshot.insert(room_entity, visible);
         }
         let map_rows = render_map(ev.room, &snapshot, &MapConfig::MINIMAP);
         formatter::staple_minimap(&map_rows, &body)

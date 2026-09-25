@@ -53,21 +53,28 @@ pub(super) fn place_actor(
     }
 }
 /// Whether a closed door blocks `actor`'s walk from `from` toward `direction`:
-/// replies "%{Name} is closed." (name sentence-capitalized) and returns true,
-/// else false. Runs inside the queued placement closure (world access only)
-/// so the check is atomic with placement.
+/// replies and returns true, else false. A closed *hidden* door refuses as
+/// "You can't go that way." (byte-identical to no exit — no leak); a closed
+/// visible door replies "%{Name} is closed." (name sentence-capitalized).
+/// Runs inside the queued placement closure (world access only) so the check
+/// is atomic with placement.
 fn door_blocks(world: &mut World, actor: Entity, from: Entity, direction: Cardinal) -> bool {
-    let closed_name: Option<String> = world
+    let door = world
         .get::<Doors>(from)
         .and_then(|d| d.doors.get(&direction))
         .filter(|door| !door.open)
-        .map(|door| grim_color::capitalize_first(&door.name));
-    if let Some(name) = closed_name {
+        .map(|door| (door.hidden, grim_color::capitalize_first(&door.name)));
+    if let Some((hidden, name)) = door {
+        let text = if hidden {
+            "You can't go that way.\n".to_string()
+        } else {
+            grim_text::tr("door.error.closed", &[("name", name.as_str())])
+        };
         world
             .resource_mut::<Messages<InfoMessage>>()
             .write(InfoMessage {
                 target: actor,
-                text: grim_text::tr("door.error.closed", &[("name", name.as_str())]),
+                text,
             });
         return true;
     }
@@ -464,6 +471,10 @@ mod tests {
     }
 
     fn hang_door(app: &mut App, room: Entity, dir: Cardinal, open: bool) {
+        hang_hidden_door(app, room, dir, open, false);
+    }
+
+    fn hang_hidden_door(app: &mut App, room: Entity, dir: Cardinal, open: bool, hidden: bool) {
         if app.world().get::<Doors>(room).is_none() {
             app.world_mut().entity_mut(room).insert(Doors::default());
         }
@@ -477,6 +488,7 @@ mod tests {
                     name: "the privy door".into(),
                     keywords: vec!["privy door".into()],
                     open,
+                    hidden,
                 },
             );
     }
@@ -506,6 +518,53 @@ mod tests {
             .any(|t| t.contains("The privy door is closed")));
         assert_eq!(look_room_count(&app), before_looks);
         assert_eq!(move_event_count(&app), 0);
+    }
+
+    #[test]
+    fn hidden_closed_door_refuses_as_no_exit() {
+        // A secret door refuses exactly like a non-exit: no door name leaks.
+        let mut app = test_app();
+        let a = spawn_room(&mut app, "haven", "tavern", Exits::default());
+        let b = spawn_room(&mut app, "haven", "cellar", Exits::default());
+        app.world_mut()
+            .get_mut::<Exits>(a)
+            .unwrap()
+            .exits
+            .insert(Cardinal::Down, b);
+        hang_hidden_door(&mut app, a, Cardinal::Down, false, true);
+        let actor = spawn_actor_in(&mut app, a, false);
+        send_move(&mut app, actor, Cardinal::Down);
+        assert_eq!(room_of(&app, actor), a);
+        assert!(
+            info_texts(&app)
+                .iter()
+                .any(|t| t == "You can't go that way.\n"),
+            "hidden refusal must equal the no-exit reply; got: {:?}",
+            info_texts(&app)
+        );
+    }
+
+    #[test]
+    fn hidden_open_door_allows_move() {
+        // Guessed-and-opened secrets walk normally (discovery by movement).
+        let mut app = test_app();
+        let a = spawn_room(&mut app, "haven", "tavern", Exits::default());
+        let b = spawn_room(&mut app, "haven", "cellar", Exits::default());
+        app.world_mut()
+            .get_mut::<Exits>(a)
+            .unwrap()
+            .exits
+            .insert(Cardinal::Down, b);
+        app.world_mut()
+            .get_mut::<Exits>(b)
+            .unwrap()
+            .exits
+            .insert(Cardinal::Up, a);
+        hang_hidden_door(&mut app, a, Cardinal::Down, true, true);
+        hang_hidden_door(&mut app, b, Cardinal::Up, true, false);
+        let actor = spawn_actor_in(&mut app, a, false);
+        send_move(&mut app, actor, Cardinal::Down);
+        assert_eq!(room_of(&app, actor), b);
     }
 
     #[test]

@@ -50,13 +50,10 @@ fn privy_door_blocks_until_opened() {
     let alice = create_char(&mut mud, "alice@example.com", "Alice");
     let bob = create_char(&mut mud, "bob@example.com", "Bob");
 
-    // Closed: the walk is refused and Alice stays in the tavern. The closed
-    // door lists under Doors, not Exits; the open north door stays in Exits.
+    // Closed: the walk is refused and Alice stays in the tavern.
     mud.send(alice, "east").assert_contains("is closed");
     mud.send(alice, "look")
-        .assert_contains("Exits: north, south")
-        .assert_contains("Doors: east")
-        .assert_excludes("Exits: north, south, east");
+        .assert_contains("Exits: {Rnorth{x}, {rsouth{x}, {Yup{x}  Doors: {Meast{x}  Secret: none");
 
     // Bob waits in the tavern: he witnesses Alice's open.
     let opened = mud.send(alice, "open east");
@@ -65,14 +62,46 @@ fn privy_door_blocks_until_opened() {
         .assert_contains("Alice opens the privy door to the east.");
 
     // An opened door rejoins the Exits line and leaves the Doors line.
-    mud.send(alice, "look")
-        .assert_contains("Exits: north, east, south")
-        .assert_contains("Doors: none");
+    mud.send(alice, "look").assert_contains(
+        "Exits: {Rnorth{x}, {Meast{x}, {rsouth{x}, {Yup{x}  Doors: none  Secret: none",
+    );
 
     // Now the walk lands in the privy; closing from inside announces west.
     mud.send(alice, "east").assert_contains("The Privy");
     mud.send(alice, "close west")
         .assert_contains("You close the privy door to the west.");
+}
+
+#[test]
+fn secret_cellar_door_hides_until_guessed() {
+    // The tavern's down exit is a closed secret: walking it refuses like a
+    // non-exit (no leak), `look` hides it, and `open down` still works —
+    // discovery is by guessing, then walking through the opened door.
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+
+    // No leak: closed-secret refusal is byte-identical to a non-exit.
+    mud.send(alice, "down")
+        .assert_contains("You can't go that way.");
+    mud.send(alice, "look")
+        .assert_contains("Exits: {Rnorth{x}, {rsouth{x}, {Yup{x}  Doors: {Meast{x}  Secret: none")
+        .assert_excludes("down");
+
+    // Guessing `open down` operates the hidden door normally…
+    mud.send(alice, "open down")
+        .assert_contains("You open the cellar door to the down.");
+    // …but even open, the secret stays out of the player's listing.
+    mud.send(alice, "look")
+        .assert_contains("Exits: {Rnorth{x}, {rsouth{x}, {Yup{x}  Doors: {Meast{x}  Secret: none");
+
+    // The walk lands in the cellar; the guessed-open mirrored both sides, so
+    // the visible up door lists under Exits.
+    mud.send(alice, "down").assert_contains("Dusty Cellar");
+    mud.send(alice, "look")
+        .assert_contains("Exits: {Yup{x}  Doors: none  Secret: none");
+    // And the loft above is a plain exit walk away.
+    mud.send(alice, "up").assert_contains("The Rusted Anvil");
+    mud.send(alice, "up").assert_contains("Tavern Loft");
 }
 
 #[test]
@@ -93,8 +122,7 @@ fn account_creation_places_character_in_the_world() {
     assert!(mud.character_names().contains(&"Alice".to_string()));
     mud.send(alice, "look")
         .assert_contains("The Rusted Anvil")
-        .assert_contains("Exits: north, south")
-        .assert_contains("Doors: east");
+        .assert_contains("Exits: {Rnorth{x}, {rsouth{x}, {Yup{x}  Doors: {Meast{x}  Secret: none");
 }
 
 #[test]
@@ -188,7 +216,7 @@ fn movement_walks_between_seeded_rooms() {
     let alice = create_char(&mut mud, "alice@example.com", "Alice");
     mud.send(alice, "north")
         .assert_contains("Town Square")
-        .assert_contains("Exits: north, east, south, west");
+        .assert_contains("Exits: {Rnorth{x}, {Meast{x}, {rsouth{x}, {mwest{x}");
     mud.send(alice, "south").assert_contains("The Rusted Anvil");
 }
 
@@ -854,7 +882,12 @@ fn map_centers_self_repeats_stably_and_recenters_on_move() {
         rows[10],
         format!("{:40}{ME}{HL}{HL}{RM}           {RM}", "")
     );
-    assert_eq!(rows[9], format!("{:40}{VL}              {VL}", ""));
+    // The loft's `,` up-marker draws at the row's left edge (the secret
+    // down exit stays hidden, so no `'` marker appears for it).
+    assert_eq!(
+        rows[9],
+        "                                       {Y,{x{8|{x              {8|{x"
+    );
     assert_eq!(
         rows[8],
         format!(
@@ -875,7 +908,12 @@ fn map_centers_self_repeats_stably_and_recenters_on_move() {
             ""
         )
     );
-    assert_eq!(rows[11], format!("{:40}{VL}              {VL}", ""));
+    // The loft marker rides along: recentered on the square, the tavern's
+    // up-link still draws its `,` marker on this row.
+    assert_eq!(
+        rows[11],
+        "                                       {Y,{x{8|{x              {8|{x"
+    );
     assert_eq!(
         rows[12],
         format!("{:40}{RM}{HL}{HL}{RM}           {RM}", "")
@@ -892,7 +930,7 @@ fn look_staples_minimap_left_of_room_text() {
     // `@` centered on the looker's row, 9-wide gutter + two spaces throughout.
     let out = mud.send(alice, "look");
     let lines: Vec<&str> = out.text().lines().collect();
-    assert_eq!(lines[0], format!("    {VL}      The Rusted Anvil"));
+    assert_eq!(lines[0], format!("    {VL}      {{BThe Rusted Anvil{{x}}"));
     assert!(
         lines[1].starts_with(&format!(" {RM}{HL}{HL}{RM}{HL}{HL}{RM}{HL}  ")),
         "square row:\n{}",
@@ -906,7 +944,7 @@ fn look_staples_minimap_left_of_room_text() {
     // Past the 7-row canvas the gutter runs blank (11 spaces).
     let exits = lines
         .iter()
-        .find(|l| l.contains("Exits: north"))
+        .find(|l| l.contains("Exits: {Rnorth"))
         .expect("exits line");
     assert!(exits.starts_with("           "), "blank gutter:\n{exits}");
 }
@@ -935,7 +973,7 @@ fn config_minimap_toggles_look_map_persists_and_rejects() {
     // Look loses the map: title unguttered, no self row anywhere.
     let out = mud.send(alice, "look");
     let lines: Vec<&str> = out.text().lines().collect();
-    assert_eq!(lines[0], "The Rusted Anvil");
+    assert_eq!(lines[0], "{BThe Rusted Anvil{x}");
     assert!(
         !lines.iter().any(|l| l.contains(ME)),
         "no minimap rows:\n{}",
@@ -958,7 +996,7 @@ fn config_minimap_toggles_look_map_persists_and_rejects() {
     let _ = mud.send(again, "1"); // select → MOTD
     mud.send(again, "").assert_contains("Exits:"); // enter the world
     let out = mud.send(again, "look");
-    assert_eq!(out.text().lines().next(), Some("The Rusted Anvil"));
+    assert_eq!(out.text().lines().next(), Some("{BThe Rusted Anvil{x}"));
 
     // And back on again through the explicit set.
     mud.send(again, "config minimap on")

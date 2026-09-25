@@ -383,7 +383,7 @@ mod tests {
         let bp: AreaBlueprint = serde_json::from_str(&raw).unwrap();
         assert_eq!(bp.slug, "haven");
         assert!(bp.canonical);
-        assert_eq!(bp.rooms.len(), 12);
+        assert_eq!(bp.rooms.len(), 14);
 
         let tavern = &bp.rooms[0];
         let square = &bp.rooms[1];
@@ -412,6 +412,32 @@ mod tests {
         let square_back = square.doors.get("south").expect("square south door");
         assert_eq!(square_back.name, "the tavern door");
         assert!(square_back.open);
+        // The loft hangs above the tavern on a plain exit; the cellar hangs
+        // below behind a one-way secret (hidden from the tavern side only,
+        // closed on both sides).
+        let loft = bp
+            .rooms
+            .iter()
+            .find(|r| r.slug == "tavern-loft")
+            .expect("loft room");
+        assert_eq!(tavern.exits.get("up"), Some(&loft.id));
+        assert_eq!(loft.exits.get("down"), Some(&tavern.id));
+        assert!(!tavern.doors.contains_key("up"));
+        let cellar = bp
+            .rooms
+            .iter()
+            .find(|r| r.slug == "cellar")
+            .expect("cellar room");
+        assert_eq!(tavern.exits.get("down"), Some(&cellar.id));
+        assert_eq!(cellar.exits.get("up"), Some(&tavern.id));
+        let secret = tavern.doors.get("down").expect("tavern cellar door");
+        assert_eq!(secret.name, "the cellar door");
+        assert!(!secret.open);
+        assert!(secret.hidden);
+        let back = cellar.doors.get("up").expect("cellar stair door");
+        assert_eq!(back.name, "the cellar door");
+        assert!(!back.open);
+        assert!(!back.hidden);
     }
 
     #[test]
@@ -421,7 +447,7 @@ mod tests {
         app.add_systems(Startup, seed_world);
         app.update();
 
-        // Two areas: Haven (12 rooms) plus Whisperwood (4 rooms).
+        // Two areas: Haven (14 rooms) plus Whisperwood (4 rooms).
         let areas = app.world_mut().query::<&Area>().iter(app.world()).count();
         assert_eq!(areas, 2);
         let rooms: Vec<String> = app
@@ -430,7 +456,7 @@ mod tests {
             .iter(app.world())
             .map(|r| r.friendly_id.clone())
             .collect();
-        assert_eq!(rooms.len(), 16);
+        assert_eq!(rooms.len(), 18);
         assert!(rooms.contains(&"tavern".to_string()));
         assert!(rooms.contains(&"bear-cavern".to_string()));
 

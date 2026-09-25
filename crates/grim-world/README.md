@@ -19,7 +19,7 @@ their only users (the `quit` handler and the `goto`/`title` escapes) moved into
 | `Area` | `src/world/topology.rs` | A named region grouping rooms (yell scope). |
 | `Room` | `src/world/topology.rs` | A single location; carries its owning `area`. |
 | `Exits` | `src/world/topology.rs` | Directional links from a room to adjacent rooms. |
-| `Door` / `Doors` | `src/world/topology.rs` | A door on one exit side (name/keywords/open) + the per-room direction map; closed blocks `move`. |
+| `Door` / `Doors` | `src/world/topology.rs` | A door on one exit side (name/keywords/open/hidden) + the per-room direction map; closed blocks `move`. `hidden` is per-side (never flipped by `open`/`close`), so a one-way secret hides one side only. |
 
 (The `Npc` marker moved to `grim_actor::Creature` — creatures are beings, so the
 marker belongs in the actor layer, not the being-free world.)
