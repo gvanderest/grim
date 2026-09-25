@@ -9,9 +9,9 @@
       "id": "C7Ee6NQVAfBr",
       "slug": "tavern",
       "name": "The Rusted Anvil",
-      "description": "Smoke and the clang of hammer on steel fill the air.\nSawdust covers the floor of this cozy tavern. A staircase leads up\nto the second floor, a door leads north to the town square, a\nclosed privy door stands to the east, and a narrow trail slips\nsouth toward the valley wall.",
+      "description": "Smoke and the clang of hammer on steel fill the air.\nSawdust covers the floor of this cozy tavern. A staircase leads up\nto the second floor, a door leads north to the town square, a\nprivy door stands to the east, and a narrow trail slips\nsouth toward the valley wall.",
       "exits": { "north": "y0vjzSNtWQo3", "south": "ADG0C9DN6xaA", "east": "E8nqnXhQcQX4" },
-      "doors": { "east": { "name": "the privy door", "keywords": ["privy door"] } },
+      "doors": { "north": { "name": "the tavern door", "keywords": ["tavern door"], "open": true }, "east": { "name": "the privy door", "keywords": ["privy door"] } },
       "npcs": [
         {
           "name": "Grimmok Ironhand",
@@ -38,7 +38,8 @@
       "slug": "square",
       "name": "Town Square",
       "description": "The cobblestone square bustles with activity.\nA fountain marks the center. The tavern is to the south, the\nsmithy is to the east, market stalls crowd to the north, and a\nsteep trail climbs west up the valley wall.",
-      "exits": { "south": "C7Ee6NQVAfBr", "east": "dSWS6Y77CtwJ", "north": "D0kEmYSLOzNB", "west": "rHa0Ar55AEtS" }
+      "exits": { "south": "C7Ee6NQVAfBr", "east": "dSWS6Y77CtwJ", "north": "D0kEmYSLOzNB", "west": "rHa0Ar55AEtS" },
+      "doors": { "south": { "name": "the tavern door", "keywords": ["tavern door"], "open": true } }
     },
     {
       "id": "dSWS6Y77CtwJ",

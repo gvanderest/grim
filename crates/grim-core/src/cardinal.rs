@@ -3,7 +3,11 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 /// The six cardinal directions used for room exits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+///
+/// Variant order is the display order (north, east, south, west, up, down):
+/// the derived `Ord` sorts directions for listings, so keep the variants in
+/// this order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Cardinal {
     North,
     East,
@@ -198,5 +202,30 @@ mod tests {
     #[test]
     fn display_down() {
         assert_eq!(format!("{}", Cardinal::Down), "down");
+    }
+    #[test]
+    fn sort_follows_display_order() {
+        // Variant order is NESWUD; `sort` on `Cardinal` must match it, not
+        // alphabetical (down, east, north, …).
+        let mut dirs = vec![
+            Cardinal::Down,
+            Cardinal::West,
+            Cardinal::South,
+            Cardinal::East,
+            Cardinal::North,
+            Cardinal::Up,
+        ];
+        dirs.sort();
+        assert_eq!(
+            dirs,
+            vec![
+                Cardinal::North,
+                Cardinal::East,
+                Cardinal::South,
+                Cardinal::West,
+                Cardinal::Up,
+                Cardinal::Down,
+            ]
+        );
     }
 }

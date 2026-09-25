@@ -13,11 +13,11 @@ use grim_core::events::{
 use grim_networking::ConnectionOutput;
 use grim_object::Object;
 use grim_text::tr;
-use grim_world::{Exits, Room};
+use grim_world::Room;
 
 use crate::channel_output::emit_channel;
 use crate::formatter;
-use crate::look_output::{emit_look_entity, emit_look_room};
+use crate::look_output::{emit_look_entity, emit_look_room, RoomLinks};
 use crate::params::OutputReads;
 
 /// Room-occupant query shape, shared by every broadcast helper below.
@@ -47,7 +47,7 @@ pub(crate) fn format_output(
     config_registry: Res<ConfigRegistry>,
     rooms: Query<(Entity, &Room, &GrimName)>,
     room_occupants: Occupants,
-    room_exits: Query<(Entity, &Exits)>,
+    room_exits: RoomLinks,
     names: Query<&GrimName>,
     descriptions: Query<&Description>,
     characters: Query<&Character>,

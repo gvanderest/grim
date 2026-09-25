@@ -1602,6 +1602,85 @@ mod output_format {
             "paragraphs join with single newlines; got:\n{text}"
         );
     }
+
+    // ── look_room: closed doors list under Doors, open doors under Exits ──
+    #[test]
+    fn look_room_splits_closed_doors_from_exits() {
+        use grim_core::cardinal::Cardinal;
+        use grim_world::{Door, Doors, Exits};
+        use std::collections::HashMap;
+
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        // All six exits, scrambled; east + down are closed doors, north is
+        // an open door (stays in Exits), the rest are plain exits.
+        let far = spawn_room(&mut app);
+        let mut exits = HashMap::new();
+        for dir in [
+            Cardinal::Down,
+            Cardinal::West,
+            Cardinal::South,
+            Cardinal::East,
+            Cardinal::North,
+            Cardinal::Up,
+        ] {
+            exits.insert(dir, far);
+        }
+        app.world_mut().entity_mut(room).insert(Exits { exits });
+        let mut doors = HashMap::new();
+        for (dir, open) in [
+            (Cardinal::East, false),
+            (Cardinal::Down, false),
+            (Cardinal::North, true),
+        ] {
+            doors.insert(
+                dir,
+                Door {
+                    name: "a door".into(),
+                    keywords: vec![],
+                    open,
+                },
+            );
+        }
+        app.world_mut().entity_mut(room).insert(Doors { doors });
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let viewer = spawn_ingame(&mut app, conn, make_character(Vec::new()));
+        // Bypass the minimap gutter so the lines assert plain.
+        app.world_mut()
+            .get_mut::<Character>(viewer)
+            .unwrap()
+            .config
+            .insert("minimap".into(), "off".into());
+        app.world_mut().write_message(LookRoom {
+            target: viewer,
+            room,
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let text: String = cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn)
+            .map(|o| o.text.clone())
+            .collect();
+        assert!(
+            text.contains("Exits: north, south, west, up\n"),
+            "open door + plain exits in NESWUD order; got:\n{text}"
+        );
+        assert!(
+            text.contains("Doors: east, down\n"),
+            "closed doors in NESWUD order; got:\n{text}"
+        );
+    }
 }
 
 // ─── In-game command dispatch ────────────

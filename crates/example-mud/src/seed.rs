@@ -392,7 +392,8 @@ mod tests {
         assert_eq!(bp.starting_room, Some(tavern.id));
         // The tavern's north exit references the square by Grim ID.
         assert_eq!(tavern.exits.get("north"), Some(&square.id));
-        // The privy hangs east of the tavern behind a closed door.
+        // The privy hangs east of the tavern behind a closed door; the
+        // tavern's north door starts open (listed under Exits, not Doors).
         let privy = bp
             .rooms
             .iter()
@@ -405,6 +406,12 @@ mod tests {
         let back = privy.doors.get("west").expect("privy west door");
         assert_eq!(back.name, "the privy door");
         assert!(!back.open);
+        let tavern_door = tavern.doors.get("north").expect("tavern north door");
+        assert_eq!(tavern_door.name, "the tavern door");
+        assert!(tavern_door.open);
+        let square_back = square.doors.get("south").expect("square south door");
+        assert_eq!(square_back.name, "the tavern door");
+        assert!(square_back.open);
     }
 
     #[test]
