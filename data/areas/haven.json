@@ -10,8 +10,8 @@
       "slug": "tavern",
       "name": "The Rusted Anvil",
       "description": "Smoke and the clang of hammer on steel fill the air.\nSawdust covers the floor of this cozy tavern. A staircase leads up\nto the second floor, a door leads north to the town square, a\nprivy door stands to the east, and a narrow trail slips\nsouth toward the valley wall.",
-      "exits": { "north": "y0vjzSNtWQo3", "south": "ADG0C9DN6xaA", "east": "E8nqnXhQcQX4" },
-      "doors": { "north": { "name": "the tavern door", "keywords": ["tavern door"], "open": true }, "east": { "name": "the privy door", "keywords": ["privy door"] } },
+      "exits": { "north": "y0vjzSNtWQo3", "south": "ADG0C9DN6xaA", "east": "E8nqnXhQcQX4", "up": "LexQg9PlMWVT", "down": "AIQXsyl30yqp" },
+      "doors": { "north": { "name": "the tavern door", "keywords": ["tavern door"], "open": true }, "east": { "name": "the privy door", "keywords": ["privy door"] }, "down": { "name": "the cellar door", "keywords": ["cellar door"], "hidden": true } },
       "npcs": [
         {
           "name": "Grimmok Ironhand",
@@ -111,6 +111,21 @@
       "description": "A cramped privy tucked against the tavern's east wall.\nA wooden bench with a hole sits over a dark pit. The tavern\nlies west through the privy door.",
       "exits": { "west": "C7Ee6NQVAfBr" },
       "doors": { "west": { "name": "the privy door", "keywords": ["privy door"] } }
+    },
+    {
+      "id": "LexQg9PlMWVT",
+      "slug": "tavern-loft",
+      "name": "Tavern Loft",
+      "description": "A low loft above the tavern, warm from the hearth below.\nPallets and spare blankets line the walls. A staircase descends\nto the common room.",
+      "exits": { "down": "C7Ee6NQVAfBr" }
+    },
+    {
+      "id": "AIQXsyl30yqp",
+      "slug": "cellar",
+      "name": "Dusty Cellar",
+      "description": "A dusty old cellar beneath the tavern, thick with cobwebs.\nCasks slump against the stone walls. A stair climbs up through\nthe cellar door to the common room.",
+      "exits": { "up": "C7Ee6NQVAfBr" },
+      "doors": { "up": { "name": "the cellar door", "keywords": ["cellar door"] } }
     }
   ]
 }

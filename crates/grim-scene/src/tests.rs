@@ -1640,6 +1640,7 @@ mod output_format {
                     name: "a door".into(),
                     keywords: vec![],
                     open,
+                    hidden: false,
                 },
             );
         }
@@ -1673,12 +1674,134 @@ mod output_format {
             .map(|o| o.text.clone())
             .collect();
         assert!(
-            text.contains("Exits: north, south, west, up\n"),
-            "open door + plain exits in NESWUD order; got:\n{text}"
+            text.contains("Exits: {Rnorth{x}, {rsouth{x}, {mwest{x}, {Yup{x}  Doors: {Meast{x}, {ydown{x}  Secret: none\n"),
+            "open door + plain exits in NESWUD order on one line; got:\n{text}"
         );
+    }
+
+    // ── look_room: hidden exits list under Secret for admins only ──
+    #[test]
+    fn look_room_hides_secret_exits_from_players() {
+        use grim_core::cardinal::Cardinal;
+        use grim_world::{Door, Doors, Exits};
+        use std::collections::HashMap;
+
+        for (admin, expected) in [
+            (false, "Exits: {Rnorth{x}  Doors: none  Secret: none\n"),
+            (true, "Exits: {Rnorth{x}  Doors: none  Secret: {ydown{x}\n"),
+        ] {
+            let mut app = test_app();
+            let room = spawn_room(&mut app);
+            app.world_mut().insert_resource(StartingRoom(room));
+            let far = spawn_room(&mut app);
+            let mut exits = HashMap::new();
+            exits.insert(Cardinal::North, far);
+            exits.insert(Cardinal::Down, far);
+            app.world_mut().entity_mut(room).insert(Exits { exits });
+            let mut doors = HashMap::new();
+            doors.insert(
+                Cardinal::Down,
+                Door {
+                    name: "a secret door".into(),
+                    keywords: vec![],
+                    open: false,
+                    hidden: true,
+                },
+            );
+            app.world_mut().entity_mut(room).insert(Doors { doors });
+            let conn = app
+                .world_mut()
+                .spawn(Connection {
+                    id: 1,
+                    addr: "127.0.0.1:12345".parse().unwrap(),
+                    echo_hidden: false,
+                })
+                .id();
+            let roles = if admin { vec![Role::Admin] } else { vec![] };
+            let viewer = spawn_ingame(&mut app, conn, make_character(roles));
+            app.world_mut()
+                .get_mut::<Character>(viewer)
+                .unwrap()
+                .config
+                .insert("minimap".into(), "off".into());
+            app.world_mut().write_message(LookRoom {
+                target: viewer,
+                room,
+            });
+            app.update();
+
+            let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+            let mut cursor = msgs.get_cursor();
+            let text: String = cursor
+                .read(msgs)
+                .filter(|o| o.connection == conn)
+                .map(|o| o.text.clone())
+                .collect();
+            assert!(
+                text.contains(expected),
+                "admin={admin}: expected {expected:?}; got:\n{text}"
+            );
+            if !admin {
+                assert!(!text.contains("down"), "secret must not leak; got:\n{text}");
+            }
+        }
+    }
+
+    // ── look_room: open secrets still list only for admins ──
+    #[test]
+    fn look_room_open_secret_stays_hidden_from_players() {
+        use grim_core::cardinal::Cardinal;
+        use grim_world::{Door, Doors, Exits};
+        use std::collections::HashMap;
+
+        let mut app = test_app();
+        let room = spawn_room(&mut app);
+        app.world_mut().insert_resource(StartingRoom(room));
+        let far = spawn_room(&mut app);
+        let mut exits = HashMap::new();
+        exits.insert(Cardinal::Down, far);
+        app.world_mut().entity_mut(room).insert(Exits { exits });
+        let mut doors = HashMap::new();
+        doors.insert(
+            Cardinal::Down,
+            Door {
+                name: "a secret door".into(),
+                keywords: vec![],
+                open: true,
+                hidden: true,
+            },
+        );
+        app.world_mut().entity_mut(room).insert(Doors { doors });
+        let conn = app
+            .world_mut()
+            .spawn(Connection {
+                id: 1,
+                addr: "127.0.0.1:12345".parse().unwrap(),
+                echo_hidden: false,
+            })
+            .id();
+        let viewer = spawn_ingame(&mut app, conn, make_character(Vec::new()));
+        app.world_mut()
+            .get_mut::<Character>(viewer)
+            .unwrap()
+            .config
+            .insert("minimap".into(), "off".into());
+        app.world_mut().write_message(LookRoom {
+            target: viewer,
+            room,
+        });
+        app.update();
+
+        let msgs = app.world().resource::<Messages<ConnectionOutput>>();
+        let mut cursor = msgs.get_cursor();
+        let text: String = cursor
+            .read(msgs)
+            .filter(|o| o.connection == conn)
+            .map(|o| o.text.clone())
+            .collect();
         assert!(
-            text.contains("Doors: east, down\n"),
-            "closed doors in NESWUD order; got:\n{text}"
+            text.contains("Exits: none  Doors: none  Secret: none\n"),
+            "open secret stays unlisted for players; got:\n{text}"
         );
     }
 }

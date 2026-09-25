@@ -90,7 +90,7 @@ The shared render helpers in `src/formatter.rs` (`format_motd`, `format_selectio
 - Admin-gated commands are byte-identical to "unknown command" for non-admins (no information leak) — see `dispatch_admin_gated`.
 - Scene stack (§5.3): thin slice landed — `SceneStack` + `InGameScene`, pushed at world entry, routing by top. Pre-game scenes, pop, and output policy are still deferred (ADR-0003).
 - Minimap: `emit_look_room` (`src/output.rs`) renders the looker's room through `grim_world::render_map` on the 9x7 canvas and staples it left of the room text (`formatter::staple_minimap`: 9-wide gutter + two spaces, no trailing blanks) whenever the resolved `minimap` setting (`grim-config`, per-character, default on) is on.
-- Look exit lines: `emit_look_room` (`src/look_output.rs`, `partition_exits`) splits the room's exits into `Exits: …` (plain exits plus open doors) and `Doors: …` (closed doors), both always rendered with `none` when empty. Both lists sort in `Cardinal` display order (north, east, south, west, up, down).
+- Look exit lines: `emit_look_room` (`src/look_output.rs`, `partition_exits`) splits the room's exits into `Exits: …` (plain exits plus open doors), `Doors: …` (closed doors), and `Secret: …` (hidden exits, admin-only) — all three on one line, each `none` when empty. Hidden exits list under `Secret:` regardless of open state (discovery is by walking through, not by listing). All lists sort in `Cardinal` display order (north, east, south, west, up, down); directions carry compass colours (north `{R`, south `{r`, east `{M`, west `{m`, up `{Y`, down `{y`, each self-terminated with `{x`). Room titles render `{B…{x` (blue, self-terminated).
 
 ---
 *Format: [`docs/README.template.md`](../../docs/README.template.md). Improve over time.*

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use bevy::prelude::*;
 use grim_core::events::{Command, EngineCommand, InfoMessage};
-use grim_world::{render_map, Exits, MapConfig};
+use grim_world::{render_map, Doors, Exits, MapConfig};
 
 use crate::placement::InRoom;
 
@@ -12,11 +12,14 @@ use crate::placement::InRoom;
 /// `--`/`|` exits, `,`/`'` up/down markers, coloured per
 /// [`grim_world::render_map`]). Reads [`InRoom`] plus the world
 /// topology and answers only the actor via [`InfoMessage`]. An actor with no
-/// room is silently ignored (fail closed, like `look`).
+/// room is silently ignored (fail closed, like `look`). Hidden exits never
+/// draw (secret doors stay off the canvas for everyone; admins see them in
+/// the `look` text instead).
 pub(crate) fn handle_map(
     mut engine: MessageReader<EngineCommand>,
     inroom: Query<&InRoom>,
     exits: Query<(Entity, &Exits)>,
+    doors: Query<&Doors>,
     mut info: MessageWriter<InfoMessage>,
 ) {
     for cmd in engine.read() {
@@ -29,7 +32,11 @@ pub(crate) fn handle_map(
         };
         let mut snapshot = HashMap::new();
         for (room, links) in exits.iter() {
-            snapshot.insert(room, links.exits.clone());
+            let mut visible = links.exits.clone();
+            if let Ok(d) = doors.get(room) {
+                visible.retain(|dir, _| !d.doors.get(dir).is_some_and(|door| door.hidden));
+            }
+            snapshot.insert(room, visible);
         }
         let rows = render_map(actor_room.room, &snapshot, &MapConfig::MAP);
         info.write(InfoMessage {

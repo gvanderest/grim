@@ -240,6 +240,10 @@ mod tests {
     }
 
     fn hang(app: &mut App, room: Entity, dir: Cardinal, open: bool) {
+        hang_hidden(app, room, dir, open, false);
+    }
+
+    fn hang_hidden(app: &mut App, room: Entity, dir: Cardinal, open: bool, hidden: bool) {
         app.world_mut()
             .get_mut::<Doors>(room)
             .unwrap()
@@ -250,6 +254,7 @@ mod tests {
                     name: "the privy door".into(),
                     keywords: vec!["privy door".into()],
                     open,
+                    hidden,
                 },
             );
     }
