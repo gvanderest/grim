@@ -67,7 +67,7 @@ fn privy_door_blocks_until_opened() {
     // An opened door rejoins the Exits line and leaves the Doors line.
     mud.send(alice, "look")
         .assert_contains("Exits: north, east, south")
-        .assert_excludes("Doors:");
+        .assert_contains("Doors: none");
 
     // Now the walk lands in the privy; closing from inside announces west.
     mud.send(alice, "east").assert_contains("The Privy");
