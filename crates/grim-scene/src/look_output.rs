@@ -12,17 +12,42 @@ use grim_core::components::{Client, Description, Name as GrimName};
 use grim_core::events::{LookEntity, LookRoom};
 use grim_networking::ConnectionOutput;
 use grim_text::tr;
-use grim_world::{render_map, Exits, MapConfig, Room};
+use grim_world::{render_map, Doors, Exits, MapConfig, Room};
 
 use crate::formatter;
 use crate::output::{find_conn, Occupants};
+
+/// The room-links query backing `emit_look_room`: the exit map plus the
+/// optional door map on the same room entity. One query (not two) keeps
+/// `format_output` at Bevy's 16-parameter ceiling.
+pub(crate) type RoomLinks<'w, 's> = Query<'w, 's, (Entity, &'static Exits, Option<&'static Doors>)>;
+
+/// Split a room's exits into the open directions (plain exits plus open
+/// doors) and the closed-door directions. Both lists sort in `Cardinal`
+/// display order (north, east, south, west, up, down) via the derived `Ord`.
+fn partition_exits(exits: &Exits, doors: Option<&Doors>) -> (Vec<String>, Vec<String>) {
+    let mut open = Vec::new();
+    let mut closed = Vec::new();
+    for dir in exits.exits.keys() {
+        let is_closed = doors
+            .and_then(|d| d.doors.get(dir))
+            .is_some_and(|door| !door.open);
+        (if is_closed { &mut closed } else { &mut open }).push(*dir);
+    }
+    open.sort();
+    closed.sort();
+    (
+        open.iter().map(|d| d.to_string()).collect(),
+        closed.iter().map(|d| d.to_string()).collect(),
+    )
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn emit_look_room(
     ev: &LookRoom,
     rooms: &Query<(Entity, &Room, &GrimName)>,
     room_occupants: &Occupants,
-    room_exits: &Query<(Entity, &Exits)>,
+    room_exits: &RoomLinks,
     characters: &Query<&Character>,
     clients: &Query<&Client>,
     linkdead_chars: &Query<&Linkdead>,
@@ -32,14 +57,10 @@ pub(crate) fn emit_look_room(
     let Ok((_, room, name)) = rooms.get(ev.room) else {
         return;
     };
-    let exits = room_exits
+    let (exits, doors) = room_exits
         .get(ev.room)
         .ok()
-        .map(|(_, e)| {
-            let mut dirs: Vec<String> = e.exits.keys().map(|d| d.to_string()).collect();
-            dirs.sort();
-            dirs
-        })
+        .map(|(_, e, d)| partition_exits(e, d))
         .unwrap_or_default();
     let presence = collect_presence(
         ev.room,
@@ -64,7 +85,7 @@ pub(crate) fn emit_look_room(
         }),
     );
     let conn = find_conn(ev.target, room_occupants);
-    let body = formatter::format_room(&title, &room.description, &exits, &presence);
+    let body = formatter::format_room(&title, &room.description, &exits, &doors, &presence);
     // Minimap: the same renderer as `map` on the small canvas, stapled left
     // when the looker's resolved `minimap` setting is on. Actors without a
     // `Character` and unseeded registries (unit tests) keep the map, matching
@@ -80,7 +101,7 @@ pub(crate) fn emit_look_room(
         .unwrap_or(true);
     let text = if minimap_on {
         let mut snapshot = HashMap::new();
-        for (room_entity, links) in room_exits.iter() {
+        for (room_entity, links, _) in room_exits.iter() {
             snapshot.insert(room_entity, links.exits.clone());
         }
         let map_rows = render_map(ev.room, &snapshot, &MapConfig::MINIMAP);

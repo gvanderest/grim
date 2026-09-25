@@ -52,16 +52,16 @@ pub(super) fn place_actor(
         }
     }
 }
-/// Whether a closed door blocks `actor`'s walk from `from` toward
-/// `direction`: replies "%{name} is closed." and returns true, else false.
-/// Runs inside the queued placement closure (world access only) so the check
-/// is atomic with placement.
+/// Whether a closed door blocks `actor`'s walk from `from` toward `direction`:
+/// replies "%{Name} is closed." (name sentence-capitalized) and returns true,
+/// else false. Runs inside the queued placement closure (world access only)
+/// so the check is atomic with placement.
 fn door_blocks(world: &mut World, actor: Entity, from: Entity, direction: Cardinal) -> bool {
     let closed_name: Option<String> = world
         .get::<Doors>(from)
         .and_then(|d| d.doors.get(&direction))
         .filter(|door| !door.open)
-        .map(|door| door.name.clone());
+        .map(|door| grim_color::capitalize_first(&door.name));
     if let Some(name) = closed_name {
         world
             .resource_mut::<Messages<InfoMessage>>()
@@ -501,7 +501,9 @@ mod tests {
         let actor = spawn_actor_in(&mut app, a, false);
         send_move(&mut app, actor, Cardinal::East);
         assert_eq!(room_of(&app, actor), a);
-        assert!(info_texts(&app).iter().any(|t| t.contains("is closed")));
+        assert!(info_texts(&app)
+            .iter()
+            .any(|t| t.contains("The privy door is closed")));
         assert_eq!(look_room_count(&app), before_looks);
         assert_eq!(move_event_count(&app), 0);
     }

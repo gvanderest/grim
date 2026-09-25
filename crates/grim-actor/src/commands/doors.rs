@@ -10,6 +10,7 @@
 //! rendering in `grim-scene`.
 
 use bevy::prelude::*;
+use grim_color::capitalize_first;
 use grim_core::events::{Command, DoorEvent, EngineCommand, InfoMessage};
 use grim_text::tr;
 use grim_world::{Doors, Exits};
@@ -111,14 +112,14 @@ fn set_door(
         return;
     }
     // Already-state only when both sides agree: a divergent far side heals
-    // below instead of replying "already" and freezing the split.
     if name.1 == open && (!reverse_ok || far_open == Some(open)) {
+        let capped = capitalize_first(&name.0);
         info.write(InfoMessage {
             target: actor,
             text: if open {
-                tr!("door.open.already", name = name.0)
+                tr!("door.open.already", name = capped.as_str())
             } else {
-                tr!("door.close.already", name = name.0)
+                tr!("door.close.already", name = capped.as_str())
             },
         });
         return;
@@ -356,7 +357,9 @@ mod tests {
                 direction: Cardinal::East,
             },
         );
-        assert!(infos(&app).iter().any(|t| t.contains("already open")));
+        assert!(infos(&app)
+            .iter()
+            .any(|t| t.contains("The privy door is already open")));
         assert!(door_events(&app).is_empty());
     }
 
@@ -389,7 +392,9 @@ mod tests {
                 direction: Cardinal::East,
             },
         );
-        assert!(infos(&app).iter().any(|t| t.contains("already closed")));
+        assert!(infos(&app)
+            .iter()
+            .any(|t| t.contains("The privy door is already closed")));
     }
 
     #[test]

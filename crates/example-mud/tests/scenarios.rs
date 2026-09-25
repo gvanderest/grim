@@ -50,15 +50,24 @@ fn privy_door_blocks_until_opened() {
     let alice = create_char(&mut mud, "alice@example.com", "Alice");
     let bob = create_char(&mut mud, "bob@example.com", "Bob");
 
-    // Closed: the walk is refused and Alice stays in the tavern.
+    // Closed: the walk is refused and Alice stays in the tavern. The closed
+    // door lists under Doors, not Exits; the open north door stays in Exits.
     mud.send(alice, "east").assert_contains("is closed");
-    mud.send(alice, "look").assert_contains("The Rusted Anvil");
+    mud.send(alice, "look")
+        .assert_contains("Exits: north, south")
+        .assert_contains("Doors: east")
+        .assert_excludes("Exits: north, south, east");
 
     // Bob waits in the tavern: he witnesses Alice's open.
     let opened = mud.send(alice, "open east");
     opened.assert_contains("You open the privy door to the east.");
     mud.send(bob, "look")
         .assert_contains("Alice opens the privy door to the east.");
+
+    // An opened door rejoins the Exits line and leaves the Doors line.
+    mud.send(alice, "look")
+        .assert_contains("Exits: north, east, south")
+        .assert_contains("Doors: none");
 
     // Now the walk lands in the privy; closing from inside announces west.
     mud.send(alice, "east").assert_contains("The Privy");
@@ -84,7 +93,8 @@ fn account_creation_places_character_in_the_world() {
     assert!(mud.character_names().contains(&"Alice".to_string()));
     mud.send(alice, "look")
         .assert_contains("The Rusted Anvil")
-        .assert_contains("Exits: east, north");
+        .assert_contains("Exits: north, south")
+        .assert_contains("Doors: east");
 }
 
 #[test]
@@ -176,10 +186,9 @@ fn legacy_character_is_routed_through_the_picker_at_login() {
 fn movement_walks_between_seeded_rooms() {
     let mut mud = Mud::new();
     let alice = create_char(&mut mud, "alice@example.com", "Alice");
-
     mud.send(alice, "north")
         .assert_contains("Town Square")
-        .assert_contains("Exits: east, north, south, west");
+        .assert_contains("Exits: north, east, south, west");
     mud.send(alice, "south").assert_contains("The Rusted Anvil");
 }
 
@@ -897,7 +906,7 @@ fn look_staples_minimap_left_of_room_text() {
     // Past the 7-row canvas the gutter runs blank (11 spaces).
     let exits = lines
         .iter()
-        .find(|l| l.contains("Exits: east"))
+        .find(|l| l.contains("Exits: north"))
         .expect("exits line");
     assert!(exits.starts_with("           "), "blank gutter:\n{exits}");
 }
