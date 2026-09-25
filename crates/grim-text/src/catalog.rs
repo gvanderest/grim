@@ -250,6 +250,7 @@ fn default_string(key: &str) -> String {
         "recall.leave.attempt" => "%{name} closes their eyes and concentrates.\n",
         "recall.leave.vanish" => "%{name} disappears.\n",
         "recall.arrive" => "%{name} appears in a flash of light.\n",
+        "move.no_exit" => "You can't go that way.\n",
         "door.open.first" => "You open %{name} to the %{heading}.\n",
         "door.open.third" => "%{actor} opens %{name} to the %{heading}.\n",
         "door.open.far" => "%{name} opens to the %{heading}.\n",

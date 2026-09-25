@@ -7,6 +7,7 @@
 use bevy::prelude::*;
 use grim_core::cardinal::Cardinal;
 use grim_core::events::{Command, EngineCommand, InfoMessage, LookRoom, MoveEvent};
+use grim_text::tr;
 use grim_world::{
     resolve_room_address, room_location, Area, Doors, Exits, Room, RoomLocation, RoomLookup,
 };
@@ -53,9 +54,9 @@ pub(super) fn place_actor(
     }
 }
 /// Whether a closed door blocks `actor`'s walk from `from` toward `direction`:
-/// replies and returns true, else false. A closed *hidden* door refuses as
-/// "You can't go that way." (byte-identical to no exit — no leak); a closed
-/// visible door replies "%{Name} is closed." (name sentence-capitalized).
+/// replies and returns true, else false. A closed *hidden* door reuses the
+/// `move.no_exit` catalog key byte-identically (never leaks the secret); a
+/// closed visible door replies "%{Name} is closed." (sentence-capitalized).
 /// Runs inside the queued placement closure (world access only) so the check
 /// is atomic with placement.
 fn door_blocks(world: &mut World, actor: Entity, from: Entity, direction: Cardinal) -> bool {
@@ -66,7 +67,7 @@ fn door_blocks(world: &mut World, actor: Entity, from: Entity, direction: Cardin
         .map(|door| (door.hidden, grim_color::capitalize_first(&door.name)));
     if let Some((hidden, name)) = door {
         let text = if hidden {
-            "You can't go that way.\n".to_string()
+            tr!("move.no_exit")
         } else {
             grim_text::tr("door.error.closed", &[("name", name.as_str())])
         };
@@ -227,14 +228,14 @@ pub(crate) fn handle_move(
                 None => {
                     commands.write_message(InfoMessage {
                         target: actor,
-                        text: "You can't go that way.\n".into(),
+                        text: tr!("move.no_exit"),
                     });
                 }
             },
             Err(_) => {
                 commands.write_message(InfoMessage {
                     target: actor,
-                    text: "You can't go that way.\n".into(),
+                    text: tr!("move.no_exit"),
                 });
             }
         }
