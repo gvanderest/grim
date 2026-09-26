@@ -18,10 +18,10 @@ pub struct RoomDebugIds<'a> {
 pub fn room_title(name: &str, debug: Option<RoomDebugIds>) -> String {
     match debug {
         Some(d) => format!(
-            "{{B{name} (entity:{} grim:{} slug:{}){{x}}", // tr-bypass: structural title framing + debug ids, no prose
+            "{{B{name} (entity:{} grim:{} slug:{}){{x", // tr-bypass: structural title framing + debug ids, no prose
             d.entity, d.grim, d.slug
         ),
-        None => format!("{{B{name}{{x}}"), // tr-bypass: structural title framing, no prose
+        None => format!("{{B{name}{{x"), // tr-bypass: structural title framing, no prose
     }
 }
 
@@ -30,17 +30,18 @@ pub fn room_title(name: &str, debug: Option<RoomDebugIds>) -> String {
 /// `presence` holds one ready-made listing line per other being in the room
 /// (a creature's long description, `"<name> is standing here."` for a
 /// player) — each renders on its own line under the exits. `exits` holds the
-/// open directions (plain exits plus open doors), `doors` the closed doors,
-/// and `secret` the hidden directions (admin-only). All three groups render
-/// on one line (`Exits: …  Doors: …  Secret: …`), each with `none` when
-/// empty, wrapped in blank lines above and below. The `Secret:` group is
-/// only ever populated for admins — see `partition_exits`.
+/// open directions (plain exits plus open doors), `doors` the closed doors.
+/// `Exits:` and `Doors:` always render on one line (with `none` when empty).
+/// Admins additionally get the hidden directions appended on the same line
+/// (`Secret: …`, itself `none` when the room hides nothing); non-admins
+/// never see the heading at all. All groups sit on one line, wrapped in
+/// blank lines above and below.
 pub fn format_room(
     name: &str,
     desc: &str,
     exits: &[String],
     doors: &[String],
-    secret: &[String],
+    admin_secret: Option<&[String]>,
     presence: &[String],
 ) -> String {
     let mut out = format!("{}\n{}", name, desc);
@@ -48,16 +49,20 @@ pub fn format_room(
         if items.is_empty() {
             "none".to_string()
         } else {
-            items.join(", ")
+            items.join(" ")
         }
     };
     out.push_str(&format!(
         // tr-bypass: one listing line joining caller-built direction names; `none` is the empty-list marker
-        "\n\nExits: {}  Doors: {}  Secret: {}",
+        "\n\nExits: {}  Doors: {}",
         list(exits),
         list(doors),
-        list(secret)
     ));
+    // The heading is admin-only: `Some` renders it (even as `none`), `None`
+    // omits it entirely — non-admins get no hint that secrets exist.
+    if let Some(secret) = admin_secret {
+        out.push_str(&format!("  Secret: {}", list(secret))); // tr-bypass: admin-only segment joining caller-built direction names
+    }
     if !presence.is_empty() {
         out.push_str(&format!("\n\n{}", presence.join("\n"))); // tr-bypass: joining caller-built presence lines
     }
@@ -343,7 +348,7 @@ mod tests {
 
     #[test]
     fn room_title_plain_without_debug() {
-        assert_eq!(room_title("Town Square", None), "{BTown Square{x}");
+        assert_eq!(room_title("Town Square", None), "{BTown Square{x");
     }
 
     #[test]
@@ -358,7 +363,7 @@ mod tests {
         );
         assert_eq!(
             got,
-            "{BTown Square (entity:42 grim:abc-123 slug:town-square){x}"
+            "{BTown Square (entity:42 grim:abc-123 slug:town-square){x"
         );
     }
 
@@ -371,10 +376,10 @@ mod tests {
             "Grimmok Ironhand stands here, hammering metal.".into(),
             "Alice is standing here.".into(),
         ];
-        let got = format_room("The Tavern", "A warm room.", &exits, &[], &[], &presence);
+        let got = format_room("The Tavern", "A warm room.", &exits, &[], None, &presence);
         assert_eq!(
             got,
-            "The Tavern\nA warm room.\n\nExits: north, east  Doors: none  Secret: none\n\nGrimmok Ironhand stands here, hammering metal.\nAlice is standing here.\n"
+            "The Tavern\nA warm room.\n\nExits: north east  Doors: none\n\nGrimmok Ironhand stands here, hammering metal.\nAlice is standing here.\n"
         );
         assert!(!got.contains("Also here:"));
     }
@@ -384,25 +389,36 @@ mod tests {
         let exits = vec!["north".into(), "south".into()];
         let doors = vec!["east".into()];
         let secret = vec!["down".into()];
-        let got = format_room("The Tavern", "A warm room.", &exits, &doors, &secret, &[]);
+        let got = format_room(
+            "The Tavern",
+            "A warm room.",
+            &exits,
+            &doors,
+            Some(&secret),
+            &[],
+        );
         assert_eq!(
             got,
-            "The Tavern\nA warm room.\n\nExits: north, south  Doors: east  Secret: down\n"
+            "The Tavern\nA warm room.\n\nExits: north south  Doors: east  Secret: down\n"
         );
     }
 
     #[test]
     fn room_with_only_doors() {
-        let got = format_room("Cell", "Dark.", &[], &["north".into()], &[], &[]);
-        assert_eq!(
-            got,
-            "Cell\nDark.\n\nExits: none  Doors: north  Secret: none\n"
-        );
+        let got = format_room("Cell", "Dark.", &[], &["north".into()], None, &[]);
+        assert_eq!(got, "Cell\nDark.\n\nExits: none  Doors: north\n");
     }
 
     #[test]
     fn room_no_exits_no_doors_shows_none() {
-        let got = format_room("Void", "Empty.", &[], &[], &[], &["Guard is here.".into()]);
+        let got = format_room(
+            "Void",
+            "Empty.",
+            &[],
+            &[],
+            Some(&[]),
+            &["Guard is here.".into()],
+        );
         assert!(got.starts_with("Void\nEmpty.\n\nExits: none  Doors: none  Secret: none\n"));
         assert!(got.contains("\nGuard is here.\n"));
     }
@@ -410,20 +426,14 @@ mod tests {
     #[test]
     fn room_no_occupants() {
         let exits = vec!["south".into()];
-        let got = format_room("Cell", "Dark.", &exits, &[], &[], &[]);
-        assert_eq!(
-            got,
-            "Cell\nDark.\n\nExits: south  Doors: none  Secret: none\n"
-        );
+        let got = format_room("Cell", "Dark.", &exits, &[], None, &[]);
+        assert_eq!(got, "Cell\nDark.\n\nExits: south  Doors: none\n");
     }
 
     #[test]
     fn room_empty_both() {
-        let got = format_room("Empty", "Nothing.", &[], &[], &[], &[]);
-        assert_eq!(
-            got,
-            "Empty\nNothing.\n\nExits: none  Doors: none  Secret: none\n"
-        );
+        let got = format_room("Empty", "Nothing.", &[], &[], None, &[]);
+        assert_eq!(got, "Empty\nNothing.\n\nExits: none  Doors: none\n");
     }
 
     // ── staple_minimap ───────────────────────────────────────────

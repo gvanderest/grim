@@ -1674,7 +1674,7 @@ mod output_format {
             .map(|o| o.text.clone())
             .collect();
         assert!(
-            text.contains("Exits: {Rnorth{x}, {rsouth{x}, {mwest{x}, {Yup{x}  Doors: {Meast{x}, {ydown{x}  Secret: none\n"),
+            text.contains("Exits: {Rnorth{x {rsouth{x {mwest{x {Yup{x  Doors: {Meast{x {ydown{x\n"),
             "open door + plain exits in NESWUD order on one line; got:\n{text}"
         );
     }
@@ -1687,8 +1687,8 @@ mod output_format {
         use std::collections::HashMap;
 
         for (admin, expected) in [
-            (false, "Exits: {Rnorth{x}  Doors: none  Secret: none\n"),
-            (true, "Exits: {Rnorth{x}  Doors: none  Secret: {ydown{x}\n"),
+            (false, "Exits: {Rnorth{x  Doors: none\n"),
+            (true, "Exits: {Rnorth{x  Doors: none  Secret: {ydown{x\n"),
         ] {
             let mut app = test_app();
             let room = spawn_room(&mut app);
@@ -1747,9 +1747,9 @@ mod output_format {
         }
     }
 
-    // ── look_room: open secrets still list only for admins ──
+    // ── look_room: an open secret lists under Exits (closed ones hide) ──
     #[test]
-    fn look_room_open_secret_stays_hidden_from_players() {
+    fn look_room_open_secret_lists_under_exits() {
         use grim_core::cardinal::Cardinal;
         use grim_world::{Door, Doors, Exits};
         use std::collections::HashMap;
@@ -1800,8 +1800,8 @@ mod output_format {
             .map(|o| o.text.clone())
             .collect();
         assert!(
-            text.contains("Exits: none  Doors: none  Secret: none\n"),
-            "open secret stays unlisted for players; got:\n{text}"
+            text.contains("Exits: {ydown{x  Doors: none\n"),
+            "open secret lists under Exits like any open door; got:\n{text}"
         );
     }
 }

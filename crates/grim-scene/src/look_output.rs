@@ -22,16 +22,14 @@ use crate::output::{find_conn, Occupants};
 /// `format_output` at Bevy's 16-parameter ceiling.
 pub(crate) type RoomLinks<'w, 's> = Query<'w, 's, (Entity, &'static Exits, Option<&'static Doors>)>;
 
-/// Split a room's exits into the open directions (plain exits plus open
-/// doors), the closed-door directions, and the hidden directions. All three
-/// lists sort in `Cardinal` display order (north, east, south, west, up,
-/// down) via the derived `Ord`. Hidden exits land in `secret` regardless of
-/// open state — even open, a secret lists only for admins (discovery is by
-/// walking through it, not by listing). Pass `admin: true` to populate the
-/// secret group; players get an empty third list (rendered as `none`).
-/// Each direction renders colour-wrapped ([`colored_direction`]) with the
-/// `{x` reset *inside* the item, so a `{x`-unaware join keeps every run
-/// self-terminated.
+/// Split a room's exits into the open directions, the closed-door
+/// directions, and the closed-secret directions. All three lists sort in
+/// `Cardinal` display order (north, east, south, west, up, down) via the
+/// derived `Ord`. An *open* hidden door lists under Exits like any open
+/// door; only a *closed* secret hides in `secret` — and only for admins
+/// (players get an empty secret list, so no heading renders). Discovery of
+/// a closed secret is by guessing `open <dir>` or walking through, never
+/// by listing.
 fn partition_exits(
     exits: &Exits,
     doors: Option<&Doors>,
@@ -42,13 +40,13 @@ fn partition_exits(
     let mut secret = Vec::new();
     for dir in exits.exits.keys() {
         let door = doors.and_then(|d| d.doors.get(dir));
-        if door.is_some_and(|d| d.hidden) {
+        let is_closed = door.is_some_and(|d| !d.open);
+        if door.is_some_and(|d| d.hidden) && is_closed {
             if admin {
                 secret.push(*dir);
             }
             continue;
         }
-        let is_closed = door.is_some_and(|d| !d.open);
         (if is_closed { &mut closed } else { &mut open }).push(*dir);
     }
     open.sort();
@@ -72,7 +70,7 @@ fn colored_direction(dir: &grim_core::cardinal::Cardinal) -> String {
         grim_core::cardinal::Cardinal::Up => "{Y",
         grim_core::cardinal::Cardinal::Down => "{y",
     };
-    format!("{code}{dir}{{x}}")
+    format!("{code}{dir}{{x")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -124,7 +122,7 @@ pub(crate) fn emit_look_room(
         &room.description,
         &exits,
         &doors,
-        &secret,
+        is_admin.then_some(secret.as_slice()),
         &presence,
     );
     // Minimap: the same renderer as `map` on the small canvas, stapled left
