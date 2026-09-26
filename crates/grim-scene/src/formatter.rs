@@ -12,13 +12,14 @@ pub struct RoomDebugIds<'a> {
     pub slug: &'a str,
 }
 
-/// A room's title line, wrapped in `{B…{x` (blue, self-terminated). Admins
-/// additionally see the entity id, grim id, and slug for building/debugging:
-/// `Town Square (entity:… grim:… slug:…)` — the ids ride inside the colour.
+/// A room's title line: the name renders `{B…{x` (blue, self-terminated).
+/// Admins additionally see the entity id, grim id, and slug for
+/// building/debugging — plain, after the reset, so the blue never bleeds
+/// into the parenthesized ids: `{BName{x} (entity:… grim:… slug:…)`.
 pub fn room_title(name: &str, debug: Option<RoomDebugIds>) -> String {
     match debug {
         Some(d) => format!(
-            "{{B{name} (entity:{} grim:{} slug:{}){{x", // tr-bypass: structural title framing + debug ids, no prose
+            "{{B{name}{{x (entity:{} grim:{} slug:{})", // tr-bypass: structural title framing + debug ids, no prose
             d.entity, d.grim, d.slug
         ),
         None => format!("{{B{name}{{x"), // tr-bypass: structural title framing, no prose
@@ -363,7 +364,7 @@ mod tests {
         );
         assert_eq!(
             got,
-            "{BTown Square (entity:42 grim:abc-123 slug:town-square){x"
+            "{BTown Square{x (entity:42 grim:abc-123 slug:town-square)"
         );
     }
 
