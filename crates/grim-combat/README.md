@@ -6,7 +6,8 @@
 
 Room-scoped `Combat` fights + per-being `Engaged` target lists (index 0 =
 primary). `kill` engages + resolves the first round immediately; 5s rounds
-thereafter, one auto-attack per being per round vs its primary. Skills and
+thereafter, one auto-attack per being per round vs its primary. `flee`
+success reads like a walk ("You flee to the …" + arrival `LookRoom`). Skills and
 spells share `AbilityDef` (flagged `Skill`/`Spell`); `kick` is the seeded
 universal skill. Corpses are one-way containers filled from the global loot
 table; coin auto-awards. Output renders per-recipient in `grim-scene`.
@@ -17,6 +18,7 @@ table; coin auto-awards. Output renders per-recipient in `grim-scene`.
 | `Combat` | `src/engage.rs` | Live fight on a room entity; `members` while non-empty |
 | `Corpse` | `src/corpse.rs` | Death timer on a corpse entity |
 | `CorpseMarker` | `src/corpse.rs` | Disambiguator so corpse queries never collide with plain containers |
+| `AttackNoun` | `src/engage.rs` | Creature unarmed noun (`bite` default); players always `punch`. Kicks render `kick`. |
 
 Being-side state lives in `grim-actor` (`Health`, `Posture`, `Engaged`,
 `CombatSlow` — see `combat_state.rs`); container markers (`Container`,
@@ -53,7 +55,7 @@ Player-facing verbs and where to find their handlers.
 ## Resources & Events
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
-| `Damaged` / `Died` / `FightStart` / `Fled` | Message (facts, rendered in `grim-scene`) | `src/events.rs` |
+| `Damaged` (nouns) / `Died` / `FightStart` / `Fled` (direction+dest) | Message (facts, rendered in `grim-scene`) | `src/events.rs` |
 | `DamageKind` | value (`Strike`, `Kick`) | `src/events.rs` |
 | `AbilityRegistry` / `AbilityCooldowns` / `CombatClock` | Resource | `src/ability.rs` |
 | `GlobalLoot` | Resource | `src/loot.rs` |

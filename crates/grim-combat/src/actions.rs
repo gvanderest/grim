@@ -7,7 +7,7 @@
 use bevy::prelude::*;
 use grim_actor::{CombatSlow, Engaged, Posture};
 use grim_core::components::Name as GrimName;
-use grim_core::events::{Command, EngineCommand, InfoMessage};
+use grim_core::events::{Command, EngineCommand, InfoMessage, LookRoom};
 use grim_text::tr;
 use grim_world::Exits;
 
@@ -85,6 +85,8 @@ fn flee_now(commands: &mut Commands, actor: Entity, room: Entity, name: String) 
                 name: name.clone(),
                 room,
                 success: false,
+                direction: None,
+                dest: None,
             });
             return;
         }
@@ -122,7 +124,20 @@ fn flee_now(commands: &mut Commands, actor: Entity, room: Entity, name: String) 
                     }
                 }
                 strip(world, actor);
-                flee_fact(world, actor, &name, room, true);
+                world.resource_mut::<Messages<Fled>>().write(Fled {
+                    being: actor,
+                    name: name.clone(),
+                    room,
+                    success: true,
+                    direction: Some(pick),
+                    dest: Some(to),
+                });
+                // Walk-like arrival: the destination room description lands
+                // right after the flee line, same as a successful walk.
+                world.resource_mut::<Messages<LookRoom>>().write(LookRoom {
+                    target: actor,
+                    room: to,
+                });
             }
             _ => flee_fact(world, actor, &name, room, false),
         }
@@ -136,6 +151,8 @@ fn flee_fact(world: &mut World, actor: Entity, name: &str, room: Entity, success
         name: name.to_string(),
         room,
         success,
+        direction: None,
+        dest: None,
     });
 }
 

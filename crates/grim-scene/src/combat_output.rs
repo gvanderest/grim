@@ -8,7 +8,7 @@
 
 use bevy::prelude::*;
 use grim_actor::Character;
-use grim_combat::{DamageKind, Damaged, Died, FightStart, Fled};
+use grim_combat::{Damaged, Died, FightStart, Fled};
 use grim_networking::ConnectionOutput;
 use grim_text::tr;
 
@@ -57,22 +57,21 @@ pub(crate) fn format_combat_strikes(
         );
     }
     for ev in damaged.read() {
-        let (first_key, target_key, third_key) = match (ev.hit, ev.kind) {
-            (false, _) => (
+        // Hits and kicks share one template — a kick is just a blow whose
+        // verb is `kick` (carried on the event, not the key).
+        let (first_key, target_key, third_key) = if ev.hit {
+            ("combat.hit.actor", "combat.hit.target", "combat.hit.room")
+        } else {
+            (
                 "combat.miss.actor",
                 "combat.miss.target",
                 "combat.miss.room",
-            ),
-            (true, DamageKind::Strike) => {
-                ("combat.hit.actor", "combat.hit.target", "combat.hit.room")
-            }
-            (true, DamageKind::Kick) => (
-                "combat.kick.actor",
-                "combat.kick.target",
-                "combat.kick.room",
-            ),
+            )
         };
         let total = ev.amount.to_string();
+        // Actor: "Your punch hits the bite! (4)". Victim: "Your bite is hit
+        // by Alice! (4)". Room: same shape as the actor line (name is the
+        // attacker's for attribution; misses carry no nouns).
         let conn = find_conn(ev.attacker, &room_occupants);
         outputs.write(ConnectionOutput {
             prepend_newline: true,
@@ -80,8 +79,10 @@ pub(crate) fn format_combat_strikes(
                 conn,
                 tr!(
                     first_key,
-                    target = ev.victim_name.as_str(),
-                    total = total.as_str()
+                    verb = ev.damage_noun.as_str(),
+                    target = ev.target_noun.as_str(),
+                    total = total.as_str(),
+                    name = ev.attacker_name.as_str()
                 ),
             )
         });
@@ -93,17 +94,20 @@ pub(crate) fn format_combat_strikes(
                     victim_conn,
                     tr!(
                         target_key,
+                        verb = ev.target_noun.as_str(),
+                        total = total.as_str(),
                         name = ev.attacker_name.as_str(),
-                        total = total.as_str()
+                        target = ev.damage_noun.as_str()
                     ),
                 )
             });
         }
         let third = tr!(
             third_key,
-            name = ev.attacker_name.as_str(),
-            target = ev.victim_name.as_str(),
-            total = total.as_str()
+            verb = ev.damage_noun.as_str(),
+            target = ev.target_noun.as_str(),
+            total = total.as_str(),
+            name = ev.attacker_name.as_str()
         );
         broadcast_to_room(
             room_of(ev.attacker, ev.victim, &room_occupants),
@@ -163,12 +167,20 @@ pub(crate) fn format_combat_aftermath(
     }
     for ev in fled.read() {
         if ev.success {
+            let heading = ev
+                .direction
+                .map(|d| d.to_string())
+                .unwrap_or_else(|| "away".to_string());
             let conn = find_conn(ev.being, &room_occupants);
             outputs.write(ConnectionOutput {
                 prepend_newline: true,
-                ..ConnectionOutput::new(conn, tr!("combat.flee.done"))
+                ..ConnectionOutput::new(conn, tr!("combat.flee.done", heading = heading.as_str()))
             });
-            let third = tr!("combat.flee.room", name = ev.name.as_str());
+            let third = tr!(
+                "combat.flee.room",
+                name = ev.name.as_str(),
+                heading = heading.as_str()
+            );
             broadcast_to_room(ev.room, &[ev.being], &third, &room_occupants, &mut outputs);
         } else {
             let conn = find_conn(ev.being, &room_occupants);

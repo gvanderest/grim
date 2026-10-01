@@ -14,7 +14,9 @@ pub enum DamageKind {
 }
 
 /// One auto-attack (or kick) resolved against a victim. `hit == false` means a
-/// clean miss (`amount` is then 0).
+/// clean miss (`amount` is then 0). `damage_noun`/`target_noun` render the
+/// blow: the attacker's unarmed noun (players: `punch`) against the victim's
+/// noun (creatures: per-blueprint, default `bite`).
 #[derive(Message, Debug, Clone)]
 pub struct Damaged {
     pub attacker: Entity,
@@ -24,6 +26,8 @@ pub struct Damaged {
     pub amount: u32,
     pub hit: bool,
     pub kind: DamageKind,
+    pub damage_noun: String,
+    pub target_noun: String,
 }
 
 /// A being died. `xp`/`coin` are the awards already banked on the killer's
@@ -52,10 +56,14 @@ pub struct FightStart {
 }
 
 /// A flee attempt resolved. `success == false` leaves the being engaged.
+/// On success `direction`/`dest` carry where the being went (for the
+/// "flee to the …" lines and the arrival look).
 #[derive(Message, Debug, Clone)]
 pub struct Fled {
     pub being: Entity,
     pub name: String,
     pub room: Entity,
     pub success: bool,
+    pub direction: Option<grim_core::Cardinal>,
+    pub dest: Option<Entity>,
 }

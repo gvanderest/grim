@@ -96,6 +96,70 @@ fn flee_refused_outside_combat() {
     mud.send(alice, "flee").assert_contains("fighting");
 }
 
+/// Blows render "Your <verb> hits the <target>! (N)": players punch,
+/// wolves bite.
+#[test]
+fn damage_nouns_render_per_side() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    walk_to_edge(&mut mud, alice);
+    let out = mud.send(alice, "kill wolf");
+    let text = out.text();
+    assert!(
+        text.contains("Your punch hits the bite!"),
+        "PC punch line, got:\n{text}"
+    );
+}
+
+/// Witnesses see "<name> flees to the <direction>!".
+/// Successful flee reads like a walk: "You flee to the …" plus the arrival
+/// room description. (25% odds — retry until it lands, bounded.)
+#[test]
+fn flee_success_walks_like_a_move() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    walk_to_edge(&mut mud, alice);
+    let _ = mud.send(alice, "kill wolf");
+    for _ in 0..30 {
+        let out = mud.send(alice, "flee");
+        if out.contains("flee to the") {
+            let text = out.text();
+            // Direction named + arrival description present in the same pump
+            // (fleeing west from the Edge lands back on the East Road).
+            assert!(
+                text.contains("Forest")
+                    || text.contains("forest")
+                    || text.contains("Road")
+                    || text.contains("road"),
+                "flee should land with a room description, got:\n{text}"
+            );
+            return;
+        }
+    }
+    panic!("flee never succeeded in 30 tries at 25%");
+}
+
+/// Witnesses see "<name> flees to the <direction>!".
+#[test]
+fn flee_success_broadcasts_direction() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    walk_to_edge(&mut mud, alice);
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+    for line in ["north", "east", "east", "east"] {
+        let _ = mud.send(bob, line);
+    }
+    let _ = mud.send(alice, "kill wolf");
+    for _ in 0..30 {
+        let _ = mud.send(alice, "flee");
+        let seen = mud.recv(bob);
+        if seen.contains("flees to the") {
+            return;
+        }
+    }
+    panic!("no flee broadcast in 30 tries at 25%");
+}
+
 /// `switch` reprioritizes among engaged targets and fails closed elsewhere.
 #[test]
 fn switch_needs_a_fight() {

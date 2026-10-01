@@ -34,7 +34,7 @@ pub use actions::FLEE_DELAY;
 pub use aggro::{aggro_on_enter, Aggressive};
 pub use corpse::{contents_in, is_corpse, Corpse, CorpseMarker};
 pub use death::{kill_being, tick_corpses, CORPSE_TIMER};
-pub use engage::{ensure_engaged, prune, strip, Combat};
+pub use engage::{ensure_engaged, prune, strip, AttackNoun, Combat};
 pub use events::{DamageKind, Damaged, Died, FightStart, Fled};
 pub use formula::{
     coin_for_level, death_debt, hit_chance, resolve_strike, strike_damage, xp_for_level,

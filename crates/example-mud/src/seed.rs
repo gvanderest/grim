@@ -51,6 +51,11 @@ fn default_mob_health() -> u32 {
     30
 }
 
+/// Default unarmed damage noun for blueprints that omit it.
+fn default_attack_noun() -> String {
+    "bite".to_string()
+}
+
 /// An area definition on disk: the area itself plus its rooms.
 #[derive(Deserialize)]
 struct AreaBlueprint {
@@ -112,6 +117,9 @@ struct NpcBlueprint {
     /// Aggressive mobs attack PCs on room entry. Defaults to false (passive).
     #[serde(default)]
     aggressive: bool,
+    /// Unarmed damage noun (`bite`, `claw`, …). Defaults to `bite`.
+    #[serde(default = "default_attack_noun")]
+    attack_noun: String,
     /// Scripted reactions (`{on, script}` with inline Lua). A script that
     /// fails to compile is logged and skipped — the mob still spawns.
     #[serde(default)]
@@ -369,6 +377,7 @@ fn spawn_npc(commands: &mut Commands, area_slug: &str, npc: &NpcBlueprint, room:
         },
         grim::Health::full(npc.health),
         grim::Posture::Standing,
+        grim::AttackNoun(npc.attack_noun.clone()),
         GrimName(npc.name.clone()),
         Description(npc.description.clone()),
         Keywords(npc.keywords.clone()),

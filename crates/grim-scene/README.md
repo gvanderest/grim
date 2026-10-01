@@ -55,9 +55,9 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | `give <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/give.rs`) | Hand matches to a PC here (creatures refuse); quote-aware split (`give "brass lantern" bob`; `all`-headed items run to the last word). Mover/other/room each see a named line (`format_transfer_events`). |
 | `steal <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/steal.rs`) | Take matches from a being here (same split/selectors); same three-way echo. Existence checks only. |
 | `kill <target>` | parser → engine queue (`src/parser.rs`, `grim-combat/src/engage.rs`) | Engage a being here; first strike resolves immediately (`FightStart` + `Damaged`). |
-| `flee` | parser → engine queue (`src/parser.rs`, `grim-combat/src/actions.rs`) | Combat-only escape through a random exit (25%; 3s slow either way). |
+| `flee` | parser → engine queue (`src/parser.rs`, `grim-combat/src/actions.rs`) | Combat-only escape through a random exit (25%; 3s slow either way). Success reads walk-like: "You flee to the …" + arrival look; room sees "<name> flees to the …". |
 | `switch <target>` | parser → engine queue (`src/parser.rs`, `grim-combat/src/engage.rs`) | Reorder your engaged targets (named becomes primary). |
-| `kick [<target>]` | parser → engine queue (`src/parser.rs`, `grim-combat/src/actions.rs`) | Combat-only class skill (defaults to primary; 1.5x, 6s cooldown; never initiates). |
+| `kick [<target>]` | parser → engine queue (`src/parser.rs`, `grim-combat/src/actions.rs`) | Combat-only class skill (defaults to primary; 1.5x, 6s cooldown; never initiates). Renders on the shared hit template with verb `kick`. |
 | `cast <spell> [<target>]` | parser → engine queue (`src/parser.rs`, `grim-combat/src/actions.rs`) | Spell ability path (no spells seeded yet). |
 | `sit` / `sleep` / `stand` | parser → engine queue (`src/parser.rs`, `grim-combat/src/posture.rs`) | Posture (HP regen ×1/×2/×4). |
 | `look in <container>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/container.rs`) | List a container's contents. |

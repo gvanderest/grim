@@ -24,6 +24,11 @@ pub struct Combat {
     pub members: Vec<Entity>,
 }
 
+/// A creature's unarmed damage noun (`bite`, `claw`, …). Seeded per
+/// blueprint (`attack_noun`, default `bite`); players always `punch`.
+#[derive(Component, Debug, Clone)]
+pub struct AttackNoun(pub String);
+
 /// Ensure `a`↔`b` mutual engagement + room Combat membership: insert
 /// `Engaged` where missing, append otherwise (index 0 never disturbed),
 /// create-or-extend the room's `Combat`.
@@ -137,6 +142,13 @@ pub fn strike_once(
         }
     }
     let died = world.get::<Health>(victim).is_some_and(|h| h.is_dead());
+    // Damage nouns: the attacker's unarmed noun against the victim's. Kicks
+    // are just blows whose verb is `kick`, whoever throws them.
+    let damage_noun = match kind {
+        DamageKind::Kick => "kick".to_string(),
+        DamageKind::Strike => unarmed_noun(world, attacker),
+    };
+    let target_noun = unarmed_noun(world, victim);
     world
         .resource_mut::<Messages<crate::events::Damaged>>()
         .write(crate::events::Damaged {
@@ -147,8 +159,23 @@ pub fn strike_once(
             amount,
             hit,
             kind,
+            damage_noun,
+            target_noun,
         });
     died
+}
+
+/// A being's unarmed damage noun: players punch; creatures use their
+/// per-blueprint noun (`AttackNoun`, default `bite`). Kicks always render
+/// as `kick` regardless of who throws them.
+fn unarmed_noun(world: &mut World, being: Entity) -> String {
+    if world.get::<grim_actor::Character>(being).is_some() {
+        return "punch".to_string();
+    }
+    world
+        .get::<AttackNoun>(being)
+        .map(|n| n.0.clone())
+        .unwrap_or_else(|| "bite".to_string())
 }
 
 /// `kill <target>`: engage a being in the actor's room and resolve the first
