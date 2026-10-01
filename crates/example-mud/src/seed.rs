@@ -41,6 +41,16 @@ impl Default for AreaBlueprintDir {
     }
 }
 
+/// Default mob level for blueprints that omit it.
+fn default_mob_level() -> u32 {
+    1
+}
+
+/// Default mob HP for blueprints that omit it (a few level-1 rounds).
+fn default_mob_health() -> u32 {
+    30
+}
+
 /// An area definition on disk: the area itself plus its rooms.
 #[derive(Deserialize)]
 struct AreaBlueprint {
@@ -93,12 +103,17 @@ struct NpcBlueprint {
     /// to `"<name> is here."`.
     #[serde(default)]
     room_description: String,
+    /// Mob level (drives damage, XP/coin awards). Defaults to 1.
+    #[serde(default = "default_mob_level")]
+    level: u32,
+    /// Mob max HP. Defaults to 30 (a few level-1 rounds).
+    #[serde(default = "default_mob_health")]
+    health: u32,
     /// Scripted reactions (`{on, script}` with inline Lua). A script that
     /// fails to compile is logged and skipped — the mob still spawns.
     #[serde(default)]
     triggers: Vec<TriggerDef>,
 }
-
 /// A pickable object placed in a room.
 #[derive(Deserialize)]
 struct ObjectBlueprint {
@@ -342,14 +357,15 @@ fn spawn_npc(commands: &mut Commands, area_slug: &str, npc: &NpcBlueprint, room:
     }
     let mut mob = commands.spawn((
         Creature,
-        // Seeded mobs carry the shared `Actor` base with sensible
-        // defaults (no race/build data in blueprints yet): empty race,
-        // level 1, neutral gender.
+        // Blueprint level/HP; race/build data still unseeded (empty race,
+        // neutral gender).
         Actor {
             race: String::new(),
-            level: 1,
+            level: npc.level,
             gender: Gender::Neutral,
         },
+        grim::Health::full(npc.health),
+        grim::Posture::Standing,
         GrimName(npc.name.clone()),
         Description(npc.description.clone()),
         Keywords(npc.keywords.clone()),
@@ -485,13 +501,14 @@ mod tests {
         );
         // Cross-area exits are covered in `seed_wires_exits_across_areas`.
 
-        // Both mobs are present: Grimmok in Haven, the bear in Whisperwood.
+        // Mobs present: Grimmok in Haven, four wolves + the bear in
+        // Whisperwood.
         let creatures = app
             .world_mut()
             .query::<&Creature>()
             .iter(app.world())
             .count();
-        assert_eq!(creatures, 2);
+        assert_eq!(creatures, 6);
 
         // Grimmok spawned with both greeting triggers compiled.
         let mut scripted = app.world_mut().query::<&ScriptTriggers>();

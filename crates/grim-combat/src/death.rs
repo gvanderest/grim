@@ -172,6 +172,7 @@ fn fill_corpse(
             Corpse {
                 timer: CORPSE_TIMER,
             },
+            Object,
             grim_object::Container,
             grim_object::OneWay,
             GrimName(format!("corpse of {victim_name}")),

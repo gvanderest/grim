@@ -4,7 +4,9 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
-use grim_actor::{Actor, Character, InRoom, Linkdead, OutputHistory, Player, StoredCharacter};
+use grim_actor::{
+    Actor, Character, Health, InRoom, Linkdead, OutputHistory, Player, Posture, StoredCharacter,
+};
 use grim_core::components::{Account, Client, ClientState, Description, Name as GrimName};
 use grim_core::events::LinkdeadAnnounce;
 use grim_core::GrimId;
@@ -260,6 +262,8 @@ fn spawn_from_disk(
             name,
             actor,
             character,
+            Health::pc(),
+            Posture::Standing,
             Description(vec![tr!("character.default_description")]),
             Player { connection: conn },
             ConnectedAt(Utc::now()),

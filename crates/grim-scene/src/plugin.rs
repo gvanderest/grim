@@ -14,6 +14,7 @@ use grim_core::events::{LoginAnnounce, LogoutAnnounce};
 use grim_networking::{ConnectionOutput, ConnectionResumed, DisconnectRequest};
 use grim_world::{ClassRegistry, RaceRegistry};
 
+use crate::combat_output::{format_combat_aftermath, format_combat_strikes};
 use crate::command::process_command_queue;
 use crate::idle::{check_idle, touch_sessions_on_input, IdleConfig};
 use crate::input::handle_ingame_input;
@@ -100,6 +101,10 @@ impl Plugin for ScenePlugin {
             .add_message::<RecallEvent>()
             .add_message::<ItemEvent>()
             .add_message::<TransferEvent>()
+            .add_message::<grim_combat::Damaged>()
+            .add_message::<grim_combat::Died>()
+            .add_message::<grim_combat::FightStart>()
+            .add_message::<grim_combat::Fled>()
             .add_message::<InfoMessage>()
             .add_message::<LoginAnnounce>()
             .add_message::<LogoutAnnounce>()
@@ -125,6 +130,8 @@ impl Plugin for ScenePlugin {
                     // The pack block belongs below the description `format_output`
                     // just wrote for the same `LookEntity`.
                     format_look_pack.after(format_output),
+                    format_combat_strikes,
+                    format_combat_aftermath,
                     format_server_broadcast,
                     format_recall,
                     capture_output,

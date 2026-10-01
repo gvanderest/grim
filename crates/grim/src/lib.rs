@@ -16,13 +16,17 @@ pub use grim_core::*;
 // stay stable downstream.
 pub mod prelude;
 pub use grim_actor::{
-    Actor, Character, Creature, InRoom, Linkdead, OutputHistory, Player, Role, StoredCharacter,
-    StoredObject,
+    Actor, Character, CombatSlow, Creature, Engaged, Health, InRoom, Linkdead, OutputHistory,
+    Player, Posture, Role, StoredCharacter, StoredObject,
 };
 pub use grim_auth::{AuthPlugin, ReservedNamePrefixes};
 pub use grim_channel::LastWhisperFrom;
+pub use grim_combat::{
+    AbilityDef, AbilityKind, AbilityRegistry, AbilityTarget, Combat, CombatPlugin, CombatRng,
+    DamageKind, Damaged, Died, FightStart, Fled,
+};
 pub use grim_config::{ConfigDef, ConfigRegistry, Scope as ConfigScope};
-pub use grim_object::{CarriedBy, Object, ObjectPlugin};
+pub use grim_object::{CarriedBy, Container, Object, ObjectPlugin, OneWay};
 pub use grim_scene::{ConnectedAt, IdleConfig};
 pub use grim_script::{
     compile, CompiledTrigger, ScriptPlugin, ScriptTriggers, TriggerDef, TriggerKind,
