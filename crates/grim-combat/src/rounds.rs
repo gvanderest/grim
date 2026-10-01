@@ -66,6 +66,12 @@ pub fn tick_rounds(
             if world.get::<Health>(victim).is_some_and(|h| h.is_dead()) {
                 return;
             }
+            // The victim may have been despawned into a corpse by an earlier
+            // pair this same flush: a missing Health row reads alive, so
+            // guard the entity itself too — never strike the gone.
+            if world.get_entity(victim).is_err() || world.get_entity(attacker).is_err() {
+                return;
+            }
             // Attacking re-asserts mutual engagement (covers joiners).
             ensure_engaged(world, attacker, victim, room);
             let attacker_name = world

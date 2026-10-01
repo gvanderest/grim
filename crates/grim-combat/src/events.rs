@@ -14,9 +14,10 @@ pub enum DamageKind {
 }
 
 /// One auto-attack (or kick) resolved against a victim. `hit == false` means a
-/// clean miss (`amount` is then 0). `damage_noun`/`target_noun` render the
-/// blow: the attacker's unarmed noun (players: `punch`) against the victim's
-/// noun (creatures: per-blueprint, default `bite`).
+/// clean miss (`amount` is then 0). `damage_noun` is the attacker's verb
+/// (players: `punch`; creatures: per-blueprint, default `bite`; kicks always
+/// `kick`). The victim renders by name — its own noun never appears in
+/// someone else's blow.
 #[derive(Message, Debug, Clone)]
 pub struct Damaged {
     pub attacker: Entity,
@@ -27,7 +28,6 @@ pub struct Damaged {
     pub hit: bool,
     pub kind: DamageKind,
     pub damage_noun: String,
-    pub target_noun: String,
 }
 
 /// A being died. `xp`/`coin` are the awards already banked on the killer's

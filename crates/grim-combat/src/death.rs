@@ -221,7 +221,7 @@ fn fill_corpse(
                     text: tr!(
                         "combat.xp_gain",
                         total = xp_text.as_str(),
-                        coin = coin_text.as_str()
+                        purse = coin_text.as_str()
                     ),
                 });
         }

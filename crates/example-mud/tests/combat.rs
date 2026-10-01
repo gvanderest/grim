@@ -96,8 +96,37 @@ fn flee_refused_outside_combat() {
     mud.send(alice, "flee").assert_contains("fighting");
 }
 
-/// Blows render "Your <verb> hits the <target>! (N)": players punch,
-/// wolves bite.
+/// No blow lands after death: a victim slain mid-flush takes no further
+/// strikes from the same round's queued pairs.
+#[test]
+fn no_strike_after_death() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    walk_to_edge(&mut mud, alice);
+    let _ = mud.send(alice, "kill wolf");
+    // Fight to the death; then assert no Damaged line names the corpse.
+    // The slain line and any same-flush extra blow share the pump — collect
+    // several pumps and check ordering: after the first "slain", no later
+    // "hits A Grey Wolf" may appear.
+    let mut transcript = String::new();
+    for _ in 0..40 {
+        let out = mud.send(alice, "kick");
+        transcript.push_str(out.text());
+        transcript.push_str(mud.recv(alice).text());
+        if transcript.contains("slain") {
+            break;
+        }
+    }
+    assert!(transcript.contains("slain"), "wolf should die");
+    let slain_at = transcript.find("slain").unwrap();
+    let after = &transcript[slain_at..];
+    assert!(
+        !after.contains("hits A Grey Wolf"),
+        "no strikes after death, got:\n{after}"
+    );
+}
+
+/// Blows render "Your <verb> hits <victim>! (N)": players punch by name.
 #[test]
 fn damage_nouns_render_per_side() {
     let mut mud = Mud::new();
@@ -106,7 +135,7 @@ fn damage_nouns_render_per_side() {
     let out = mud.send(alice, "kill wolf");
     let text = out.text();
     assert!(
-        text.contains("Your punch hits the bite!"),
+        text.contains("Your punch hits A Grey Wolf!"),
         "PC punch line, got:\n{text}"
     );
 }

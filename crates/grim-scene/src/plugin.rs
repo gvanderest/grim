@@ -130,8 +130,8 @@ impl Plugin for ScenePlugin {
                     // The pack block belongs below the description `format_output`
                     // just wrote for the same `LookEntity`.
                     format_look_pack.after(format_output),
-                    format_combat_strikes,
                     format_combat_aftermath,
+                    format_combat_strikes,
                     format_server_broadcast,
                     format_recall,
                     capture_output,

@@ -142,13 +142,11 @@ pub fn strike_once(
         }
     }
     let died = world.get::<Health>(victim).is_some_and(|h| h.is_dead());
-    // Damage nouns: the attacker's unarmed noun against the victim's. Kicks
-    // are just blows whose verb is `kick`, whoever throws them.
+    // The blow's verb is the attacker's noun (kicks always `kick`).
     let damage_noun = match kind {
         DamageKind::Kick => "kick".to_string(),
         DamageKind::Strike => unarmed_noun(world, attacker),
     };
-    let target_noun = unarmed_noun(world, victim);
     world
         .resource_mut::<Messages<crate::events::Damaged>>()
         .write(crate::events::Damaged {
@@ -160,7 +158,6 @@ pub fn strike_once(
             hit,
             kind,
             damage_noun,
-            target_noun,
         });
     died
 }
@@ -202,6 +199,10 @@ pub fn handle_kill(
         let room = actor_room.room;
         let attacker_name = actor_name.0.clone();
         commands.queue(move |world: &mut World| {
+            // Fire-time liveness: the attacker may have died since dispatch.
+            if world.get::<Health>(actor).is_some_and(|h| h.is_dead()) {
+                return;
+            }
             let Some(victim) = find_victim(world, actor, room, &target_text) else {
                 world
                     .resource_mut::<Messages<InfoMessage>>()

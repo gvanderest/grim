@@ -69,9 +69,8 @@ pub(crate) fn format_combat_strikes(
             )
         };
         let total = ev.amount.to_string();
-        // Actor: "Your punch hits the bite! (4)". Victim: "Your bite is hit
-        // by Alice! (4)". Room: same shape as the actor line (name is the
-        // attacker's for attribution; misses carry no nouns).
+        // Actor sees their blow by verb + victim name; the victim sees the
+        // attacker by name; the room sees both names.
         let conn = find_conn(ev.attacker, &room_occupants);
         outputs.write(ConnectionOutput {
             prepend_newline: true,
@@ -80,9 +79,8 @@ pub(crate) fn format_combat_strikes(
                 tr!(
                     first_key,
                     verb = ev.damage_noun.as_str(),
-                    target = ev.target_noun.as_str(),
-                    total = total.as_str(),
-                    name = ev.attacker_name.as_str()
+                    target = ev.victim_name.as_str(),
+                    total = total.as_str()
                 ),
             )
         });
@@ -94,10 +92,9 @@ pub(crate) fn format_combat_strikes(
                     victim_conn,
                     tr!(
                         target_key,
-                        verb = ev.target_noun.as_str(),
+                        verb = ev.damage_noun.as_str(),
                         total = total.as_str(),
-                        name = ev.attacker_name.as_str(),
-                        target = ev.damage_noun.as_str()
+                        name = ev.attacker_name.as_str()
                     ),
                 )
             });
@@ -105,7 +102,7 @@ pub(crate) fn format_combat_strikes(
         let third = tr!(
             third_key,
             verb = ev.damage_noun.as_str(),
-            target = ev.target_noun.as_str(),
+            target = ev.victim_name.as_str(),
             total = total.as_str(),
             name = ev.attacker_name.as_str()
         );

@@ -5,7 +5,7 @@
 //! `CombatSlow`; kick enforces the class grant + 6s ability cooldown.
 
 use bevy::prelude::*;
-use grim_actor::{CombatSlow, Engaged, Posture};
+use grim_actor::{CombatSlow, Engaged, Health, Posture};
 use grim_core::components::Name as GrimName;
 use grim_core::events::{Command, EngineCommand, InfoMessage, LookRoom};
 use grim_text::tr;
@@ -218,6 +218,10 @@ fn kick_now(
     target_text: Option<String>,
 ) {
     commands.queue(move |world: &mut World| {
+        // Fire-time liveness: the kicker may have died since dispatch.
+        if world.get::<Health>(actor).is_some_and(|h| h.is_dead()) {
+            return;
+        }
         // Grant: PCs need kick on their class at their level; creatures
         // never kick.
         let granted = match world.get::<grim_actor::Character>(actor) {
@@ -251,18 +255,20 @@ fn kick_now(
             return;
         }
         // Resolve the victim: explicit target must be engaged, else primary.
+        // A stale primary (dead/despawned since dispatch) falls through to
+        // "no target" instead of striking the corpse.
         let victim = match target_text.as_deref() {
             Some(raw) if !raw.trim().is_empty() => find_victim(world, actor, room, raw),
-            _ => primary,
+            _ => primary.filter(|p| {
+                world.get_entity(*p).is_ok()
+                    && !is_corpse(world, *p)
+                    && !world.get::<Health>(*p).is_some_and(|h| h.is_dead())
+            }),
         };
         let Some(victim) = victim else {
             deny(world, actor, "combat.no_target");
             return;
         };
-        if world.get::<Engaged>(victim).is_none() || is_corpse(world, victim) {
-            deny(world, actor, "combat.no_target");
-            return;
-        }
         if let Some(mut p) = world.get_mut::<Posture>(actor) {
             *p = Posture::Standing;
         }
