@@ -158,3 +158,37 @@ fn corpse_rejects_put() {
     mud.send(alice, "put pelt corpse")
         .assert_contains("can't put");
 }
+
+/// The Old Cave Bear is aggressive: walking into its cavern starts a fight
+/// without typing `kill`.
+#[test]
+fn bear_attacks_on_entry() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    mud.send(alice, "north").assert_contains("Town Square");
+    mud.send(alice, "east").assert_contains("Grimmok's Forge");
+    mud.send(alice, "east").assert_contains("East Road");
+    mud.send(alice, "east").assert_contains("Forest Edge");
+    mud.send(alice, "east").assert_contains("Forest Heart");
+    mud.send(alice, "east").assert_contains("Forest Clearing");
+    let out = mud.send(alice, "south");
+    let text = out.text();
+    assert!(
+        text.contains("attack") || text.contains("hit") || text.contains("miss"),
+        "bear should aggro on entry, got:\n{text}"
+    );
+}
+
+/// Wolves are passive: standing in the forest starts no fight.
+#[test]
+fn wolves_do_not_aggro() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    walk_to_edge(&mut mud, alice);
+    let out = mud.recv(alice);
+    assert!(
+        !out.contains("attacks you"),
+        "wolves should stay passive, got:\n{}",
+        out.text()
+    );
+}

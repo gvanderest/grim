@@ -22,8 +22,8 @@ pub use grim_actor::{
 pub use grim_auth::{AuthPlugin, ReservedNamePrefixes};
 pub use grim_channel::LastWhisperFrom;
 pub use grim_combat::{
-    AbilityDef, AbilityKind, AbilityRegistry, AbilityTarget, Combat, CombatPlugin, CombatRng,
-    DamageKind, Damaged, Died, FightStart, Fled,
+    AbilityDef, AbilityKind, AbilityRegistry, AbilityTarget, Aggressive, Combat, CombatPlugin,
+    CombatRng, DamageKind, Damaged, Died, FightStart, Fled,
 };
 pub use grim_config::{ConfigDef, ConfigRegistry, Scope as ConfigScope};
 pub use grim_object::{CarriedBy, Container, Object, ObjectPlugin, OneWay};

@@ -35,6 +35,7 @@ Being-side state lives in `grim-actor` (`Health`, `Posture`, `Engaged`,
 | `tick_regen` | `Update` | `src/regen.rs` | 3s HP regen (1/2/4 by posture) |
 | `tick_corpses` | `Update` | `src/death.rs` | Corpse timer/empty despawn |
 | `handle_posture` | `Update` | `src/posture.rs` | `sit`/`sleep`/`stand` |
+| `aggro_on_enter` | Observer (`Enter`) | `src/aggro.rs` | Aggressive mobs engage entering PCs with first strike now |
 | `tick_slows` / `clear_slows` | `Update` | `src/posture.rs` | Flee/move delay decay + cleanup |
 | `ensure_posture` | `Update` | `src/posture.rs` | Backfill `Posture` on old beings |
 
@@ -64,6 +65,7 @@ Player-facing verbs and where to find their handlers.
 - Death: mobs → container-corpses (global-table rolls, despawn on empty/120s); PCs → respawn at `StartingRoom`, full heal, XP debt, inventory kept.
 - `Health::pc()` is 100/100; wolves 20 HP; the Old Cave Bear is raid-scale (level 12, 4000 HP).
 - PVP falls out naturally: verbs target any engaged being, not just creatures.
+- Aggression is per-blueprint (`aggressive: bool`, default false); `Enter`-fact observer, same first-strike shape as `kill`.
 
 ---
 *Format: [`docs/README.template.md`](../../docs/README.template.md). Improve over time.*

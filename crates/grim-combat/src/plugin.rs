@@ -56,6 +56,7 @@ impl Plugin for CombatPlugin {
                 tick_corpses,
             ),
         );
+        app.add_observer(crate::aggro::aggro_on_enter);
     }
 }
 

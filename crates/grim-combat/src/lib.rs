@@ -13,6 +13,7 @@
 
 pub mod ability;
 pub mod actions;
+pub mod aggro;
 pub mod corpse;
 pub mod death;
 pub mod engage;
@@ -30,6 +31,7 @@ pub use ability::{
     CombatClock,
 };
 pub use actions::FLEE_DELAY;
+pub use aggro::{aggro_on_enter, Aggressive};
 pub use corpse::{contents_in, is_corpse, Corpse, CorpseMarker};
 pub use death::{kill_being, tick_corpses, CORPSE_TIMER};
 pub use engage::{ensure_engaged, prune, strip, Combat};

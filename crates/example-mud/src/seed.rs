@@ -109,6 +109,9 @@ struct NpcBlueprint {
     /// Mob max HP. Defaults to 30 (a few level-1 rounds).
     #[serde(default = "default_mob_health")]
     health: u32,
+    /// Aggressive mobs attack PCs on room entry. Defaults to false (passive).
+    #[serde(default)]
+    aggressive: bool,
     /// Scripted reactions (`{on, script}` with inline Lua). A script that
     /// fails to compile is logged and skipped — the mob still spawns.
     #[serde(default)]
@@ -372,6 +375,9 @@ fn spawn_npc(commands: &mut Commands, area_slug: &str, npc: &NpcBlueprint, room:
         RoomDescription(npc.room_description.clone()),
         InRoom { room },
     ));
+    if npc.aggressive {
+        mob.insert(grim::Aggressive);
+    }
     if !compiled.is_empty() {
         info!(
             "area '{area_slug}' npc '{}': {} script trigger(s) loaded",
