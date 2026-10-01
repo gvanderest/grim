@@ -20,6 +20,7 @@
 
 pub mod actor;
 pub mod character;
+pub mod combat_state;
 pub mod commands;
 pub mod occupants;
 pub mod placement;
@@ -30,6 +31,7 @@ pub mod transition;
 
 pub use actor::{Actor, Creature};
 pub use character::{Character, Role};
+pub use combat_state::{CombatSlow, Engaged, Health, Posture};
 pub use occupants::{beings_in, in_room, is_addressable, Beings};
 pub use placement::InRoom;
 pub use player::{Linkdead, OutputHistory, Player};

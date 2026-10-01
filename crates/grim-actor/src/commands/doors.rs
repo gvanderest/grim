@@ -221,6 +221,8 @@ mod tests {
                     title: None,
                     restrings: HashMap::new(),
                     config: HashMap::new(),
+                    xp: 0,
+                    coin: 0,
                 },
             ))
             .id()

@@ -61,6 +61,11 @@ pub struct Character {
     /// `ConfigRegistry::resolve`); anything else falls back to the default.
     /// Empty for older characters — which therefore run all defaults.
     pub config: HashMap<String, String>,
+    /// Accrued experience. Level stays frozen until Skills lands — XP is
+    /// earned on kills and banked here, never spent.
+    pub xp: u32,
+    /// Carried currency. Awarded on kills; never sits in corpses.
+    pub coin: u32,
 }
 
 impl Character {
@@ -85,6 +90,8 @@ mod tests {
             title: None,
             restrings: HashMap::new(),
             config: HashMap::new(),
+            xp: 0,
+            coin: 0,
         }
     }
 

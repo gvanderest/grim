@@ -437,6 +437,8 @@ mod tests {
                     title: None,
                     restrings: std::collections::HashMap::new(),
                     config: std::collections::HashMap::new(),
+                    xp: 0,
+                    coin: 0,
                 },
             ))
             .id()
@@ -895,6 +897,8 @@ mod tests {
                         title: None,
                         restrings: std::collections::HashMap::new(),
                         config: std::collections::HashMap::new(),
+                        xp: 0,
+                        coin: 0,
                     },
                 ))
                 .id();
