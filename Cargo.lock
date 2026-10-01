@@ -971,6 +971,7 @@ dependencies = [
  "grim-actor",
  "grim-auth",
  "grim-channel",
+ "grim-combat",
  "grim-command",
  "grim-command-events",
  "grim-config",
@@ -1040,6 +1041,22 @@ dependencies = [
 [[package]]
 name = "grim-color"
 version = "0.1.0"
+
+[[package]]
+name = "grim-combat"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "chrono",
+ "grim-actor",
+ "grim-config",
+ "grim-core",
+ "grim-networking",
+ "grim-object",
+ "grim-target",
+ "grim-text",
+ "grim-world",
+]
 
 [[package]]
 name = "grim-command"
@@ -1138,6 +1155,7 @@ dependencies = [
  "grim-actor",
  "grim-channel",
  "grim-color",
+ "grim-combat",
  "grim-command",
  "grim-config",
  "grim-core",

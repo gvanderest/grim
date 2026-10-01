@@ -17,6 +17,7 @@ grim-world = { path = "../grim-world" }
 # Beings (Character/Player/InRoom/Linkdead/OutputHistory) the session reads.
 grim-actor = { path = "../grim-actor" }
 grim-channel = { path = "../grim-channel" }
+grim-combat = { path = "../grim-combat" }
 grim-object = { path = "../grim-object" }
 # Player settings the look minimap resolves (`minimap` on/off).
 grim-config = { path = "../grim-config" }

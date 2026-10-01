@@ -44,7 +44,7 @@ Wire messages (`ConnectionEstablished`, `ConnectionInput`, `ConnectionClosed`, `
 - Drain alerts (`src/drain.rs`): connects/closes/resumes report `Logins` with the peer address; guard trips and shed transitions report `Security`. The read task stays Bevy-free — trips surface as `Disconnected { reason }`.
 - Bevy's schedule is synchronous and tokio owns its threads, so the two are joined by a channel seam (`NetworkBridge`), not by running async TCP on Bevy's executor. See `docs/ARCHITECTURE.md` §5.1.
 - IAC (`src/iac.rs`): minimal handshake (`IAC WILL ECHO`, `IAC WILL SUPPRESS_GO_AHEAD`) on fresh accept; `WILL_ECHO` / `WONT_ECHO` toggle password masking; `strip_iac` removes inbound `0xFF cmd cmd` sequences. Re-adopted copyover sockets skip the handshake.
-- Rendering (`src/render.rs`): prepend a newline for unsolicited events, append the in-game `> ` prompt (`<AFK> ` while the session's `Client.afk` is set), convert colour codes to ANSI (via `grim-color`), translate `\n` → `\r\n`.
+- Rendering (`src/render.rs`): prepend a newline for unsolicited events, append the in-game prompt (`<AFK> ` while the session's `Client.afk` is set; else live status `{hp}/{max} hp, {coin} coin > ` when the session character carries `Health`, else `> `), convert colour codes to ANSI (via `grim-color`), translate `\n` → `\r\n`.
 - Copyover / hot restart (`src/copyover.rs`, `src/server.rs`): `SIGUSR2` — or an admin's in-game `copyover [seconds]` countdown expiring into `CopyoverDue` — hands the live listener + in-game client sockets to a freshly-spawned successor over a unix socket (`SCM_RIGHTS`, via `sendfd`), waits for the ack, then exits. The `GRIM_COPYOVER_SOCK` env var tells a successor to adopt fds instead of binding fresh. See `docs/DEPLOY.md`.
 
 ---

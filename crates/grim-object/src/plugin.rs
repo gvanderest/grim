@@ -6,9 +6,10 @@
 use bevy::prelude::*;
 use grim_core::events::{ItemEvent, TransferEvent};
 
-use crate::commands::{get, give, inventory, steal};
+use crate::commands::{container, get, give, inventory, steal};
 
-/// Registers the object verbs: `get`, `drop`, `inventory`, `give`, `steal`.
+/// Registers the object verbs: `get`, `drop`, `inventory`, `give`, `steal`,
+/// and the container verbs (`look in`, `get from`, `put in`).
 pub struct ObjectPlugin;
 
 impl Plugin for ObjectPlugin {
@@ -19,6 +20,7 @@ impl Plugin for ObjectPlugin {
         give::register(app);
         inventory::register(app);
         steal::register(app);
+        container::register(app);
     }
 }
 

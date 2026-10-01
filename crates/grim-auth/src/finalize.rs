@@ -12,7 +12,7 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
-use grim_actor::{InRoom, Player, StoredCharacter};
+use grim_actor::{Health, InRoom, Player, Posture, StoredCharacter};
 use grim_core::components::{Account, Client, ClientState, Description, Gender};
 use grim_core::GrimId;
 use grim_networking::ConnectionOutput;
@@ -176,6 +176,8 @@ pub(crate) fn finalize_character(
         title: None,
         restrings: std::collections::HashMap::new(),
         config: std::collections::HashMap::new(),
+        xp: 0,
+        coin: 0,
         inventory: Vec::new(),
     };
     // Save character to disk immediately.
@@ -193,6 +195,8 @@ pub(crate) fn finalize_character(
             char_name,
             actor,
             character,
+            Health::pc(),
+            Posture::Standing,
             Description(vec![tr!("character.default_description")]),
             Player { connection: conn },
             ConnectedAt(Utc::now()),

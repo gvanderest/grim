@@ -28,7 +28,11 @@ creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the
 |---|---|---|
 | `Actor` | `src/actor.rs` | Shared "alive thing" base carried by every being (PC + creature): `race`, `level`, `gender`. Movement/perception/WHO read build data here. |
 | `Creature` | `src/actor.rs` | Marks a being as a non-player mob (replaces the former `grim_world::Npc`). |
-| `Character` | `src/character.rs` | PC-only being belonging to an account; carries `id`, `account_id`, `created_at`, roles, `class`, `title`, `restrings`, `config` (per-character setting choices, resolved via `grim-config`), `last_room`. No `name`/`race`/`level`/`gender` (→ `Name`/`Actor`). |
+| `Character` | `src/character.rs` | PC-only being belonging to an account; carries `id`, `account_id`, `created_at`, roles, `class`, `title`, `restrings`, `config` (per-character setting choices, resolved via `grim-config`), `xp`, `coin`, `last_room`. No `name`/`race`/`level`/`gender` (→ `Name`/`Actor`). |
+| `Health` | `src/combat_state.rs` | Consumable hit points (`current`/`max`); PCs run 100/100. |
+| `Posture` | `src/combat_state.rs` | Standing/Sitting/Sleeping; scales HP regen only. |
+| `Engaged` | `src/combat_state.rs` | Ordered fight target list (index 0 = primary). |
+| `CombatSlow` | `src/combat_state.rs` | Flee/move reuse delay, in seconds. |
 | `Player` | `src/player.rs` | Present **only while connected**; links to the live `Connection`. Absence (with `Character`) = linkdead. |
 | `OutputHistory` | `src/player.rs` | Bounded ring buffer of recent output lines, for reconnect. |
 | `Linkdead` | `src/player.rs` | Character is in-world but its player disconnected (no `Player`). |
@@ -41,7 +45,9 @@ creature = `Name + Actor + Creature + InRoom`. The display **name** lives in the
 | `look::handle_look` | `Update` | `src/commands/look.rs` | Reads `Command::Look`; emits `LookRoom` (no target) or `LookEntity`, else a "not here" `InfoMessage`. Targets resolve via `grim-target` (`BEING` spec: best rank, or Nth with `2.goblin`). |
 | `desc::handle_desc` | `Update` | `src/commands/desc.rs` | Reads `Command::Desc`; views/edits the actor's own `Description` paragraphs (`Show` reuses `LookEntity` on self; `Edit` emits `OpenEditor` preloaded). |
 | `desc::handle_editor_done` | `Update` | `src/commands/desc.rs` | Reads `EditorDone` for `EditorKind::Description`; replaces the actor's paragraphs on `@save`, confirms the discard on `@exit`. |
-| `movement::handle_move` | `Update` | `src/commands/movement.rs` | Reads `Command::Move`; validates the exit, then runs the phased pipeline (a closed visible door refuses as `The … is closed.`; a closed *hidden* door refuses as `You can't go that way.`, identical to no exit) in a queued closure: sync vetoable `AttemptWalk`/`AttemptLeave`/`AttemptEnter` triggers, then placement, `MoveEvent`, auto-look. `Leave`/`Enter` facts queue into `PendingFacts` and fire next tick via `fire_pending_facts` (chained). Refreshes `last_room`. Hidden exits are also stripped from the `map` snapshot (secrets never draw). |
+| `move_gate::engaged_gate` | — (helper) | `src/commands/move_gate.rs` | Engaged-move gate: slow check, then 10% roll (3s `CombatSlow` either way); stripped from `movement` for the file cap. |
+| `score::handle_score` | `Update` | `src/commands/score.rs` | Reads `Command::Score`; answers the character sheet (name/title, race/class/level/XP, HP, coin). |
+| `movement::handle_move` | `Update` | `src/commands/movement.rs` | Reads `Command::Move`; engaged movers pass the gate first, then validates the exit, then runs the phased pipeline (a closed visible door refuses as `The … is closed.`; a closed *hidden* door refuses as `You can't go that way.`, identical to no exit) in a queued closure: sync vetoable `AttemptWalk`/`AttemptLeave`/`AttemptEnter` triggers, then placement, `MoveEvent`, auto-look. `Leave`/`Enter` facts queue into `PendingFacts` and fire next tick via `fire_pending_facts` (chained). Refreshes `last_room`. Hidden exits are also stripped from the `map` snapshot (secrets never draw). |
 | `movement::handle_goto` | `Update` | `src/commands/movement.rs` | Admin teleport to a room by address (entity/grim id/slug, `area:room`); fires attempt triggers deferred (denial ignored — admin override) and queues facts the same way. Skipped when source == destination. |
 | `recall::handle_recall` | `Update` | `src/commands/recall.rs` | Player teleport to the Town Square (`haven:square`); like `goto` but ungated, skipping silently with no `InRoom`. Emits `RecallEvent` for the room echoes plus `LookRoom`; no `MoveEvent`. |
 | `quit::handle_quit` | `Update` | `src/commands/quit.rs` | Reads `Command::Quit`; emits `DisconnectRequest` for the player's connection. |

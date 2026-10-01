@@ -37,12 +37,16 @@ Player-facing verbs and where to find their handlers.
 | `inventory` / `inv` | `inventory::handle_inventory` | List carried short names. |
 | `give <item> <who>` | `give::handle_give` | Hand matches to a PC here (creatures refuse; one `TransferEvent` each). Item selectors: `2.coin` (2nd), `3*coin` (three), `all [words]` (all); quoted phrases stay together. |
 | `steal <item> <who>` | `steal::handle_steal` | Take matches from a being here (same selectors on the item side). |
+| `look in <container>` | `container::handle_look_in` | List a container's contents. |
+| `get <item> <container>` | `container::handle_get_from` | Take matches out of a container (one `ItemEvent` each). |
+| `put <item> <container>` | `container::handle_put_in` | Place carried matches into a container; one-way corpses refuse. |
 
 ## Resources & Events
 | Name | Kind (Resource/Message) | File |
 |---|---|---|
 | `ItemEvent` | Message (emitted; `grim-core`) | `src/commands/get.rs` |
 | `TransferEvent` | Message (emitted; `grim-core`) | `src/commands/give.rs`, `src/commands/steal.rs` |
+| `Boxes` / `BoxesOneWay` | Query alias | `src/boxes.rs` | Ground-container shapes; `box_in` lists a room's containers. |
 | `EngineCommand` | Message (consumed) | `src/commands/` |
 | `InfoMessage` | Message (emitted) | `src/commands/` |
 

@@ -20,12 +20,11 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use bevy::log::{error, info, warn};
+use bevy::log::{error, warn};
 use bevy::prelude::*;
 use grim::prelude::{
-    compile, Actor, Area, Cardinal, CompiledTrigger, Creature, Description, Doors, Exits, Gender,
-    GrimId, InRoom, Keywords, Name as GrimName, Object, Room, RoomDescription, ScriptTriggers,
-    StartingRoom, TriggerDef,
+    Area, Cardinal, Description, Doors, Exits, GrimId, InRoom, Keywords, Name as GrimName, Object,
+    Room, RoomDescription, StartingRoom, TriggerDef,
 };
 use serde::Deserialize;
 
@@ -41,9 +40,24 @@ impl Default for AreaBlueprintDir {
     }
 }
 
+/// Default mob level for blueprints that omit it.
+fn default_mob_level() -> u32 {
+    1
+}
+
+/// Default mob HP for blueprints that omit it (a few level-1 rounds).
+fn default_mob_health() -> u32 {
+    30
+}
+
+/// Default unarmed damage noun for blueprints that omit it.
+fn default_attack_noun() -> String {
+    "bite".to_string()
+}
+
 /// An area definition on disk: the area itself plus its rooms.
 #[derive(Deserialize)]
-struct AreaBlueprint {
+pub(crate) struct AreaBlueprint {
     /// Stable Grim ID — the identity that references point at.
     id: GrimId,
     slug: String,
@@ -74,6 +88,10 @@ struct RoomBlueprint {
     /// defaults to closed; the privy omits it.
     #[serde(default)]
     pub(crate) doors: HashMap<String, crate::seed_doors::DoorBlueprint>,
+    /// Safe room: no combat starts or ticks here. Defaults to false; only
+    /// the tavern sets it.
+    #[serde(default)]
+    safe: bool,
     #[serde(default)]
     npcs: Vec<NpcBlueprint>,
     #[serde(default)]
@@ -82,23 +100,34 @@ struct RoomBlueprint {
 
 /// A non-player character placed in a room.
 #[derive(Deserialize)]
-struct NpcBlueprint {
-    name: String,
+pub(crate) struct NpcBlueprint {
+    pub(crate) name: String,
     /// Look paragraphs (`look <name>` shows them newline-joined).
-    description: Vec<String>,
+    pub(crate) description: Vec<String>,
     /// Extra `look <keyword>` words (matched case-insensitively).
     #[serde(default)]
-    keywords: Vec<String>,
+    pub(crate) keywords: Vec<String>,
     /// Room-listing line shown under the room description. Empty falls back
     /// to `"<name> is here."`.
     #[serde(default)]
-    room_description: String,
+    pub(crate) room_description: String,
+    /// Mob level (drives damage, XP/coin awards). Defaults to 1.
+    #[serde(default = "default_mob_level")]
+    pub(crate) level: u32,
+    /// Mob max HP. Defaults to 30 (a few level-1 rounds).
+    #[serde(default = "default_mob_health")]
+    pub(crate) health: u32,
+    /// Aggressive mobs attack PCs on room entry. Defaults to false (passive).
+    #[serde(default)]
+    pub(crate) aggressive: bool,
+    /// Unarmed damage noun (`bite`, `claw`, …). Defaults to `bite`.
+    #[serde(default = "default_attack_noun")]
+    pub(crate) attack_noun: String,
     /// Scripted reactions (`{on, script}` with inline Lua). A script that
     /// fails to compile is logged and skipped — the mob still spawns.
     #[serde(default)]
-    triggers: Vec<TriggerDef>,
+    pub(crate) triggers: Vec<TriggerDef>,
 }
-
 /// A pickable object placed in a room.
 #[derive(Deserialize)]
 struct ObjectBlueprint {
@@ -255,6 +284,9 @@ fn stamp_area_rooms(
                 Exits::default(),
             ))
             .id();
+        if r.safe {
+            commands.entity(entity).insert(grim::SafeRoom);
+        }
         room_ents.insert(r.id, entity);
     }
     Some(area)
@@ -279,7 +311,7 @@ fn wire_area_contents(
         });
 
         for npc in &r.npcs {
-            spawn_npc(commands, &bp.slug, npc, from);
+            crate::seed_npcs::spawn_npc(commands, &bp.slug, npc, from);
         }
         for obj in &r.objects {
             commands.spawn((
@@ -321,55 +353,10 @@ fn resolve_exits(
     resolved
 }
 
-/// Stamp one NPC blueprint into `room`: the being bundle plus its compiled
-/// script triggers. A trigger that fails to compile is logged and skipped —
-/// the mob still spawns, triggerless for that moment.
-fn spawn_npc(commands: &mut Commands, area_slug: &str, npc: &NpcBlueprint, room: Entity) {
-    // Compile each trigger once now: a typo fails loudly at startup (logged,
-    // trigger skipped) instead of on a player's move.
-    let mut compiled = Vec::with_capacity(npc.triggers.len());
-    for def in &npc.triggers {
-        match compile(&def.script) {
-            Ok(bytecode) => compiled.push(CompiledTrigger {
-                on: def.on,
-                bytecode,
-            }),
-            Err(error) => error!(
-                "area '{area_slug}' npc '{}': skipping trigger that does not compile: {error}",
-                npc.name
-            ),
-        }
-    }
-    let mut mob = commands.spawn((
-        Creature,
-        // Seeded mobs carry the shared `Actor` base with sensible
-        // defaults (no race/build data in blueprints yet): empty race,
-        // level 1, neutral gender.
-        Actor {
-            race: String::new(),
-            level: 1,
-            gender: Gender::Neutral,
-        },
-        GrimName(npc.name.clone()),
-        Description(npc.description.clone()),
-        Keywords(npc.keywords.clone()),
-        RoomDescription(npc.room_description.clone()),
-        InRoom { room },
-    ));
-    if !compiled.is_empty() {
-        info!(
-            "area '{area_slug}' npc '{}': {} script trigger(s) loaded",
-            npc.name,
-            compiled.len()
-        );
-        mob.insert(ScriptTriggers(compiled));
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use grim::prelude::{CarriedBy, TriggerKind};
+    use grim::prelude::{CarriedBy, Creature, ScriptTriggers, TriggerKind};
 
     /// The repo's committed area blueprints, resolved from this crate's manifest
     /// dir so the test works regardless of the process working directory.
@@ -485,13 +472,14 @@ mod tests {
         );
         // Cross-area exits are covered in `seed_wires_exits_across_areas`.
 
-        // Both mobs are present: Grimmok in Haven, the bear in Whisperwood.
+        // Mobs present: Grimmok in Haven, four wolves + the bear in
+        // Whisperwood.
         let creatures = app
             .world_mut()
             .query::<&Creature>()
             .iter(app.world())
             .count();
-        assert_eq!(creatures, 2);
+        assert_eq!(creatures, 6);
 
         // Grimmok spawned with both greeting triggers compiled.
         let mut scripted = app.world_mut().query::<&ScriptTriggers>();

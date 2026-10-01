@@ -12,6 +12,7 @@ use grim_world::{
     resolve_room_address, room_location, Area, Doors, Exits, Room, RoomLocation, RoomLookup,
 };
 
+use super::move_gate::engaged_gate;
 use crate::character::Character;
 use crate::placement::InRoom;
 use crate::transition::{AttemptEnter, AttemptLeave, AttemptWalk, Enter, Leave};
@@ -127,6 +128,7 @@ fn fire_pending_facts(mut pending: ResMut<PendingFacts>, mut commands: Commands)
 /// `Leave`/`Enter` facts queue into `PendingFacts` and fire next tick (see
 /// `fire_pending_facts`), so their speech lands in a later flush than the
 /// arrival. Also refreshes the character's persisted `last_room` so a
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_move(
     mut engine: MessageReader<EngineCommand>,
     mut commands: Commands,
@@ -134,12 +136,17 @@ pub(crate) fn handle_move(
     exits: Query<&Exits>,
     rooms: Query<&Room>,
     areas: Query<&Area>,
+    engaged: Query<&crate::combat_state::Engaged>,
+    slowed: Query<&crate::combat_state::CombatSlow>,
 ) {
     for cmd in engine.read() {
         let Command::Move { direction } = cmd.command else {
             continue;
         };
         let actor = cmd.client;
+        if !engaged_gate(actor, &mut commands, &engaged, &slowed) {
+            continue;
+        }
         let from = match inroom.get(actor) {
             Ok(ir) => ir.room,
             Err(_) => continue,
@@ -200,6 +207,12 @@ pub(crate) fn handle_move(
                         if let Some(mut ir) = world.get_mut::<InRoom>(actor) {
                             ir.room = to;
                         }
+                        // A successful walk leaves the fight: drop engagement
+                        // here (atomically with placement). The room-side
+                        // `Combat` membership prunes in combat's `prune`.
+                        world
+                            .entity_mut(actor)
+                            .remove::<crate::combat_state::Engaged>();
                         if let Some(loc) = loc {
                             if let Some(mut character) = world.get_mut::<Character>(actor) {
                                 character.last_room = Some(loc);
@@ -295,6 +308,10 @@ pub(crate) fn handle_goto(
                     });
                 }
                 place_actor(actor, to, loc, &mut inroom, &mut characters);
+                // Teleports leave the fight (DESIGN Q10), like walks do.
+                commands
+                    .entity(actor)
+                    .remove::<crate::combat_state::Engaged>();
                 if let Some(from) = from.filter(|from| *from != to) {
                     pending.incoming.push(RoomFact { actor, from, to });
                 }
@@ -437,6 +454,8 @@ mod tests {
                     title: None,
                     restrings: std::collections::HashMap::new(),
                     config: std::collections::HashMap::new(),
+                    xp: 0,
+                    coin: 0,
                 },
             ))
             .id()
@@ -895,6 +914,8 @@ mod tests {
                         title: None,
                         restrings: std::collections::HashMap::new(),
                         config: std::collections::HashMap::new(),
+                        xp: 0,
+                        coin: 0,
                     },
                 ))
                 .id();

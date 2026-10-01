@@ -20,3 +20,14 @@ pub struct Object;
 pub struct CarriedBy {
     pub carrier: Entity,
 }
+
+/// Marker for a container: an entity whose contents are objects carrying
+/// `CarriedBy { carrier: <this entity> }`. Read by `look in` / `get ...` /
+/// `put ...` and by combat corpses (which are one-way containers).
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct Container;
+
+/// One-way container: contents can be taken out but never put in. Corpses
+/// carry this; chests do not.
+#[derive(Component, Debug, Clone, Copy, Default)]
+pub struct OneWay;

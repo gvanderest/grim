@@ -15,16 +15,20 @@ use grim_target::{parse_target, query, ParseOptions};
 use grim_text::tr;
 
 use crate::ground::{ground_in, Ground};
-use crate::object::{CarriedBy, Object};
+use crate::object::{CarriedBy, Container, Object};
 
 /// `get <target>`: pick up the matching objects in the actor's room.
 /// Ranking mirrors `look` (exact name, exact keyword, shortest-prefix name);
 /// ties fall to the lowest entity id, keeping resolution deterministic.
+/// Containers (corpses, chests) are never pickable — the eighth query param.
+/// The 8-param shape needs the allow (Bevy ceiling is 16; this is 8).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_get(
     mut engine: MessageReader<EngineCommand>,
     mut commands: Commands,
     inroom: Query<&InRoom>,
     objects: Ground,
+    boxes: Query<Entity, With<Container>>,
     names: Query<&GrimName>,
     mut items: MessageWriter<ItemEvent>,
     mut info: MessageWriter<InfoMessage>,
@@ -48,16 +52,21 @@ pub(crate) fn handle_get(
             continue;
         };
         let here = ground_in(actor_room.room, &objects);
+        // Corpses (and any container) are not pickable: `get corpse` must
+        // miss so loot stays lootable through `look in` / `get from` and the
+        // corpse timer keeps running. Listings still show them.
         let found = query(
             &spec,
-            here.into_iter().filter_map(|e| {
-                let (_, _, name, kw) = objects.get(e).ok()?;
-                Some((
-                    e,
-                    name.0.as_str(),
-                    kw.map(|k| k.0.as_slice()).unwrap_or(&[]),
-                ))
-            }),
+            here.into_iter()
+                .filter(|e| boxes.get(*e).is_err())
+                .filter_map(|e| {
+                    let (_, _, name, kw) = objects.get(e).ok()?;
+                    Some((
+                        e,
+                        name.0.as_str(),
+                        kw.map(|k| k.0.as_slice()).unwrap_or(&[]),
+                    ))
+                }),
         );
         if found.is_empty() {
             info.write(InfoMessage {

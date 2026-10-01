@@ -46,6 +46,9 @@ pub struct ClassDef {
     pub tier: u8,
     /// The tier-2 slug this class rerolls into, or `None` for a tier-2 class.
     pub evolves_to: Option<String>,
+    /// Ability grants: `(ability slug, granted level)` pairs. Combat checks
+    /// membership at use time, so an author grants by editing data, never code.
+    pub skills: Vec<(String, u32)>,
 }
 
 /// The set of playable races, in author-defined display order. Insert a custom
@@ -106,6 +109,7 @@ fn class(
     tier: u8,
     evolves_to: Option<&str>,
     description: &str,
+    skills: &[(&str, u32)],
 ) -> ClassDef {
     ClassDef {
         slug: slug.into(),
@@ -114,6 +118,7 @@ fn class(
         description: description.into(),
         tier,
         evolves_to: evolves_to.map(Into::into),
+        skills: skills.iter().map(|(s, l)| ((*s).into(), *l)).collect(),
     }
 }
 
@@ -177,6 +182,7 @@ impl Default for ClassRegistry {
                 1,
                 Some("champion"),
                 "A master of weapons and armor, versatile in any battle.",
+                &[("kick", 1)],
             ),
             class(
                 "mage",
@@ -185,6 +191,7 @@ impl Default for ClassRegistry {
                 1,
                 Some("archmage"),
                 "A scholar of arcane magic wielding spells from a spellbook.",
+                &[("kick", 1)],
             ),
             class(
                 "cleric",
@@ -193,6 +200,7 @@ impl Default for ClassRegistry {
                 1,
                 Some("templar"),
                 "A divine caster who heals allies and smites foes.",
+                &[("kick", 1)],
             ),
             class(
                 "thief",
@@ -201,6 +209,7 @@ impl Default for ClassRegistry {
                 1,
                 Some("assassin"),
                 "A stealthy skirmisher who strikes from the shadows.",
+                &[("kick", 1)],
             ),
             class(
                 "ranger",
@@ -209,6 +218,7 @@ impl Default for ClassRegistry {
                 1,
                 Some("warden"),
                 "A hunter and tracker at home in the wilds, deadly at range.",
+                &[("kick", 1)],
             ),
             // ── Tier 2 — reroll targets, NOT creatable ───────────────
             class(
@@ -218,6 +228,7 @@ impl Default for ClassRegistry {
                 2,
                 None,
                 "A peerless warrior whose presence turns the tide of battle.",
+                &[],
             ),
             class(
                 "archmage",
@@ -226,6 +237,7 @@ impl Default for ClassRegistry {
                 2,
                 None,
                 "A master of the arcane who bends raw magic to their will.",
+                &[],
             ),
             class(
                 "templar",
@@ -234,6 +246,7 @@ impl Default for ClassRegistry {
                 2,
                 None,
                 "A holy warrior channeling divine power into blade and blessing.",
+                &[],
             ),
             class(
                 "assassin",
@@ -242,6 +255,7 @@ impl Default for ClassRegistry {
                 2,
                 None,
                 "A silent killer who ends fights before they begin.",
+                &[],
             ),
             class(
                 "warden",
@@ -250,6 +264,7 @@ impl Default for ClassRegistry {
                 2,
                 None,
                 "A guardian of the wilds, one with beast and terrain.",
+                &[],
             ),
         ])
     }

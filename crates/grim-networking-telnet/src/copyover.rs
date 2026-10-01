@@ -383,6 +383,8 @@ mod tests {
                     title: None,
                     restrings: std::collections::HashMap::new(),
                     config: std::collections::HashMap::new(),
+                    xp: 0,
+                    coin: 0,
                 },
                 Player {
                     connection: conn_new,
@@ -536,6 +538,8 @@ mod tests {
                     title: None,
                     restrings: std::collections::HashMap::new(),
                     config: std::collections::HashMap::new(),
+                    xp: 0,
+                    coin: 0,
                 },
                 Player { connection: conn },
             ))

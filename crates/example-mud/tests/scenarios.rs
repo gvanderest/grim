@@ -278,10 +278,18 @@ fn can_walk_from_tavern_to_bear_cavern() {
     mud.send(alice, "east").assert_contains("Forest Edge");
     mud.send(alice, "east").assert_contains("Forest Heart");
     mud.send(alice, "east").assert_contains("Forest Clearing");
+    // The bear is aggressive: entering the cavern starts a fight (the
+    // arrival text shares the pump with the aggro strike). The walk-back
+    // proves the link wires — it may fail the 10% engaged roll, so accept
+    // either the clearing or the combat delay.
     mud.send(alice, "south").assert_contains("Bear Cavern");
     mud.send(alice, "look").assert_contains("bear");
-    // And the way back is wired too.
-    mud.send(alice, "north").assert_contains("Forest Clearing");
+    let back = mud.send(alice, "north");
+    assert!(
+        back.contains("Forest Clearing") || back.contains("can't move"),
+        "way back wires (or engaged delay), got:\n{}",
+        back.text()
+    );
 }
 
 #[test]
@@ -929,7 +937,10 @@ fn look_staples_minimap_left_of_room_text() {
     // `@` centered on the looker's row, 9-wide gutter + two spaces throughout.
     let out = mud.send(alice, "look");
     let lines: Vec<&str> = out.text().lines().collect();
-    assert_eq!(lines[0], format!("    {VL}      {{BThe Rusted Anvil{{x"));
+    assert_eq!(
+        lines[0],
+        format!("    {VL}      {{BThe Rusted Anvil{{x {{W[SAFE]{{x")
+    );
     assert!(
         lines[1].starts_with(&format!(" {RM}{HL}{HL}{RM}{HL}{HL}{RM}{HL}  ")),
         "square row:\n{}",
@@ -972,7 +983,7 @@ fn config_minimap_toggles_look_map_persists_and_rejects() {
     // Look loses the map: title unguttered, no self row anywhere.
     let out = mud.send(alice, "look");
     let lines: Vec<&str> = out.text().lines().collect();
-    assert_eq!(lines[0], "{BThe Rusted Anvil{x");
+    assert_eq!(lines[0], "{BThe Rusted Anvil{x {W[SAFE]{x");
     assert!(
         !lines.iter().any(|l| l.contains(ME)),
         "no minimap rows:\n{}",
@@ -995,7 +1006,10 @@ fn config_minimap_toggles_look_map_persists_and_rejects() {
     let _ = mud.send(again, "1"); // select → MOTD
     mud.send(again, "").assert_contains("Exits:"); // enter the world
     let out = mud.send(again, "look");
-    assert_eq!(out.text().lines().next(), Some("{BThe Rusted Anvil{x"));
+    assert_eq!(
+        out.text().lines().next(),
+        Some("{BThe Rusted Anvil{x {W[SAFE]{x")
+    );
 
     // And back on again through the explicit set.
     mud.send(again, "config minimap on")

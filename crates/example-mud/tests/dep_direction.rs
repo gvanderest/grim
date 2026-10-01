@@ -96,6 +96,9 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // `Object` marker and `format_item_events` renders `ItemEvent`. grim-object
     // does not depend on grim-scene, so no cycle.
     ("grim-scene", "grim-object"),
+    // NOTE (combat #64): the session renders combat facts per-recipient
+    // (`format_combat_events`). grim-combat does not depend on grim-scene.
+    ("grim-scene", "grim-combat"),
     // NOTE (config #119 P3): the look minimap resolves the per-character
     // `minimap` setting. grim-config depends on nothing internal, no cycle.
     ("grim-scene", "grim-config"),
@@ -191,6 +194,19 @@ const ALLOWED_NORMAL: &[Edge] = &[
     ("grim-social", "grim-text"),
     ("grim-social", "grim-target"),
     ("grim-social", "grim-command"),
+    // NOTE (combat #64): grim-combat owns the PVE loop above the beings
+    // (grim-actor), the room topology (grim-world), and corpses-as-containers
+    // (grim-object). Renders through the catalog (grim-text), resolves
+    // targets (grim-target), reads exits (grim-world), and paces rounds off
+    // the shared clock. None of them depends back, so no cycle.
+    ("grim-combat", "grim-core"),
+    ("grim-combat", "grim-actor"),
+    ("grim-combat", "grim-world"),
+    ("grim-combat", "grim-object"),
+    ("grim-combat", "grim-text"),
+    ("grim-combat", "grim-target"),
+    ("grim-combat", "grim-networking"),
+    ("grim-combat", "grim-config"),
     // `grim-persistence` loads/saves accounts + characters (→ god-types) and reacts
     // to connection lifecycle events (→ grim-networking).
     ("grim-persistence", "grim-core"),
@@ -239,6 +255,9 @@ const ALLOWED_NORMAL: &[Edge] = &[
     // NOTE (socials #77): the facade re-exports the social types +
     // SocialPlugin and adds SocialPlugin to the default plugin groups.
     ("grim", "grim-social"),
+    // NOTE (combat #64): the facade re-exports the combat types +
+    // CombatPlugin and adds CombatPlugin to the default plugin groups.
+    ("grim", "grim-combat"),
     // NOTE (typed-event command dispatch): grim-command-events holds semantic
     // intent events (MoveIntent, LookIntent, etc.) that the facade re-exports.
     ("grim", "grim-command-events"),

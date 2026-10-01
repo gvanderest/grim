@@ -8,6 +8,7 @@
 
 mod ban;
 mod channel_output;
+mod combat_output;
 mod command;
 mod countdown;
 mod directions;
@@ -27,6 +28,7 @@ mod resume;
 mod scene_stack;
 mod session;
 mod sockets;
+mod split;
 mod who;
 mod wizlist;
 mod wiznet;

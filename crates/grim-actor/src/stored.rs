@@ -67,6 +67,13 @@ pub struct StoredCharacter {
     /// loading with an empty map (all registry defaults).
     #[serde(default)]
     pub config: HashMap<String, String>,
+    /// Accrued experience. Zero on old JSON; level stays frozen until Skills
+    /// lands, so this is earned-and-banked only.
+    #[serde(default)]
+    pub xp: u32,
+    /// Carried currency. Zero on old JSON.
+    #[serde(default)]
+    pub coin: u32,
     /// Full snapshot of every carried object instance, taken at save and
     /// re-spawned on login. `#[serde(default)]` keeps pre-inventory JSON
     /// loading with an empty pack. Ground objects are never stored here —
@@ -114,6 +121,8 @@ impl StoredCharacter {
             title: self.title,
             restrings: self.restrings,
             config: self.config,
+            xp: self.xp,
+            coin: self.coin,
         };
         (name, actor, character)
     }
@@ -134,6 +143,8 @@ impl StoredCharacter {
             title: character.title.clone(),
             restrings: character.restrings.clone(),
             config: character.config.clone(),
+            xp: character.xp,
+            coin: character.coin,
             // Built from live components, which never carry a pack — saves
             // attach the snapshot afterwards (see `grim-object::persist`).
             inventory: Vec::new(),

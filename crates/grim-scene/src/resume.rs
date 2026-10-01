@@ -5,7 +5,7 @@
 
 use bevy::prelude::*;
 use chrono::Utc;
-use grim_actor::{Character, InRoom, Linkdead, OutputHistory, Player};
+use grim_actor::{Character, Health, InRoom, Linkdead, OutputHistory, Player, Posture};
 use grim_core::components::{Account, Client, ClientState, Description, Name as GrimName};
 use grim_core::events::LookRoom;
 use grim_networking::{
@@ -222,6 +222,8 @@ fn resolve_resumed(
                 name,
                 actor,
                 character,
+                Health::pc(),
+                Posture::Standing,
                 Description(vec![tr!("character.default_description")]),
                 Player { connection: conn },
                 ConnectedAt(Utc::now()),

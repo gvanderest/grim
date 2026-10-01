@@ -198,6 +198,8 @@ mod reconnect {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         };
         let (name, actor, character) = stored.into_components();
@@ -346,6 +348,8 @@ mod reconnect {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         };
         let (name, actor, character) = stored.into_components();
@@ -481,6 +485,8 @@ mod reconnect {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         };
 
@@ -600,6 +606,8 @@ mod reconnect {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         };
 
@@ -708,6 +716,8 @@ mod reconnect {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         };
         write_disk_char(&dir, &ch);
@@ -1043,6 +1053,8 @@ mod login_flow {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         };
         let (name, actor, character) = stored.into_components();
@@ -1655,6 +1667,8 @@ mod character_select {
                 title: None,
                 restrings: std::collections::HashMap::new(),
                 config: std::collections::HashMap::new(),
+                xp: 0,
+                coin: 0,
                 inventory: Vec::new(),
             }
             .into_components();
@@ -1747,6 +1761,8 @@ mod character_select {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         }
         .into_components();
@@ -1822,6 +1838,8 @@ mod character_select {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         }
         .into_components();
@@ -2017,6 +2035,8 @@ mod disk_lifecycle {
                 title: None,
                 restrings: std::collections::HashMap::new(),
                 config: std::collections::HashMap::new(),
+                xp: 0,
+                coin: 0,
                 inventory: Vec::new(),
             },
         );
@@ -2091,6 +2111,8 @@ mod disk_lifecycle {
                 title: None,
                 restrings: std::collections::HashMap::new(),
                 config: std::collections::HashMap::new(),
+                xp: 0,
+                coin: 0,
                 inventory: Vec::new(),
             },
         );
@@ -2179,6 +2201,8 @@ mod disk_lifecycle {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         }
         .into_components();
@@ -2405,6 +2429,8 @@ mod character_creation {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         };
         std::fs::create_dir_all(dir.join("characters")).unwrap();
@@ -2506,6 +2532,8 @@ mod legacy_backfill {
                 title: None,
                 restrings: std::collections::HashMap::new(),
                 config: std::collections::HashMap::new(),
+                xp: 0,
+                coin: 0,
                 inventory: Vec::new(),
             },
         );
@@ -2617,6 +2645,8 @@ mod legacy_backfill {
                 title: None,
                 restrings: std::collections::HashMap::new(),
                 config: std::collections::HashMap::new(),
+                xp: 0,
+                coin: 0,
                 inventory: Vec::new(),
             },
         );
@@ -2669,6 +2699,8 @@ mod legacy_backfill {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         };
         write_disk_char(&dir, &legacy);
@@ -2753,6 +2785,8 @@ mod transition_guard {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         };
         let (name, actor, character) = stored.into_components();
@@ -2949,6 +2983,8 @@ mod bans {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         };
         let char_id = stored.id;
@@ -3037,6 +3073,8 @@ mod bans {
             title: None,
             restrings: std::collections::HashMap::new(),
             config: std::collections::HashMap::new(),
+            xp: 0,
+            coin: 0,
             inventory: Vec::new(),
         };
         let (name, actor, character) = stored.into_components();

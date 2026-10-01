@@ -2,7 +2,7 @@
 > The engine facade: re-exports every subsystem and offers the default plugin group so a MUD author depends on one crate.
 
 **Role:** horizontal (infrastructure)
-**Depends on:** `grim-core`, `grim-text`, `grim-command`, `grim-target`, `grim-command-events`, `grim-networking`, `grim-networking-telnet`, `grim-scene`, `grim-auth`, `grim-world`, `grim-actor`, `grim-channel`, `grim-object`, `grim-persistence`, `grim-script`
+**Depends on:** `grim-core`, `grim-text`, `grim-command`, `grim-target`, `grim-command-events`, `grim-networking`, `grim-networking-telnet`, `grim-scene`, `grim-auth`, `grim-world`, `grim-actor`, `grim-channel`, `grim-combat`, `grim-object`, `grim-persistence`, `grim-script`
 
 ## Components
 
@@ -33,7 +33,7 @@ Player-facing verbs and where to find their handlers.
 
 | Group | File | Purpose |
 |---|---|---|
-| `GrimHeadlessPlugins` | `src/plugin_groups.rs` | Whole engine **except a transport** (networking wiring + world + actor + channel + persistence + scene + auth). What a headless test harness composes. |
+| `GrimHeadlessPlugins` | `src/plugin_groups.rs` | Whole engine **except a transport** (networking wiring + world + actor + channel + combat + persistence + scene + auth). What a headless test harness composes. |
 | `GrimDefaultPlugins` | `src/plugin_groups.rs` | `GrimHeadlessPlugins` plus the telnet transport (`telnet_port`, default 4000). The full stack a MUD author gets for free. |
 
 ## Notes

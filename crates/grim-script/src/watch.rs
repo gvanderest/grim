@@ -308,6 +308,8 @@ mod tests {
                     title: None,
                     restrings: Default::default(),
                     config: Default::default(),
+                    xp: 0,
+                    coin: 0,
                 },
                 GrimName("Root".into()),
                 Player { connection: conn },
@@ -557,6 +559,8 @@ mod tests {
                 title: None,
                 restrings: Default::default(),
                 config: Default::default(),
+                xp: 0,
+                coin: 0,
             },
         ));
         spawned_character(&mut app, Vec::new());

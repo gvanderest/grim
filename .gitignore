@@ -11,3 +11,4 @@ crates/*/data/
 # Agent worktrees and local planning (not committed)
 .claude/
 .planning/
+cmux-gtk/

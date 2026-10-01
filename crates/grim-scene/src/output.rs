@@ -13,7 +13,6 @@ use grim_core::events::{
 use grim_networking::ConnectionOutput;
 use grim_object::Object;
 use grim_text::tr;
-use grim_world::Room;
 
 use crate::channel_output::emit_channel;
 use crate::formatter;
@@ -45,7 +44,7 @@ pub(crate) fn format_output(
     mut reads: OutputReads,
     channel_registry: Res<ChannelRegistry>,
     config_registry: Res<ConfigRegistry>,
-    rooms: Query<(Entity, &Room, &GrimName)>,
+    rooms: crate::params::RoomResolver,
     room_occupants: Occupants,
     room_exits: RoomLinks,
     names: Query<&GrimName>,
@@ -94,7 +93,7 @@ pub(crate) fn format_output(
             &channel_registry,
             &names,
             &room_occupants,
-            &rooms,
+            &rooms.rooms,
             &characters,
             &mut outputs,
         );
@@ -105,13 +104,14 @@ pub(crate) fn format_output(
     for ev in look_room_events.read() {
         emit_look_room(
             ev,
-            &rooms,
+            &rooms.rooms,
             &room_occupants,
             &room_exits,
             &characters,
             &reads.clients,
             &reads.linkdead_chars,
             &config_registry,
+            &rooms.safe,
             &mut outputs,
         );
     }

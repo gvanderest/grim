@@ -12,17 +12,19 @@ pub struct RoomDebugIds<'a> {
     pub slug: &'a str,
 }
 
-/// A room's title line: the name renders `{B…{x` (blue, self-terminated).
-/// Admins additionally see the entity id, grim id, and slug for
-/// building/debugging — plain, after the reset, so the blue never bleeds
-/// into the parenthesized ids: `{BName{x} (entity:… grim:… slug:…)`.
-pub fn room_title(name: &str, debug: Option<RoomDebugIds>) -> String {
+/// A room's title line: the name renders `{B…{x` (blue, self-terminated),
+/// then a white `{W[SAFE]{x` tag when the room is safe. Admins additionally
+/// see the entity id, grim id, and slug for building/debugging — plain,
+/// after the reset (and after the tag), so the blue never bleeds into them:
+/// `{BName{x} {W[SAFE]{x} (entity:… grim:… slug:…)`.
+pub fn room_title(name: &str, safe: bool, debug: Option<RoomDebugIds>) -> String {
+    let tag = if safe { " {W[SAFE]{x" } else { "" };
     match debug {
         Some(d) => format!(
-            "{{B{name}{{x (entity:{} grim:{} slug:{})", // tr-bypass: structural title framing + debug ids, no prose
+            "{{B{name}{{x{tag} (entity:{} grim:{} slug:{})", // tr-bypass: structural title framing + debug ids, no prose
             d.entity, d.grim, d.slug
         ),
-        None => format!("{{B{name}{{x"), // tr-bypass: structural title framing, no prose
+        None => format!("{{B{name}{{x{tag}"), // tr-bypass: structural title framing, no prose
     }
 }
 
@@ -349,13 +351,22 @@ mod tests {
 
     #[test]
     fn room_title_plain_without_debug() {
-        assert_eq!(room_title("Town Square", None), "{BTown Square{x");
+        assert_eq!(room_title("Town Square", false, None), "{BTown Square{x");
+    }
+
+    #[test]
+    fn room_title_shows_safe_tag() {
+        assert_eq!(
+            room_title("The Rusted Anvil", true, None),
+            "{BThe Rusted Anvil{x {W[SAFE]{x"
+        );
     }
 
     #[test]
     fn room_title_shows_ids_for_admin() {
         let got = room_title(
             "Town Square",
+            false,
             Some(RoomDebugIds {
                 entity: 42,
                 grim: "abc-123",
@@ -365,6 +376,23 @@ mod tests {
         assert_eq!(
             got,
             "{BTown Square{x (entity:42 grim:abc-123 slug:town-square)"
+        );
+    }
+
+    #[test]
+    fn room_title_safe_tag_precedes_admin_ids() {
+        let got = room_title(
+            "The Rusted Anvil",
+            true,
+            Some(RoomDebugIds {
+                entity: 7,
+                grim: "g-1",
+                slug: "tavern",
+            }),
+        );
+        assert_eq!(
+            got,
+            "{BThe Rusted Anvil{x {W[SAFE]{x (entity:7 grim:g-1 slug:tavern)"
         );
     }
 

@@ -282,6 +282,8 @@ mod tests {
                     title: None,
                     restrings: Default::default(),
                     config: Default::default(),
+                    xp: 0,
+                    coin: 0,
                 },
                 Actor {
                     race: "human".into(),
@@ -346,6 +348,8 @@ mod tests {
                     title: None,
                     restrings: Default::default(),
                     config: Default::default(),
+                    xp: 0,
+                    coin: 0,
                 },
                 Actor {
                     race: "human".into(),
