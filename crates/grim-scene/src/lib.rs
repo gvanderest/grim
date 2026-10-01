@@ -28,6 +28,7 @@ mod resume;
 mod scene_stack;
 mod session;
 mod sockets;
+mod split;
 mod who;
 mod wizlist;
 mod wiznet;

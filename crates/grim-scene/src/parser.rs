@@ -2,6 +2,8 @@ use bevy::log::warn;
 use grim_command::CommandRegistry;
 use grim_core::events::{Command, DescOp};
 
+use crate::split::split_transfer;
+
 /// Parse a raw input line into a Command using `registry`.
 ///
 /// Prefix matching resolves by priority (see `grim-command`), so single-letter
@@ -58,109 +60,6 @@ fn parse_config(rest: &str) -> Option<Command> {
         key: key.map(str::to_string),
         value: value.map(str::to_string),
     })
-}
-
-/// Split `<item> <target>` for `give`/`steal`. Tokens are shell-like: an
-/// optional `N*`/`N.` selector prefix plus a bare word or a `"quoted phrase"`.
-/// Usually the item is the first token and the being everything after it
-/// (`give "brass lantern" bob`), but an `all`-headed item (`all`, `all sword`,
-/// `all.sword`) is greedy — it runs to the last token so the being stays one
-/// word (`give all sword "Grimmok Ironhand"`, quoted when multi-word). Both
-/// parts required; an unterminated quote is unknown.
-fn split_transfer(rest: &str) -> Option<(String, String)> {
-    let rest = rest.trim();
-    let tokens = split_tokens(rest)?;
-    if tokens.is_empty() {
-        return None;
-    }
-    if is_all_head(&rest[tokens[0].0..tokens[0].1]) {
-        if tokens.len() < 2 {
-            return None;
-        }
-        let (item_end, target_start) = (tokens[tokens.len() - 2].1, tokens[tokens.len() - 1].0);
-        return Some((
-            rest[..item_end].trim().to_string(),
-            rest[target_start..].trim().to_string(),
-        ));
-    }
-    let (first_start, first_end) = tokens[0];
-    let target = rest[first_end..].trim();
-    if target.is_empty() {
-        return None;
-    }
-    Some((rest[first_start..first_end].to_string(), target.to_string()))
-}
-
-/// Byte ranges of shell-like tokens in `rest`: `[N*|N.]?(bare|"quoted")`.
-/// `None` on an unterminated quote.
-fn split_tokens(rest: &str) -> Option<Vec<(usize, usize)>> {
-    let bytes = rest.as_bytes();
-    let mut tokens = Vec::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
-            i += 1;
-        }
-        if i >= bytes.len() {
-            break;
-        }
-        let start = i;
-        // Optional `N*` / `N.` selector prefix stays glued to its token.
-        let mut j = i;
-        while j < bytes.len() && bytes[j].is_ascii_digit() {
-            j += 1;
-        }
-        if j > i && j < bytes.len() && (bytes[j] == b'*' || bytes[j] == b'.') {
-            i = j + 1;
-        }
-        if i < bytes.len() && bytes[i] == b'"' {
-            i += 1;
-            while i < bytes.len() && bytes[i] != b'"' {
-                i += 1;
-            }
-            if i >= bytes.len() {
-                return None;
-            }
-            i += 1;
-            // Text glued to the closing quote (`"sword"bob`) is malformed:
-            // without a delimiter the item/being divide is a guess.
-            if i < bytes.len() && !bytes[i].is_ascii_whitespace() {
-                return None;
-            }
-        } else {
-            while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
-                i += 1;
-            }
-        }
-        tokens.push((start, i));
-    }
-    Some(tokens)
-}
-
-/// Whether a split token heads an `all` item: `all` plus a boundary (end,
-/// `.`, `*`, or `"`) so `alloy` stays a plain word. Case-insensitive.
-fn is_all_head(token: &str) -> bool {
-    // Strip a glued `N*` / `N.` prefix first (`2.all` still heads an all).
-    let mut head = token;
-    if let Some(digits) = head.find(|c: char| !c.is_ascii_digit()) {
-        if digits > 0 {
-            let after = &head[digits..];
-            if let Some(stripped) = after.strip_prefix(|c| c == '*' || c == '.') {
-                head = stripped;
-            }
-        }
-    }
-    let Some(head3) = head.get(..3) else {
-        return false;
-    };
-    if !head3.eq_ignore_ascii_case("all") {
-        return false;
-    }
-    match head.as_bytes().get(3) {
-        None => true,
-        Some(b'.' | b'*' | b'"') => true,
-        Some(_) => false,
-    }
 }
 
 #[allow(clippy::too_many_lines)] // reason: flat command-registration list
@@ -235,6 +134,11 @@ fn build_registry() -> CommandRegistry<Command> {
     r.register("look", |rest| {
         if rest.is_empty() {
             Some(Command::Look { target: None })
+        } else if let Some(inside) = rest.strip_prefix("in ") {
+            let container = inside.trim();
+            (!container.is_empty()).then(|| Command::LookIn {
+                container: container.to_string(),
+            })
         } else {
             Some(Command::Look {
                 target: Some(rest.to_string()),
@@ -327,8 +231,32 @@ fn build_registry() -> CommandRegistry<Command> {
     // still resolves to `gecho` (later registrations win prefix ties).
     r.register("get", |rest| {
         let target = rest.trim();
-        (!target.is_empty()).then(|| Command::Get {
+        if target.is_empty() {
+            return None;
+        }
+        // `get <item> <container>`: the container is the LAST token, the
+        // item everything before it. Plain `get <target>` stays ground
+        // pickup (`all` alone is the ground selector, never a container).
+        if let Some((item, container)) = target.rsplit_once(char::is_whitespace) {
+            let (item, container) = (item.trim(), container.trim());
+            if !item.is_empty() && !container.is_empty() && !item.eq_ignore_ascii_case("all") {
+                return Some(Command::GetFrom {
+                    item: item.to_string(),
+                    container: container.to_string(),
+                });
+            }
+        }
+        Some(Command::Get {
             target: target.to_string(),
+        })
+    });
+    r.register("put", |rest| {
+        let rest = rest.trim();
+        let (item, container) = rest.rsplit_once(char::is_whitespace)?;
+        let (item, container) = (item.trim(), container.trim());
+        (!item.is_empty() && !container.is_empty()).then(|| Command::PutIn {
+            item: item.to_string(),
+            container: container.to_string(),
         })
     });
     r.register("drop", |rest| {
@@ -353,6 +281,58 @@ fn build_registry() -> CommandRegistry<Command> {
         let (item, target) = split_transfer(rest)?;
         Some(Command::Steal { item, target })
     });
+    // Combat verbs (`kill`/`flee`/`switch`/`kick`/`cast` + posture). `kill`
+    // needs a target; `flee`/`sit`/`sleep`/`stand` are bare; `switch` needs a
+    // target; `kick` takes an optional target; `cast` needs the spell slug.
+    r.register("kill", |rest| {
+        let target = rest.trim();
+        (!target.is_empty()).then(|| Command::Kill {
+            target: target.to_string(),
+        })
+    });
+    r.register("flee", |rest| {
+        rest.trim().is_empty().then_some(Command::Flee)
+    });
+    r.register("switch", |rest| {
+        let target = rest.trim();
+        (!target.is_empty()).then(|| Command::Switch {
+            target: target.to_string(),
+        })
+    });
+    r.register("kick", |rest| {
+        let target = rest.trim();
+        Some(Command::Kick {
+            target: (!target.is_empty()).then(|| target.to_string()),
+        })
+    });
+    r.register("cast", |rest| {
+        let rest = rest.trim();
+        let (spell, target) = match rest.split_once(char::is_whitespace) {
+            Some((s, t)) => (
+                s.trim(),
+                (!t.trim().is_empty()).then(|| t.trim().to_string()),
+            ),
+            None => (rest, None),
+        };
+        (!spell.is_empty()).then(|| Command::Cast {
+            spell: spell.to_string(),
+            target,
+        })
+    });
+    r.register("sit", |rest| rest.trim().is_empty().then_some(Command::Sit));
+    r.register("sleep", |rest| {
+        rest.trim().is_empty().then_some(Command::Sleep)
+    });
+    r.register("stand", |rest| {
+        rest.trim().is_empty().then_some(Command::Stand)
+    });
+    // New verbs must not steal older abbreviations: `c` stays `commands`,
+    // `s` stays game verbs (`say`/`sockets`). Sink the newcomers below the
+    // incumbents.
+    r.deprioritize("cast");
+    r.deprioritize("sit");
+    r.deprioritize("sleep");
+    r.deprioritize("stand");
 
     // ── Admin ────────────────────────────────────────────────────
     // Warned-countdown verbs (`shutdown|reboot|copyover`) live in
