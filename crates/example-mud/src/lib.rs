@@ -6,3 +6,4 @@
 
 pub mod seed;
 mod seed_doors;
+pub(crate) mod seed_npcs;

@@ -21,7 +21,10 @@ use crate::state::CombatRng;
 /// 3s reuse delay shared by flee and engaged moves.
 pub const FLEE_DELAY: f32 = 3.0;
 
-/// `flee`: combat-only. Random exit, 25% success. `CombatSlow` applies on the
+/// Flee success chance, in percent.
+pub const FLEE_CHANCE: u32 = 50;
+
+/// `flee`: combat-only. Random exit, 50% success. `CombatSlow` applies on the
 /// attempt either way; success moves + strips engagement.
 pub fn handle_flee(
     mut engine: MessageReader<EngineCommand>,
@@ -57,7 +60,7 @@ pub fn handle_flee(
 }
 
 /// The flee roll itself (queued closure body, factored for the line budget):
-/// slow-check, 3s slow, random exit, 25% success, move + strip on success.
+/// slow-check, 3s slow, random exit, 50% success, move + strip on success.
 fn flee_now(commands: &mut Commands, actor: Entity, room: Entity, name: String) {
     commands.queue(move |world: &mut World| {
         if world
@@ -97,7 +100,7 @@ fn flee_now(commands: &mut Commands, actor: Entity, room: Entity, name: String) 
             .and_then(|e| e.exits.get(&pick).copied());
         let success = {
             let mut rng = world.resource_mut::<CombatRng>();
-            rng.0.chance(25)
+            rng.0.chance(FLEE_CHANCE)
         };
         match (success, dest) {
             (true, Some(to)) => {

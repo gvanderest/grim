@@ -186,8 +186,11 @@ pub enum Command {
     Kill {
         target: String,
     },
-    /// `flee` — combat-only. Attempt to escape through a random exit (25%).
+    /// `flee` — combat-only. Attempt to escape through a random exit (50%).
     Flee,
+    /// `score` — show your character sheet (name/title, race/class/level/XP,
+    /// health, coin). Session-answered where asked, engine-answered in game.
+    Score,
     /// `switch <target>` — reorder your engaged targets; the named one
     /// becomes your primary (index 0). Fail-closed on unknown names.
     Switch {

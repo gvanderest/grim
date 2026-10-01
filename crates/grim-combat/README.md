@@ -30,7 +30,7 @@ Being-side state lives in `grim-actor` (`Health`, `Posture`, `Engaged`,
 | `handle_kill` | `Update` | `src/engage.rs` | Engage + immediate first strike; fail-closed on bad targets |
 | `handle_switch` | `Update` | `src/engage.rs` | Reorder own targets (primary = index 0) |
 | `prune` | `Update` | `src/engage.rs` | Drop stale room memberships; despawn empty fights |
-| `handle_flee` | `Update` | `src/actions.rs` | Combat-only random-exit escape (25%, 3s slow) |
+| `handle_flee` | `Update` | `src/actions.rs` | Combat-only random-exit escape (50%, 3s slow) |
 | `handle_kick` | `Update` | `src/actions.rs` | Class-granted skill, 1.5x strike, 6s cooldown, never initiates |
 | `handle_cast` | `Update` | `src/actions.rs` | Spell path (no spells seeded; unknown-spell reply) |
 | `tick_rounds` | `Update` | `src/rounds.rs` | 5s auto-attack rounds vs primaries |
@@ -46,7 +46,7 @@ Player-facing verbs and where to find their handlers.
 | Command | Handler | Summary |
 |---|---|---|
 | `kill <target>` | `engage::handle_kill` | Engage + first strike now |
-| `flee` | `actions::handle_flee` | Random exit, 25%, 3s slow either way |
+| `flee` | `actions::handle_flee` | Random exit, 50%, 3s slow either way |
 | `switch <target>` | `engage::handle_switch` | Move a mutual target to primary |
 | `kick [<target>]` | `actions::handle_kick` | Combat-only skill, defaults to primary |
 | `cast <spell> [<target>]` | `actions::handle_cast` | Spell ability path |

@@ -199,7 +199,17 @@ pub fn handle_kill(
         let room = actor_room.room;
         let attacker_name = actor_name.0.clone();
         commands.queue(move |world: &mut World| {
-            // Fire-time liveness: the attacker may have died since dispatch.
+            // Safe rooms forbid starting fights. Fire-time liveness: the
+            // attacker may have died since dispatch.
+            if world.get::<grim_world::SafeRoom>(room).is_some() {
+                world
+                    .resource_mut::<Messages<InfoMessage>>()
+                    .write(InfoMessage {
+                        target: actor,
+                        text: tr!("combat.safe_room"),
+                    });
+                return;
+            }
             if world.get::<Health>(actor).is_some_and(|h| h.is_dead()) {
                 return;
             }

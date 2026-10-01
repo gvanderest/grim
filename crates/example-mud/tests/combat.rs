@@ -308,3 +308,29 @@ fn pc_death_respawns_with_debt() {
     // Respawned at the starting room (tavern) — look shows it.
     mud.send(alice, "look").assert_contains("Rusted Anvil");
 }
+
+/// The tavern is safe: `kill` there is refused, and the room title carries
+/// the white [SAFE] tag.
+#[test]
+fn tavern_is_safe_and_tagged() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    // Starting room is the tavern.
+    mud.send(alice, "look").assert_contains("[SAFE]");
+    let bob = create_char(&mut mud, "bob@example.com", "Bob");
+    // Bob starts in the tavern too.
+    mud.send(bob, "look").assert_contains("[SAFE]");
+    mud.send(alice, "kill bob").assert_contains("safe room");
+}
+
+/// `score` shows the character sheet: name/title, race/class/level/XP, HP, coin.
+#[test]
+fn score_shows_character_sheet() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    let out = mud.send(alice, "score");
+    let text = out.text();
+    for needle in ["Alice", "Human", "Warrior", "1", "100/100", "Coin: 0"] {
+        assert!(text.contains(needle), "score shows {needle}, got:\n{text}");
+    }
+}

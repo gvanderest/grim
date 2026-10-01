@@ -34,7 +34,7 @@ pub use grim_script::{
 pub use grim_social::{SocialDef, SocialDir, SocialPerformed, SocialRegistry};
 pub use grim_world::{
     render_map, Area, ClassDef, ClassRegistry, Door, Doors, Exits, MapConfig, RaceDef,
-    RaceRegistry, Room, RoomLocation, StartingRoom,
+    RaceRegistry, Room, RoomLocation, SafeRoom, StartingRoom,
 };
 
 // Transport-agnostic networking primitives (Connection + wire events).

@@ -83,6 +83,7 @@ pub(crate) fn emit_look_room(
     clients: &Query<&Client>,
     linkdead_chars: &Query<&Linkdead>,
     config_registry: &ConfigRegistry,
+    safe: &Query<Entity, With<grim_world::SafeRoom>>,
     outputs: &mut MessageWriter<ConnectionOutput>,
 ) {
     let Ok((_, room, name)) = rooms.get(ev.room) else {
@@ -110,6 +111,7 @@ pub(crate) fn emit_look_room(
     let grim = room.id.to_string();
     let title = formatter::room_title(
         &name.0,
+        safe.contains(ev.room),
         is_admin.then_some(formatter::RoomDebugIds {
             entity: ev.room.to_bits(),
             grim: &grim,

@@ -12,5 +12,6 @@ pub mod move_gate;
 pub mod movement;
 pub mod quit;
 pub mod recall;
+pub mod score;
 pub mod shutdown;
 pub mod title;

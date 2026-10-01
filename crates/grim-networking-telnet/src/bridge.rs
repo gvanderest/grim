@@ -223,6 +223,11 @@ pub(crate) fn send_network_commands(
     mut disconnect: MessageReader<DisconnectRequest>,
     mut connections: Query<&mut Connection>,
     clients: Query<&Client>,
+    status: Query<(
+        &grim_actor::Health,
+        &grim_actor::Character,
+        &grim_actor::Player,
+    )>,
 ) {
     for ev in output.read() {
         if let Ok(mut conn) = connections.get_mut(ev.connection) {
@@ -244,12 +249,26 @@ pub(crate) fn send_network_commands(
                     });
                 }
             }
-            let (is_ingame, is_afk) = clients
-                .iter()
-                .find(|c| c.connection == ev.connection)
+            let client = clients.iter().find(|c| c.connection == ev.connection);
+            let (is_ingame, is_afk) = client
                 .map(|c| (c.state == ClientState::InGame, c.afk))
                 .unwrap_or((false, false));
-            let ready = render::render_output(&ev.text, is_ingame, is_afk, ev.prepend_newline);
+            // Live status prompt: the session's character HP + coin. Beings
+            // without Health (linkdead shells, unseeded mobs) keep `> `.
+            let live = client.and_then(|c| c.character).and_then(|ch| {
+                status
+                    .get(ch)
+                    .ok()
+                    .filter(|(_, _, p)| p.connection == ev.connection)
+                    .map(|(h, c, _)| (h.current, h.max, c.coin))
+            });
+            let ready = render::render_output_with_status(
+                &ev.text,
+                is_ingame,
+                is_afk,
+                ev.prepend_newline,
+                live,
+            );
             let _ = bridge.to_network.try_send(NetworkCommand::Send {
                 conn_id: conn.id,
                 text: ready,

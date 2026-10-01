@@ -326,13 +326,17 @@ fn build_registry() -> CommandRegistry<Command> {
     r.register("stand", |rest| {
         rest.trim().is_empty().then_some(Command::Stand)
     });
+    // `score` — bare only, like `map`/`recall`.
+    r.register("score", |rest| {
+        rest.trim().is_empty().then_some(Command::Score)
+    });
     // New verbs must not steal older abbreviations: `c` stays `commands`,
     // `s` stays game verbs (`say`/`sockets`). Sink the newcomers below the
     // incumbents.
     r.deprioritize("cast");
+    r.deprioritize("score");
     r.deprioritize("sit");
     r.deprioritize("sleep");
-    r.deprioritize("stand");
 
     // ── Admin ────────────────────────────────────────────────────
     // Warned-countdown verbs (`shutdown|reboot|copyover`) live in

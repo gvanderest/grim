@@ -53,6 +53,7 @@ pub(crate) struct SessionRes<'w> {
 pub(crate) struct RoomResolver<'w, 's> {
     pub(crate) rooms: Query<'w, 's, (Entity, &'static Room, &'static GrimName)>,
     pub(crate) areas: Query<'w, 's, &'static Area>,
+    pub(crate) safe: Query<'w, 's, Entity, With<grim_world::SafeRoom>>,
 }
 
 impl RoomResolver<'_, '_> {

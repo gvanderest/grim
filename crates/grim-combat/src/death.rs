@@ -4,7 +4,7 @@
 //! (immediate kill strikes, round ticks, kick/cast kills).
 
 use bevy::prelude::*;
-use grim_actor::{Character, Health, InRoom, Posture};
+use grim_actor::{Character, CombatSlow, Engaged, Health, InRoom, Posture};
 use grim_core::components::{Keywords, Name as GrimName, RoomDescription};
 use grim_core::events::InfoMessage;
 use grim_object::{CarriedBy, Object};
@@ -24,6 +24,16 @@ pub const CORPSE_TIMER: f32 = 120.0;
 /// from the global table (+ killer XP/coin). PC → respawn at the starting
 /// room, full health, inventory kept, XP debt. Emits [`Died`] either way.
 pub fn kill_being(world: &mut World, victim: Entity, killer: Option<Entity>, room: Entity) {
+    // The killer's fight is over too: drop their engagement and any leftover
+    // slow so a spent killer never sits trapped behind `combat.delay` with
+    // no fight left (the reported post-kill trap). Room-side membership
+    // prunes on the next tick.
+    if let Some(k) = killer {
+        if world.get_entity(k).is_ok() {
+            world.entity_mut(k).remove::<Engaged>();
+            world.entity_mut(k).remove::<CombatSlow>();
+        }
+    }
     let victim_name = world
         .get::<GrimName>(victim)
         .map(|n| n.0.clone())

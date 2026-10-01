@@ -56,6 +56,12 @@ pub struct Doors {
     pub doors: HashMap<Cardinal, Door>,
 }
 
+/// Safe room: combat can neither start nor tick here. Seeded per blueprint
+/// (`safe: bool`); the tavern is the only safe room. Free entity extension —
+/// no fields, no migration.
+#[derive(Component, Debug, Default)]
+pub struct SafeRoom;
+
 /// Exits on a room entity: direction → destination room entity.
 #[derive(Component, Debug, Default)]
 pub struct Exits {

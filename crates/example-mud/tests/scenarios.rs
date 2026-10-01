@@ -937,7 +937,10 @@ fn look_staples_minimap_left_of_room_text() {
     // `@` centered on the looker's row, 9-wide gutter + two spaces throughout.
     let out = mud.send(alice, "look");
     let lines: Vec<&str> = out.text().lines().collect();
-    assert_eq!(lines[0], format!("    {VL}      {{BThe Rusted Anvil{{x"));
+    assert_eq!(
+        lines[0],
+        format!("    {VL}      {{BThe Rusted Anvil{{x {{W[SAFE]{{x")
+    );
     assert!(
         lines[1].starts_with(&format!(" {RM}{HL}{HL}{RM}{HL}{HL}{RM}{HL}  ")),
         "square row:\n{}",
@@ -980,7 +983,7 @@ fn config_minimap_toggles_look_map_persists_and_rejects() {
     // Look loses the map: title unguttered, no self row anywhere.
     let out = mud.send(alice, "look");
     let lines: Vec<&str> = out.text().lines().collect();
-    assert_eq!(lines[0], "{BThe Rusted Anvil{x");
+    assert_eq!(lines[0], "{BThe Rusted Anvil{x {W[SAFE]{x");
     assert!(
         !lines.iter().any(|l| l.contains(ME)),
         "no minimap rows:\n{}",
@@ -1003,7 +1006,10 @@ fn config_minimap_toggles_look_map_persists_and_rejects() {
     let _ = mud.send(again, "1"); // select → MOTD
     mud.send(again, "").assert_contains("Exits:"); // enter the world
     let out = mud.send(again, "look");
-    assert_eq!(out.text().lines().next(), Some("{BThe Rusted Anvil{x"));
+    assert_eq!(
+        out.text().lines().next(),
+        Some("{BThe Rusted Anvil{x {W[SAFE]{x")
+    );
 
     // And back on again through the explicit set.
     mud.send(again, "config minimap on")

@@ -30,7 +30,7 @@ pub use ability::{
     class_grants, AbilityCooldowns, AbilityDef, AbilityKind, AbilityRegistry, AbilityTarget,
     CombatClock,
 };
-pub use actions::FLEE_DELAY;
+pub use actions::{FLEE_CHANCE, FLEE_DELAY};
 pub use aggro::{aggro_on_enter, Aggressive};
 pub use corpse::{contents_in, is_corpse, Corpse, CorpseMarker};
 pub use death::{kill_being, tick_corpses, CORPSE_TIMER};

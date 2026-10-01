@@ -12,6 +12,7 @@ use crate::state::RoundTimer;
 
 /// Advance the round clock; on expiry every engaged being auto-attacks its
 /// primary target.
+#[allow(clippy::too_many_arguments)] // reason: safe-room filter is one more query; bundling hides it
 pub fn tick_rounds(
     time: Res<Time>,
     mut timer: ResMut<RoundTimer>,
@@ -19,6 +20,7 @@ pub fn tick_rounds(
     engaged: Query<&Engaged>,
     inroom: Query<&InRoom>,
     health: Query<&Health>,
+    safe: Query<Entity, With<grim_world::SafeRoom>>,
     mut commands: Commands,
 ) {
     timer.acc += time.delta().as_secs_f32() * 1000.0;
@@ -27,8 +29,11 @@ pub fn tick_rounds(
     }
     timer.acc = 0.0;
     // Snapshot the pairs so the queued closures below see a stable list.
+    // Safe rooms host no combat: their fights tick silently (a room flagged
+    // mid-fight goes quiet immediately).
+    let safe_set: std::collections::HashSet<Entity> = safe.iter().collect();
     let mut pairs: Vec<(Entity, Entity, Entity)> = Vec::new();
-    for (room, combat) in combats.iter() {
+    for (room, combat) in combats.iter().filter(|(r, _)| !safe_set.contains(r)) {
         for &member in &combat.members {
             let Ok(list) = engaged.get(member) else {
                 continue;

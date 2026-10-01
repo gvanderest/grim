@@ -27,7 +27,7 @@ This crate *defines* the `Command` enum (the closed set of player verbs, `src/ev
 
 | Command(s) | Handler crate → file |
 |---|---|
-| `look` / `desc` / `move` / `goto` / `quit` / `title` / `shutdown` / `reboot` / `copyover` | `grim-actor` → `src/commands/<name>.rs` (`shutdown.rs` handles all three shutdown verbs) |
+| `look` / `desc` / `move` / `goto` / `quit` / `score` / `title` / `shutdown` / `reboot` / `copyover` | `grim-actor` → `src/commands/<name>.rs` (`shutdown.rs` handles all three shutdown verbs) |
 | `say` / `yell` / `ooc` / `tell` / `reply` / `gecho` | `grim-channel` → `src/channel.rs` |
 | `finger` / `who` / `afk` / `wizlist` / `where` / `sockets` / `commands` / `areas` | `grim-scene` → `src/command.rs` (session-local) |
 | `ban` (`BanOp::List` / `Add` / `Remove` over `BanKind::Ip` / `Account` / `Character`) | `grim-scene` → `src/ban.rs` (engine queue; persists + kicks) |

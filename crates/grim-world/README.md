@@ -81,7 +81,7 @@ Non-component types this crate defines.
   hoisted to the crate root — consumers use
   `grim_world::{Area, Room, Exits, RoomLocation, resolve_room_address, …}`.
 - Also owns the race/class registry content (`RaceRegistry`, `ClassRegistry`)
-  read by `grim-scene`'s creation flow. `ClassDef.skills` carries ability
+  read by `grim-scene`'s creation flow. Safe rooms (`SafeRoom`, seeded by `safe: bool`; the tavern) forbid combat start/ticks and render `{W[SAFE]{x` in the title. `ClassDef.skills` carries ability
   grants (`(slug, level)` pairs); every tier-1 class grants `kick` at 1.
 
 ---

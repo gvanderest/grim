@@ -27,9 +27,13 @@ pub fn aggro_on_enter(
     mut commands: Commands,
     mob_query: AggroMobs,
     beings: Beings,
+    safe: Query<Entity, With<grim_world::SafeRoom>>,
 ) {
     let enter = *trigger.event();
     let (actor, room) = (enter.actor, enter.room);
+    if safe.contains(room) {
+        return;
+    }
     // Only PCs trigger aggression.
     let Ok((_, _, name, _, pc, creature, _, _)) = beings.get(actor) else {
         return;
