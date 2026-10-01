@@ -54,6 +54,15 @@ Parsed by `grim-scene`'s registry (`src/parser.rs`); these verbs are handled **s
 | `drop <target>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/get.rs`) | Drop matches from the pack (same selectors); room sees "<name> drops <short>" per item. |
 | `give <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/give.rs`) | Hand matches to a PC here (creatures refuse); quote-aware split (`give "brass lantern" bob`; `all`-headed items run to the last word). Mover/other/room each see a named line (`format_transfer_events`). |
 | `steal <item> <who>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/steal.rs`) | Take matches from a being here (same split/selectors); same three-way echo. Existence checks only. |
+| `kill <target>` | parser → engine queue (`src/parser.rs`, `grim-combat/src/engage.rs`) | Engage a being here; first strike resolves immediately (`FightStart` + `Damaged`). |
+| `flee` | parser → engine queue (`src/parser.rs`, `grim-combat/src/actions.rs`) | Combat-only escape through a random exit (25%; 3s slow either way). |
+| `switch <target>` | parser → engine queue (`src/parser.rs`, `grim-combat/src/engage.rs`) | Reorder your engaged targets (named becomes primary). |
+| `kick [<target>]` | parser → engine queue (`src/parser.rs`, `grim-combat/src/actions.rs`) | Combat-only class skill (defaults to primary; 1.5x, 6s cooldown; never initiates). |
+| `cast <spell> [<target>]` | parser → engine queue (`src/parser.rs`, `grim-combat/src/actions.rs`) | Spell ability path (no spells seeded yet). |
+| `sit` / `sleep` / `stand` | parser → engine queue (`src/parser.rs`, `grim-combat/src/posture.rs`) | Posture (HP regen ×1/×2/×4). |
+| `look in <container>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/container.rs`) | List a container's contents. |
+| `get <item> <container>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/container.rs`) | Take matches out of a container. |
+| `put <item> <container>` | parser → engine queue (`src/parser.rs`, `grim-object/src/commands/container.rs`) | Place carried matches inside; one-way corpses refuse. |
 | `open <direction>` / `close <direction>` | parser → engine queue (`src/doors.rs`, `grim-actor/src/commands/doors.rs`) | Flip the exit door, both sides; needs a direction (bare is unknown). |
 | `areas` | `handle_ingame` → `format_areas` (`src/who.rs`) | List known areas. |
 | `commands` | `handle_ingame` → `format_commands` (`src/formatter.rs`) | Show the command list. |
