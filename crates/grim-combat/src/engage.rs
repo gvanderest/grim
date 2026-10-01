@@ -279,9 +279,13 @@ pub fn handle_switch(
         });
         match hit {
             Some(named) if list.prioritize(named) => {
+                let shown = names
+                    .get(named)
+                    .map(|(n, _)| n.0.clone())
+                    .unwrap_or_else(|_| target.trim().to_string());
                 info.write(InfoMessage {
                     target: actor,
-                    text: tr!("combat.switch.done"),
+                    text: tr!("combat.switch.done", target = shown.as_str()),
                 });
             }
             _ => {
@@ -300,6 +304,7 @@ pub fn prune(
     combats: Query<(Entity, &Combat)>,
     engaged: Query<&Engaged>,
     inroom: Query<&grim_actor::InRoom>,
+    mut cooldowns: ResMut<crate::ability::AbilityCooldowns>,
 ) {
     for (room, combat) in combats.iter() {
         let live: Vec<Entity> = combat
@@ -316,4 +321,9 @@ pub fn prune(
             }
         }
     }
+    // Cooldowns are keyed by entity: drop rows for despawned beings so the
+    // map cannot grow monotonically across kills and quits.
+    cooldowns
+        .0
+        .retain(|(entity, _), _| engaged.get(*entity).is_ok() || inroom.get(*entity).is_ok());
 }

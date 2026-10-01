@@ -17,6 +17,36 @@ use crate::object::{CarriedBy, Object};
 
 /// Find a container in the actor's room: ground objects carrying
 /// [`Container`], matched by ITEM spec.
+/// Find a container, widening multi-word names: the parser splits the
+/// container as the last token (`get fang corpse of alice` arrives as item
+/// `fang corpse of`, container `alice`), so when the last-token lookup
+/// misses, retry with progressively longer trailing suffixes of the item
+/// words joined onto the container (`alice` → `of alice` → `corpse of
+/// alice`, stopping at the first hit or a single-word item).
+fn find_container_widened(
+    item: &str,
+    container: &str,
+    room: Entity,
+    objects: &Boxes,
+) -> Option<(Entity, Option<String>)> {
+    let mut parts: Vec<&str> = item.split_whitespace().collect();
+    let mut cont = container.to_string();
+    loop {
+        let hit = parse_target(&cont, ParseOptions::ITEM)
+            .and_then(|spec| find_container(&spec, room, objects));
+        if let Some(hit) = hit {
+            let item_rest = parts.join(" ");
+            let item_opt = if item_rest.trim().is_empty() {
+                None
+            } else {
+                Some(item_rest)
+            };
+            return Some((hit, item_opt));
+        }
+        cont = format!("{} {cont}", parts.pop()?);
+    }
+}
+
 fn find_container(spec: &grim_target::TargetSpec, room: Entity, objects: &Boxes) -> Option<Entity> {
     let found = query(
         spec,
@@ -105,17 +135,17 @@ pub(crate) fn handle_get_from(
         else {
             continue;
         };
-        let (Some(cspec), Some(ispec)) = (
-            parse_target(container, ParseOptions::ITEM),
-            parse_target(item, ParseOptions::ITEM),
-        ) else {
+        let Some((holder, item_rest)) =
+            find_container_widened(item, container, actor_room.room, &objects)
+        else {
             info.write(InfoMessage {
                 target: actor,
                 text: tr!("container.get.not_found"),
             });
             continue;
         };
-        let Some(holder) = find_container(&cspec, actor_room.room, &objects) else {
+        let item_text = item_rest.as_deref().unwrap_or(item);
+        let Some(ispec) = parse_target(item_text, ParseOptions::ITEM) else {
             info.write(InfoMessage {
                 target: actor,
                 text: tr!("container.get.not_found"),
@@ -180,30 +210,20 @@ pub(crate) fn handle_put_in(
             continue;
         };
         let _ = actor_name;
-        let (Some(cspec), Some(ispec)) = (
-            parse_target(container, ParseOptions::ITEM),
-            parse_target(item, ParseOptions::ITEM),
-        ) else {
+        let Some((holder, rest)) = find_box_widened(item, container, actor_room.room, &objects)
+        else {
             info.write(InfoMessage {
                 target: actor,
                 text: tr!("container.get.not_found"),
             });
             continue;
         };
-        let found_holder = query(
-            &cspec,
-            objects
-                .iter()
-                .filter(|(_, _, _, ir, _)| ir.room == actor_room.room)
-                .map(|(entity, name, keywords, _, _)| {
-                    (
-                        entity,
-                        name.0.as_str(),
-                        keywords.map(|k| k.0.as_slice()).unwrap_or(&[]),
-                    )
-                }),
-        );
-        let Some(holder) = found_holder.into_iter().next() else {
+        let item_text = if rest.trim().is_empty() {
+            item
+        } else {
+            rest.as_str()
+        };
+        let Some(ispec) = parse_target(item_text, ParseOptions::ITEM) else {
             info.write(InfoMessage {
                 target: actor,
                 text: tr!("container.get.not_found"),
@@ -261,6 +281,40 @@ pub(crate) fn handle_put_in(
                 ),
             });
         }
+    }
+}
+
+/// Widen for the `BoxesOneWay` shape (put path): same trailing-suffix retry
+/// as [`find_container_widened`], over the one-way query. Returns the holder
+/// plus the unconsumed item words.
+fn find_box_widened(
+    item: &str,
+    container: &str,
+    room: Entity,
+    objects: &BoxesOneWay,
+) -> Option<(Entity, String)> {
+    let mut parts: Vec<&str> = item.split_whitespace().collect();
+    let mut cont = container.to_string();
+    loop {
+        if let Some(spec) = parse_target(&cont, ParseOptions::ITEM) {
+            let found_holder = query(
+                &spec,
+                objects
+                    .iter()
+                    .filter(|(_, _, _, ir, _)| ir.room == room)
+                    .map(|(entity, name, keywords, _, _)| {
+                        (
+                            entity,
+                            name.0.as_str(),
+                            keywords.map(|k| k.0.as_slice()).unwrap_or(&[]),
+                        )
+                    }),
+            );
+            if let Some(hit) = found_holder.into_iter().next() {
+                return Some((hit, parts.join(" ")));
+            }
+        }
+        cont = format!("{} {cont}", parts.pop()?);
     }
 }
 

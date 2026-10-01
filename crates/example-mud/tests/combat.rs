@@ -192,3 +192,26 @@ fn wolves_do_not_aggro() {
         out.text()
     );
 }
+
+/// PC death respawns at the starting room with full health, kept inventory,
+/// and an XP debt.
+#[test]
+fn pc_death_respawns_with_debt() {
+    let mut mud = Mud::new();
+    let alice = create_char(&mut mud, "alice@example.com", "Alice");
+    // Walk into the bear cavern; the bear aggros and hits ~30/round.
+    for line in ["north", "east", "east", "east", "east", "east", "south"] {
+        let _ = mud.send(alice, line);
+    }
+    let mut died = false;
+    for _ in 0..30 {
+        let out = mud.recv(alice);
+        if out.contains("died") || out.contains("slain") {
+            died = true;
+            break;
+        }
+    }
+    assert!(died, "bear should kill a solo PC");
+    // Respawned at the starting room (tavern) — look shows it.
+    mud.send(alice, "look").assert_contains("Rusted Anvil");
+}

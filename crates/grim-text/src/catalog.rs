@@ -294,6 +294,8 @@ fn default_string(key: &str) -> String {
         "combat.already_sitting" => "You are already sitting.\n",
         "combat.already_sleeping" => "You are already sleeping.\n",
         "combat.already_standing" => "You are already standing.\n",
+        "corpse.name" => "corpse of %{victim}\n",
+        "corpse.room" => "The corpse of %{victim} lies here.\n",
         "container.look.empty" => "It is empty.\n",
         "container.look.item" => "  %{short}\n",
         "container.get.not_found" => "You don't see that in there.\n",

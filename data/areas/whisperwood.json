@@ -124,7 +124,7 @@
             "old"
           ],
           "room_description": "A massive bear lurks here, guarding the cavern.",
-          "level": 12,
+          "level": 20,
           "health": 4000,
           "aggressive": true
         }

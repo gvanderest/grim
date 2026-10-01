@@ -31,6 +31,10 @@ This crate *defines* the `Command` enum (the closed set of player verbs, `src/ev
 | `say` / `yell` / `ooc` / `tell` / `reply` / `gecho` | `grim-channel` → `src/channel.rs` |
 | `finger` / `who` / `afk` / `wizlist` / `where` / `sockets` / `commands` / `areas` | `grim-scene` → `src/command.rs` (session-local) |
 | `ban` (`BanOp::List` / `Add` / `Remove` over `BanKind::Ip` / `Account` / `Character`) | `grim-scene` → `src/ban.rs` (engine queue; persists + kicks) |
+| `kill` / `switch` | `grim-combat` → `src/engage.rs` (`handle_kill`, `handle_switch`) |
+| `flee` / `kick` / `cast` | `grim-combat` → `src/actions.rs` (`handle_flee`, `handle_kick`, `handle_cast`) |
+| `sit` / `sleep` / `stand` | `grim-combat` → `src/posture.rs` (`handle_posture`) |
+| `look in` (`LookIn`) / `get <item> <container>` (`GetFrom`) / `put <item> <container>` (`PutIn`) | `grim-object` → `src/commands/container.rs` (parsed in `grim-scene` `src/parser.rs`) |
 
 The closed `Command` enum + last-registered-wins registry are documented as defects slated for per-plugin typed dispatch (ARCHITECTURE.md §5.2, §8).
 

@@ -239,7 +239,7 @@ fn build_registry() -> CommandRegistry<Command> {
         // pickup (`all` alone is the ground selector, never a container).
         if let Some((item, container)) = target.rsplit_once(char::is_whitespace) {
             let (item, container) = (item.trim(), container.trim());
-            if !item.is_empty() && !container.is_empty() && !item.eq_ignore_ascii_case("all") {
+            if !item.is_empty() && !container.is_empty() {
                 return Some(Command::GetFrom {
                     item: item.to_string(),
                     container: container.to_string(),

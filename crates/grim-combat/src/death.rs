@@ -175,9 +175,17 @@ fn fill_corpse(
             Object,
             grim_object::Container,
             grim_object::OneWay,
-            GrimName(format!("corpse of {victim_name}")),
+            GrimName(
+                tr!("corpse.name", victim = victim_name)
+                    .trim_end()
+                    .to_string(),
+            ),
             Keywords(keywords),
-            RoomDescription(format!("The corpse of {victim_name} lies here.")),
+            RoomDescription(
+                tr!("corpse.room", victim = victim_name)
+                    .trim_end()
+                    .to_string(),
+            ),
             crate::corpse::CorpseMarker,
             InRoom { room },
         ))

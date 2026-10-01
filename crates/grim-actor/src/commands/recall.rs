@@ -84,6 +84,10 @@ pub(crate) fn handle_recall(
             denied: false,
         });
         place_actor(actor, to, loc, &mut inroom, &mut characters);
+        // Teleports leave the fight (DESIGN Q10), like walks do.
+        commands
+            .entity(actor)
+            .remove::<crate::combat_state::Engaged>();
         pending.incoming.push(RoomFact { actor, from, to });
         // Room echoes render from this (the origin sees the attempt, then
         // the disappearance; the destination a recall-marked arrival).
