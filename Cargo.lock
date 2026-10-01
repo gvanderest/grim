@@ -1042,6 +1042,22 @@ name = "grim-color"
 version = "0.1.0"
 
 [[package]]
+name = "grim-combat"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "chrono",
+ "grim-actor",
+ "grim-config",
+ "grim-core",
+ "grim-networking",
+ "grim-object",
+ "grim-target",
+ "grim-text",
+ "grim-world",
+]
+
+[[package]]
 name = "grim-command"
 version = "0.1.0"
 dependencies = [

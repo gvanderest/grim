@@ -1,0 +1,18 @@
+[package]
+name = "grim-combat"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+grim-core = { path = "../grim-core" }
+grim-actor = { path = "../grim-actor" }
+grim-world = { path = "../grim-world" }
+grim-object = { path = "../grim-object" }
+grim-text = { path = "../grim-text" }
+grim-target = { path = "../grim-target" }
+grim-networking = { path = "../grim-networking" }
+grim-config = { path = "../grim-config" }
+bevy = { workspace = true, default-features = false }
+
+[dev-dependencies]
+chrono = { workspace = true }

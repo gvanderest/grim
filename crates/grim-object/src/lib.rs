@@ -22,5 +22,5 @@ pub mod persist;
 pub mod plugin;
 
 pub use ground::{ground_in, Ground};
-pub use object::{CarriedBy, Object};
+pub use object::{CarriedBy, Container, Object, OneWay};
 pub use plugin::ObjectPlugin;
