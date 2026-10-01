@@ -12,10 +12,10 @@ use grim_world::{
     resolve_room_address, room_location, Area, Doors, Exits, Room, RoomLocation, RoomLookup,
 };
 
+use super::move_gate::engaged_gate;
 use crate::character::Character;
 use crate::placement::InRoom;
 use crate::transition::{AttemptEnter, AttemptLeave, AttemptWalk, Enter, Leave};
-use super::move_gate::engaged_gate;
 
 /// Build a room's persisted [`RoomLocation`] from its `Room` + `Area` records.
 /// `handle_move` reaches this shape via `grim_world::room_location` (which holds
