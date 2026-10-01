@@ -8,6 +8,7 @@ pub mod desc;
 pub mod doors;
 pub mod look;
 pub mod map;
+pub mod move_gate;
 pub mod movement;
 pub mod quit;
 pub mod recall;

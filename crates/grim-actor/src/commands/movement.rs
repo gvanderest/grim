@@ -15,6 +15,7 @@ use grim_world::{
 use crate::character::Character;
 use crate::placement::InRoom;
 use crate::transition::{AttemptEnter, AttemptLeave, AttemptWalk, Enter, Leave};
+use super::move_gate::engaged_gate;
 
 /// Build a room's persisted [`RoomLocation`] from its `Room` + `Area` records.
 /// `handle_move` reaches this shape via `grim_world::room_location` (which holds
@@ -127,50 +128,6 @@ fn fire_pending_facts(mut pending: ResMut<PendingFacts>, mut commands: Commands)
 /// `Leave`/`Enter` facts queue into `PendingFacts` and fire next tick (see
 /// `fire_pending_facts`), so their speech lands in a later flush than the
 /// arrival. Also refreshes the character's persisted `last_room` so a
-/// Engaged-move gate: slowed movers are refused with `combat.delay`, fresh
-/// movers take the 10% roll (slow applies on the attempt either way) and a
-/// failure replies the same. True = walk; false = handled, skip. Bystanders
-/// pass straight through. Factored for the line budget.
-fn engaged_gate(
-    actor: Entity,
-    commands: &mut Commands,
-    engaged: &Query<&crate::combat_state::Engaged>,
-    slowed: &Query<&crate::combat_state::CombatSlow>,
-) -> bool {
-    if engaged.get(actor).is_err() {
-        return true;
-    }
-    if slowed.get(actor).is_ok_and(|s| s.remaining > 0.0) {
-        commands.queue(move |world: &mut World| {
-            world
-                .resource_mut::<Messages<InfoMessage>>()
-                .write(InfoMessage {
-                    target: actor,
-                    text: tr!("combat.delay"),
-                });
-        });
-        return false;
-    }
-    // 10% success, seeded per actor (deterministic enough for a gate; exact
-    // odds are combat's E2E concern).
-    let seed = actor.to_bits().wrapping_add(0x9E3779B97F4A7C15).max(1);
-    let mut rng = grim_core::Xorshift::seed(seed);
-    commands
-        .entity(actor)
-        .insert(crate::combat_state::CombatSlow { remaining: 3.0 });
-    if rng.chance(10) {
-        return true;
-    }
-    commands.queue(move |world: &mut World| {
-        world
-            .resource_mut::<Messages<InfoMessage>>()
-            .write(InfoMessage {
-                target: actor,
-                text: tr!("combat.delay"),
-            });
-    });
-    false
-}
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn handle_move(
     mut engine: MessageReader<EngineCommand>,

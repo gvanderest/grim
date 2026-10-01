@@ -29,6 +29,9 @@ pub struct Combat {
 /// create-or-extend the room's `Combat`.
 pub fn ensure_engaged(world: &mut World, a: Entity, b: Entity, room: Entity) {
     for (being, other) in [(a, b), (b, a)] {
+        if world.get_entity(being).is_err() {
+            continue;
+        }
         if world.get::<Engaged>(being).is_none() {
             world.entity_mut(being).insert(Engaged {
                 targets: vec![other],
@@ -51,9 +54,12 @@ pub fn ensure_engaged(world: &mut World, a: Entity, b: Entity, room: Entity) {
 }
 
 /// Remove `being` from the fight entirely: drop its `Engaged`, pull it from
-/// its room's [`Combat`], despawn the `Combat` when empty.
+/// its room's [`Combat`], despawn the `Combat` when empty. Despawned beings
+/// (the dead) skip the component removal — their row is already gone.
 pub fn strip(world: &mut World, being: Entity) {
-    world.entity_mut(being).remove::<Engaged>();
+    if world.get_entity(being).is_ok() {
+        world.entity_mut(being).remove::<Engaged>();
+    }
     // Find the room holding this member and pull it out.
     let mut rooms: Vec<(Entity, Vec<Entity>)> = Vec::new();
     let mut query = world.query::<(Entity, &Combat)>();
@@ -106,6 +112,12 @@ pub fn strike_once(
     kind: DamageKind,
     damage_mult: f32,
 ) -> bool {
+    // Queued closures fire a tick after the snapshot: either side may have
+    // despawned (death) since. A blow against the gone is a no-op, never a
+    // panic.
+    if world.get_entity(attacker).is_err() || world.get_entity(victim).is_err() {
+        return false;
+    }
     let att_level = world
         .get::<grim_actor::Actor>(attacker)
         .map(|a| a.level)
