@@ -7,8 +7,8 @@
 //!
 //! Geometry: room `(gx, gy)` → cell `(cx + gx * 3, cy + gy * 2)` with `center`
 //! at canvas middle `(width / 2, height / 2)`. `E`/`W` gaps are `--`, `N`/`S`
-//! gaps `|`; `Up` marks `,` at `(x - 1, y - 1)`, `Down` marks `'` at
-//! `(x + 1, y + 1)`. Layout is a BFS in fixed `Cardinal` order
+//! gaps `|`; `Up` marks `,` at `(x + 1, y - 1)` (top right), `Down` marks `'`
+//! at `(x - 1, y + 1)` (bottom left). Layout is a BFS in fixed `Cardinal` order
 //! (N, E, S, W, Up, Down) — never `HashMap` iteration — so repeated calls
 //! render byte-identical canvases; the first path to claim a cell wins and
 //! rooms past `±range` are neither placed nor traversed. Draw order is rooms,
@@ -173,10 +173,10 @@ pub fn render_map(
             put(&mut canvas, x - 2, y, '-');
         }
         if links.contains_key(&Cardinal::Up) {
-            put(&mut canvas, x - 1, y - 1, ',');
+            put(&mut canvas, x + 1, y - 1, ',');
         }
         if links.contains_key(&Cardinal::Down) {
-            put(&mut canvas, x + 1, y + 1, '\'');
+            put(&mut canvas, x - 1, y + 1, '\'');
         }
     }
     canvas
@@ -259,9 +259,9 @@ mod tests {
         link(&mut exits, center, Cardinal::Up, e(3));
         link(&mut exits, center, Cardinal::Down, e(4));
         let rows = render_map(center, &exits, &MapConfig::MAP);
-        // `,` sits up-one/left-one beside the north `|`; `'` down-one/right-one.
-        assert_eq!(rows[9], format!("{:39}{UP}{VL}", ""));
-        assert_eq!(rows[11], format!("{:41}{DN}", ""));
+        // `,` sits up-one/right-one beside the north `|`; `'` down-one/left-one.
+        assert_eq!(rows[9], format!("{:40}{VL}{UP}", ""));
+        assert_eq!(rows[11], format!("{:39}{DN}", ""));
         // Up/down targets share the room's cell, so they never place.
         assert_eq!(rows.iter().filter(|r| r.contains('#')).count(), 1);
     }
@@ -347,7 +347,7 @@ mod tests {
         let rows = render_map(center, &exits, &MapConfig::MAP);
         assert_eq!(rows[10], format!("{:40}{ME}{HL}{HL}{RM}", ""));
         assert_eq!(rows[8], format!("{:43}{RM}", ""));
-        assert_eq!(rows[9], format!("{:39}{UP}   {VL}", ""));
+        assert_eq!(rows[9], format!("{:41}{UP} {VL}", ""));
     }
     #[test]
     fn minimap_canvas_renders_neighbors() {

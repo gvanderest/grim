@@ -881,11 +881,11 @@ fn map_centers_self_repeats_stably_and_recenters_on_move() {
         rows[10],
         format!("{:40}{ME}{HL}{HL}{RM}           {RM}", "")
     );
-    // The loft's `,` up-marker draws at the row's left edge (the secret
+    // The loft's `,` up-marker draws top-right of the tavern (the secret
     // down exit stays hidden, so no `'` marker appears for it).
     assert_eq!(
         rows[9],
-        "                                       {Y,{x{8|{x              {8|{x"
+        "                                        {8|{x{Y,{x             {8|{x"
     );
     assert_eq!(
         rows[8],
@@ -908,10 +908,10 @@ fn map_centers_self_repeats_stably_and_recenters_on_move() {
         )
     );
     // The loft marker rides along: recentered on the square, the tavern's
-    // up-link still draws its `,` marker on this row.
+    // up-link still draws its `,` marker top-right on this row.
     assert_eq!(
         rows[11],
-        "                                       {Y,{x{8|{x              {8|{x"
+        "                                        {8|{x{Y,{x             {8|{x"
     );
     assert_eq!(
         rows[12],
